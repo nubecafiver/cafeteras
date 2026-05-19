@@ -117,7 +117,7 @@ tr:hover td{background:var(--bg3)}
 .fgp.full{grid-column:1/-1}
 .flbl{font-size:12px;color:var(--text2);font-weight:600}
 .fc{background:#fff;border:1.5px solid var(--border);border-radius:var(--r2);padding:8px 11px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;width:100%;transition:border .15s}
-.fc:focus{border-color:var(--accent)}
+.fc:focus{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(26,16,8,.08)}
 textarea.fc{resize:vertical;min-height:70px}
 select.fc option{background:#fff}
 .rs{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:12px}
@@ -211,7 +211,10 @@ select.fc option{background:#fff}
         <div class="topbar-sub" id="d-ts"></div>
       </div>
       <div class="ml g8">
-        <div class="sb"><span style="color:var(--text3)">🔍</span><input type="text" placeholder="Buscar por No. Serie o Activo…" id="d-srch" oninput="gSearch(this.value)"></div>
+        <div style="position:relative">
+          <div class="sb"><span style="color:var(--text3)">🔍</span><input type="text" placeholder="Buscar por No. Serie o Activo…" id="d-srch" oninput="gSearch(this.value)" onkeydown="if(event.key==='Enter')gSearchNow(this.value)" autocomplete="off"></div>
+          <div id="d-srch-drop" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:var(--r2);box-shadow:0 4px 20px rgba(26,16,8,.12);z-index:200;overflow:hidden"></div>
+        </div>
         <button class="btn btn-p" onclick="oMod('m-nueva-orden')">＋ Nueva Orden</button>
       </div>
     </div>
@@ -262,7 +265,10 @@ select.fc option{background:#fff}
         <div class="card">
           <div class="sechd">
             <div><div class="sectit">Clientes con Equipo</div><div class="secsub" id="cl-cnt"></div></div>
-            <select class="fc" style="width:170px" onchange="fClCe(this.value)" id="sel-cl-ce"><option value="">Todos los centros</option></select>
+            <div class="g8">
+              <input class="fc" id="cl-srch" placeholder="🔍 Buscar cliente o serie…" style="width:220px" oninput="fClSrch(this.value)">
+              <select class="fc" style="width:160px" onchange="fClCe(this.value)" id="sel-cl-ce"><option value="">Todos los centros</option></select>
+            </div>
           </div>
           <div class="tw"><table><thead><tr><th>No.</th><th>Activo Fijo</th><th>Modelo</th><th>No. Serie</th><th>Línea</th><th>Centro</th><th>Cliente / Alm.</th><th>QR</th><th>Acciones</th></tr></thead><tbody id="t-cl"></tbody></table></div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
@@ -520,7 +526,12 @@ async function rDash(){
 async function cEq(){
   document.getElementById('t-eq').innerHTML=`<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3)">Cargando…</td></tr>`;
   try{
-    let cs=[];if(eqL)cs.push(where('linea','==',eqL));if(eqC)cs.push(where('centro','==',eqC));cs.push(orderBy('no'),limit(PG));
+    let cs=[];
+    if(eqL) cs.push(where('linea','==',eqL));
+    if(eqC) cs.push(where('centro','==',eqC));
+    // Solo orderBy cuando no hay filtros (evita índice compuesto)
+    if(!eqL && !eqC) cs.push(orderBy('no'));
+    cs.push(limit(PG));
     const s=await getDocs(query(collection(db,'equipos'),...cs));
     const it=s.docs.map(d=>({id:d.id,...d.data()}));
     document.getElementById('eq-cnt').textContent=`Mostrando ${it.length} (total: 34,266)`;
@@ -536,15 +547,57 @@ window.pEq=(d)=>{cEq();};// simplified — recargar con mismos filtros
 async function cCl(){
   document.getElementById('t-cl').innerHTML=`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text3)">Cargando…</td></tr>`;
   try{
-    let cs=[];if(clC)cs.push(where('centro','==',clC));cs.push(orderBy('no'),limit(PG));
+    let cs=[];
+    if(clC) cs.push(where('centro','==',clC));
+    if(clSrch){
+      // Búsqueda local — traer más docs y filtrar
+      cs.push(limit(200));
+    } else {
+      if(!clC) cs.push(orderBy('no'));
+      cs.push(limit(PG));
+    }
     const s=await getDocs(query(collection(db,'clientesEquipo'),...cs));
-    const it=s.docs.map(d=>({id:d.id,...d.data()}));
+    let it=s.docs.map(d=>({id:d.id,...d.data()}));
+    // Filtrar por búsqueda local si hay texto
+    if(clSrch){
+      const q=clSrch.toLowerCase();
+      it=it.filter(c=>
+        (c.clienteNombre||'').toLowerCase().includes(q)||
+        (c.razonSocial||'').toLowerCase().includes(q)||
+        (String(c.clienteClave||'')).toLowerCase().includes(q)||
+        (c.almacen||'').toLowerCase().includes(q)||
+        (c.serie||'').toLowerCase().includes(q)||
+        (c.modelo||'').toLowerCase().includes(q)
+      ).slice(0,PG);
+    }
     document.getElementById('cl-cnt').textContent=`Mostrando ${it.length} (total: 29,310)`;
     document.getElementById('cl-pag').textContent=`Página actual`;
-    document.getElementById('t-cl').innerHTML=it.length?it.map(c=>`<tr><td style="color:var(--text3);font-size:12px">${c.no||'-'}</td><td><span style="font-family:monospace;font-size:11px">${c.activoFijo||'-'}</span></td><td style="max-width:180px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${c.modelo||'-'}</div></td><td><span style="font-family:monospace;font-size:12px;color:var(--accent);font-weight:600">${c.serie||c.id||'-'}</span></td><td>${bL(c.linea)}</td><td>${bC(c.centro)}</td><td style="font-size:12px;font-weight:500">${c.clienteClave||c.almacen||'-'}</td><td><button class="btn btn-g btn-s" onclick="aQR('${esc(c.serie||c.id)}','${esc(c.modelo)}')">📷</button></td><td><div class="g8"><button class="btn btn-g btn-s" onclick="vEq('${c.id}','cl')">👁 Ver</button><button class="btn btn-p btn-s" onclick="nOD('${esc(c.serie||c.id)}','${esc(c.modelo)}','${c.centro||''}','${esc(String(c.clienteClave||c.almacen||''))}')">+ Servicio</button></div></td></tr>`).join(''):`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text3)">Sin resultados</td></tr>`;
+    document.getElementById('t-cl').innerHTML=it.length?it.map(c=>{
+      // Nombre del cliente: preferir clienteNombre, razonSocial, o mostrar clave con label
+      const nmCliente = c.clienteNombre||c.razonSocial||c.nombreComercial||'';
+      const claveAlm  = c.clienteClave||c.almacen||'';
+      const clienteDisplay = nmCliente
+        ? `<div style="font-weight:500;font-size:12px">${nmCliente}</div><div style="font-size:10px;color:var(--text3)">Alm: ${claveAlm}</div>`
+        : `<span style="font-size:12px;color:var(--text2)">Alm. <strong>${claveAlm}</strong></span>`;
+      return`<tr>
+        <td style="color:var(--text3);font-size:12px">${c.no||'-'}</td>
+        <td><span style="font-family:monospace;font-size:11px">${c.activoFijo||'-'}</span></td>
+        <td style="max-width:180px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${c.modelo||'-'}</div></td>
+        <td><span style="font-family:monospace;font-size:12px;color:var(--accent);font-weight:600">${c.serie||c.id||'-'}</span></td>
+        <td>${bL(c.linea)}</td>
+        <td>${bC(c.centro)}</td>
+        <td style="min-width:120px">${clienteDisplay}</td>
+        <td><button class="btn btn-g btn-s" onclick="aQR('${esc(c.serie||c.id)}','${esc(c.modelo)}')">📷</button></td>
+        <td><div class="g8">
+          <button class="btn btn-g btn-s" onclick="vEq('${c.id}','cl')">👁 Ver</button>
+          <button class="btn btn-p btn-s" onclick="nOD('${esc(c.serie||c.id)}','${esc(c.modelo)}','${c.centro||''}','${esc(String(nmCliente||claveAlm||''))}')">+ Servicio</button>
+        </div></td>
+      </tr>`;}).join(''):`<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text3)">Sin resultados</td></tr>`;
   }catch(er){document.getElementById('t-cl').innerHTML=`<tr><td colspan="9" style="color:var(--red);padding:16px">Error: ${er.message}</td></tr>`;}
 }
-window.fClCe=(v)=>{clC=v;cCl();};
+let clSrch='';
+window.fClCe=(v)=>{clC=v;clSrch='';cCl();};
+window.fClSrch=(v)=>{clSrch=v;clearTimeout(window._clSt);window._clSt=setTimeout(cCl,400);};
 window.pCl=(d)=>{cCl();};
 
 // ── VER EQUIPO ──
@@ -570,9 +623,11 @@ async function cOrd(f=''){
   document.getElementById('t-ord').innerHTML=`<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text3)">Cargando…</td></tr>`;
   try{
     let cs=[];
-    if(ordF==='correctivo'||ordF==='preventivo')cs.push(where('tipo','==',ordF));
-    else if(ordF)cs.push(where('estado','==',ordF));
-    cs.push(orderBy('creadoEn','desc'),limit(30));
+    if(ordF==='correctivo'||ordF==='preventivo') cs.push(where('tipo','==',ordF));
+    else if(ordF) cs.push(where('estado','==',ordF));
+    // Solo orderBy cuando no hay filtros where
+    if(!ordF) cs.push(orderBy('creadoEn','desc'));
+    cs.push(limit(30));
     const s=await getDocs(query(collection(db,'ordenes'),...cs));
     const it=s.docs.map(d=>({id:d.id,...d.data()}));
     document.getElementById('t-ord').innerHTML=it.length?it.map(o=>`<tr><td><span style="font-family:monospace;font-size:11px;color:var(--accent);font-weight:700">${o.folio||o.id.slice(0,10)}</span></td><td style="font-size:11px;color:var(--text3)">${o.fechaServicio||fF(o.creadoEn)}</td><td>${bT(o.tipo)}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${o.modelo||'-'}</td><td><span style="font-family:monospace;font-size:11px">${o.serie||'-'}</span></td><td>${bC(o.centro)}</td><td style="font-size:12px">${o.tecnicoNombre||'-'}</td><td>${bE(o.estado)}</td><td style="font-weight:600;color:var(--green)">$${(o.costoTotal||0).toLocaleString('es-MX')}</td><td>${o.estado!=='terminado'?`<button class="btn btn-p btn-s" onclick="dAbrF('${o.id}')">✍️ Firmar</button>`:'<span style="color:var(--green);font-size:12px;font-weight:600">✓</span>'}</td></tr>`).join(''):`<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text3)">Sin órdenes</td></tr>`;
@@ -653,8 +708,68 @@ window.bQR=async function(){
   if(s.empty){res.innerHTML=`<div class="card" style="color:var(--red)">❌ No encontrado: "${q}"</div>`;return;}const dr=s.docs[0],e=dr.data();res.innerHTML=`<div class="card"><div style="font-size:12px;color:var(--green);font-weight:600;margin-bottom:8px">✅ Equipo encontrado</div><div style="font-size:15px;font-weight:700;font-family:'Playfair Display',serif;margin-bottom:6px">${e.modelo||'-'}</div><div style="margin-bottom:10px">${bL(e.linea)} ${bC(e.centro)}</div><div style="font-size:12px;color:var(--text2);margin-bottom:12px">Serie: <span style="font-family:monospace;color:var(--accent);font-weight:600">${e.serie||'-'}</span>${e.clienteClave?' · '+e.clienteClave:''}</div><div class="g8"><button class="btn btn-g btn-s" onclick="vEq('${dr.id}','cl')">👁 Ver ficha</button><button class="btn btn-p btn-s" onclick="nOD('${esc(e.serie||dr.id)}','${esc(e.modelo)}','${e.centro||''}','${esc(String(e.clienteClave||e.almacen||''))}')">📋 Registrar Servicio</button></div></div>`;}catch(er){res.innerHTML=`<div style="color:var(--red)">Error: ${er.message}</div>`;}
 };
 
-// ── BÚSQUEDA GLOBAL ──
-window.gSearch=async function(q){if(!q||q.length<3)return;clearTimeout(window._st);window._st=setTimeout(async()=>{try{let s=await getDocs(query(collection(db,'clientesEquipo'),where('serie','==',q),limit(1)));if(!s.empty){vEq(s.docs[0].id,'cl');return;}s=await getDocs(query(collection(db,'equipos'),where('serie','==',q),limit(1)));if(!s.empty){vEq(s.docs[0].id,'eq');return;}if(!isNaN(parseInt(q))){s=await getDocs(query(collection(db,'clientesEquipo'),where('activoFijo','==',parseInt(q)),limit(1)));if(!s.empty){vEq(s.docs[0].id,'cl');return;}}}catch(e){console.warn(e);}},600);};
+// ── BÚSQUEDA GLOBAL con dropdown ──
+window.gSearch=async function(q){
+  const drop=document.getElementById('d-srch-drop');
+  if(!q||q.length<2){drop.style.display='none';return;}
+  clearTimeout(window._st);
+  window._st=setTimeout(async()=>{
+    try{
+      drop.innerHTML=`<div style="padding:10px 14px;color:var(--text3);font-size:12px">Buscando…</div>`;
+      drop.style.display='block';
+      const results=[];
+      // Por serie en ambas colecciones
+      const [s1,s2]=await Promise.all([
+        getDocs(query(collection(db,'clientesEquipo'),where('serie','>=',q.toUpperCase()),where('serie','<=',q.toUpperCase()+'\uf8ff'),limit(4))),
+        getDocs(query(collection(db,'equipos'),where('serie','>=',q.toUpperCase()),where('serie','<=',q.toUpperCase()+'\uf8ff'),limit(3)))
+      ]);
+      s1.docs.forEach(d=>results.push({id:d.id,col:'cl',...d.data()}));
+      s2.docs.forEach(d=>{if(!results.find(r=>r.serie===d.data().serie))results.push({id:d.id,col:'eq',...d.data()});});
+      // Por activoFijo si es número
+      if(!isNaN(parseInt(q))){
+        const s3=await getDocs(query(collection(db,'clientesEquipo'),where('activoFijo','==',parseInt(q)),limit(3)));
+        s3.docs.forEach(d=>{if(!results.find(r=>r.id===d.id))results.push({id:d.id,col:'cl',...d.data()});});
+      }
+      if(!results.length){
+        drop.innerHTML=`<div style="padding:12px 14px;color:var(--text3);font-size:12px">❌ Sin resultados para "<strong>${q}</strong>"</div>`;
+        return;
+      }
+      drop.innerHTML=results.map(e=>`
+        <div onclick="vEq('${e.id}','${e.col}');document.getElementById('d-srch-drop').style.display='none';document.getElementById('d-srch').value=''"
+          style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s"
+          onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''"
+        >
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${e.modelo||'Equipo'}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;display:flex;gap:10px">
+            <span>Serie: <span style="font-family:monospace;color:var(--accent);font-weight:600">${e.serie||'-'}</span></span>
+            <span>${bC(e.centro)}</span>
+            ${e.clienteClave||e.clienteNombre?`<span style="color:var(--text2)">${e.clienteNombre||e.clienteClave}</span>`:''}
+          </div>
+        </div>`).join('')+
+        `<div onclick="gSearchNow('${q}')" style="padding:10px 14px;cursor:pointer;font-size:12px;color:var(--accent);font-weight:600;text-align:center;background:var(--bg3)" onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+          Ver todos los resultados para "${q}" →
+        </div>`;
+    }catch(e){document.getElementById('d-srch-drop').innerHTML=`<div style="padding:10px 14px;color:var(--red);font-size:12px">Error: ${e.message}</div>`;}
+  },350);
+};
+window.gSearchNow=async function(q){
+  const drop=document.getElementById('d-srch-drop');
+  drop.style.display='none';
+  if(!q)return;
+  try{
+    let s=await getDocs(query(collection(db,'clientesEquipo'),where('serie','==',q),limit(1)));
+    if(!s.empty){vEq(s.docs[0].id,'cl');return;}
+    s=await getDocs(query(collection(db,'equipos'),where('serie','==',q),limit(1)));
+    if(!s.empty){vEq(s.docs[0].id,'eq');return;}
+    if(!isNaN(parseInt(q))){
+      s=await getDocs(query(collection(db,'clientesEquipo'),where('activoFijo','==',parseInt(q)),limit(1)));
+      if(!s.empty){vEq(s.docs[0].id,'cl');return;}
+    }
+    notif('No encontrado: '+q,'err');
+  }catch(e){console.warn(e);}
+};
+// Cerrar dropdown al click fuera
+document.addEventListener('click',e=>{if(!e.target.closest('#d-srch')&&!e.target.closest('#d-srch-drop')){const d=document.getElementById('d-srch-drop');if(d)d.style.display='none';}});
 
 // ── MODALES ──
 function oMod(id){document.getElementById(id).classList.add('open');if(id==='m-nueva-orden')rFrm('frm-mod');if(id==='m-firma')iDF();}
