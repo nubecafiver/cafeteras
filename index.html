@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CAFIVER — Gestión de Equipos</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:wght@700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<!-- QRCode y SignaturePad — cargar ANTES que Firebase -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js"></script>
 <!-- Firebase SDK v10 -->
 <script type="module">
 import { initializeApp }                          from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -229,14 +232,14 @@ async function cargarEquipos(dir = 0) {
       <td style="color:var(--text3);font-size:12px">${e.no||'-'}</td>
       <td><span style="font-family:monospace;font-size:11px">${e.activoFijo||'-'}</span></td>
       <td style="max-width:200px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${e.modelo}">${e.modelo||'-'}</div></td>
-      <td><span style="font-family:monospace;font-size:12px;color:var(--accent)">${e.serie||'-'}</span></td>
+      <td><span style="font-family:monospace;font-size:12px;color:var(--accent);font-weight:600">${e.serie||e.id||'-'}</span></td>
       <td>${badgeLinea(e.linea)}</td>
       <td>${badgeCentro(e.centro)}</td>
       <td>${badgeEstadoEq(e.estado)}</td>
       <td>
         <div style="display:flex;gap:6px">
           <button class="btn btn-ghost btn-sm" onclick="verEquipo('${e.id}')">👁 Ver</button>
-          <button class="btn btn-ghost btn-sm" onclick="abrirQR('${e.serie||''}','${(e.modelo||'').replace(/'/g,'')}')">📷</button>
+          <button class="btn btn-ghost btn-sm" onclick="abrirQR('${e.serie||e.id||''}','${(e.modelo||'').replace(/'/g,'').replace(/"/g,'')}')">📷 QR</button>
         </div>
       </td>
     </tr>`).join('')
@@ -273,15 +276,15 @@ async function cargarClientes() {
       <td style="color:var(--text3);font-size:12px">${c.no||'-'}</td>
       <td><span style="font-family:monospace;font-size:11px">${c.activoFijo||'-'}</span></td>
       <td style="max-width:180px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${c.modelo}">${c.modelo||'-'}</div></td>
-      <td><span style="font-family:monospace;font-size:12px;color:var(--accent)">${c.serie||'-'}</span></td>
+      <td><span style="font-family:monospace;font-size:12px;color:var(--accent);font-weight:600">${c.serie||c.id||'-'}</span></td>
       <td>${badgeLinea(c.linea)}</td>
       <td>${badgeCentro(c.centro)}</td>
-      <td style="font-size:12px">${c.clienteClave||c.almacen||'-'}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="abrirQR('${c.serie||''}','${(c.modelo||'').replace(/'/g,'')}')">📷</button></td>
+      <td style="font-size:12px;font-weight:500">${c.clienteClave||c.almacen||'-'}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="abrirQR('${c.serie||c.id||''}','${(c.modelo||'').replace(/'/g,'').replace(/"/g,'')}')">📷 QR</button></td>
       <td>
         <div style="display:flex;gap:6px">
           <button class="btn btn-ghost btn-sm" onclick="verEquipo('${c.id}','cl')">👁 Ver</button>
-          <button class="btn btn-primary btn-sm" onclick="nuevaOrdenDesde('${c.serie||''}','${(c.modelo||'').replace(/'/g,'')}','${c.centro||''}','${c.clienteClave||c.almacen||''}')">+ Servicio</button>
+          <button class="btn btn-primary btn-sm" onclick="nuevaOrdenDesde('${c.serie||c.id||''}','${(c.modelo||'').replace(/'/g,'').replace(/"/g,'')}','${c.centro||''}','${(c.clienteClave||c.almacen||'').toString().replace(/'/g,'')}')">+ Servicio</button>
         </div>
       </td>
     </tr>`).join('')
@@ -294,58 +297,78 @@ window.filtrarCentroCl = function(v) { clFilter.centro = v; clPage = 0; cargarCl
 //  VER EQUIPO (modal)
 // ══════════════════════════════════════════════════════
 async function verEquipo(docId, col='equipos') {
-  const colName = col === 'cl' ? 'clientesEquipo' : 'equipos';
-  const snap = await getDoc(doc(db, colName, docId));
-  if (!snap.exists()) { showNotif('Equipo no encontrado','error'); return; }
-  const e = { id: snap.id, ...snap.data() };
-  equipoSeleccionado = e;
+  try {
+    const colName = col === 'cl' ? 'clientesEquipo' : 'equipos';
+    const snap = await getDoc(doc(db, colName, docId));
+    if (!snap.exists()) { showNotif('Equipo no encontrado','error'); return; }
+    const e = { id: snap.id, ...snap.data() };
+    equipoSeleccionado = e;
 
-  // Historial de órdenes de este equipo
-  const hSnap = await getDocs(query(
-    collection(db,'ordenes'),
-    where('serie','==', e.serie||''),
-    orderBy('creadoEn','desc'), limit(5)
-  ));
-  const historial = hSnap.docs.map(d=>({id:d.id,...d.data()}));
+    // Historial — sin orderBy para evitar índice compuesto
+    let historial = [];
+    try {
+      const hSnap = await getDocs(query(
+        collection(db,'ordenes'),
+        where('serie','==', e.serie||''),
+        limit(5)
+      ));
+      historial = hSnap.docs.map(d=>({id:d.id,...d.data()}));
+    } catch(he) { console.warn('Historial:', he.message); }
 
-  document.getElementById('modal-equipo-body').innerHTML = `
-    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:16px">
-      <div>
-        <div class="report-section" style="margin-bottom:14px">
-          <div class="report-section-title">Información del Equipo</div>
-          <table style="width:100%">
-            ${fl('Modelo',      e.modelo||'-')}
-            ${fl('No. de Serie','<span style="font-family:monospace;color:var(--accent)">'+(e.serie||'-')+'</span>')}
-            ${fl('Activo Fijo', e.activoFijo||'-')}
-            ${fl('Material',    e.material||'-')}
-            ${fl('Línea',       badgeLinea(e.linea))}
-            ${fl('Centro',      badgeCentro(e.centro)+' — '+(CENTROS[e.centro]||e.centro||'-'))}
-            ${e.clienteClave ? fl('Cliente / Alm.', e.clienteClave) : ''}
-            ${fl('Estado',      badgeEstadoEq(e.estado))}
-          </table>
+    document.getElementById('modal-equipo-body').innerHTML = `
+      <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:16px">
+        <div>
+          <div class="report-section" style="margin-bottom:14px">
+            <div class="report-section-title">Información del Equipo</div>
+            <table style="width:100%">
+              ${fl('Modelo',      e.modelo||'-')}
+              ${fl('No. de Serie','<span style="font-family:monospace;color:var(--accent);font-weight:700">'+(e.serie||'Sin serie')+'</span>')}
+              ${fl('Activo Fijo', e.activoFijo||'-')}
+              ${fl('Material',    e.material||'-')}
+              ${fl('Línea',       badgeLinea(e.linea))}
+              ${fl('Centro',      badgeCentro(e.centro)+' — '+(CENTROS[e.centro]||e.centro||'-'))}
+              ${e.clienteClave ? fl('Cliente / Alm.', e.clienteClave) : ''}
+              ${fl('Estado',      badgeEstadoEq(e.estado))}
+            </table>
+          </div>
+          <div class="report-section">
+            <div class="report-section-title">Historial (${historial.length})</div>
+            ${historial.length ? historial.map(h=>`
+              <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+                <div style="font-size:11px;color:var(--text3);margin-bottom:3px">${fmtFecha(h.creadoEn)} · ${h.tecnicoNombre||'-'}</div>
+                <div style="font-size:13px;margin-bottom:4px">${h.descripcion||'-'}</div>
+                <div>${badgeTipo(h.tipo)} ${badgeEstado(h.estado)} <span style="color:var(--green);font-size:12px;margin-left:6px;font-weight:600">$${(h.costoTotal||0).toLocaleString('es-MX')}</span></div>
+              </div>`).join('')
+            : '<p style="color:var(--text3);font-size:13px">Sin historial de servicios aún</p>'}
+          </div>
         </div>
-        <div class="report-section">
-          <div class="report-section-title">Historial (${historial.length})</div>
-          ${historial.length ? historial.map(h=>`
-            <div style="padding:8px 0;border-bottom:1px solid var(--border)">
-              <div style="font-size:11px;color:var(--text3);margin-bottom:3px">${fmtFecha(h.creadoEn)} · ${h.tecnicoNombre||'-'}</div>
-              <div style="font-size:13px;margin-bottom:4px">${h.descripcion||'-'}</div>
-              <div>${badgeTipo(h.tipo)} ${badgeEstado(h.estado)} <span style="color:var(--green);font-size:12px;margin-left:6px">$${(h.costoTotal||0).toLocaleString('es-MX')}</span></div>
-            </div>`).join('')
-          : '<p style="color:var(--text3);font-size:13px">Sin historial</p>'}
+        <div>
+          <div class="qr-box" style="margin-bottom:14px">
+            <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-weight:600">Código QR del Equipo</div>
+            <div id="qr-modal-inner" style="display:flex;align-items:center;justify-content:center;min-height:160px;background:#fff;border-radius:var(--r2);padding:8px"></div>
+            <div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center">${e.serie||'Sin No. Serie'}</div>
+            <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨 Imprimir QR</button>
+          </div>
+          <div class="report-section">
+            <div class="report-section-title">Estado</div>
+            <span class="badge badge-green" style="margin-bottom:10px;display:inline-block">Operativo</span>
+            <div style="font-size:12px;color:var(--text2);margin-top:6px">Último servicio:<br>
+              <span style="color:var(--text);font-weight:500">${historial.length?fmtFecha(historial[0].creadoEn):'Sin servicios'}</span>
+            </div>
+          </div>
         </div>
-      </div>
-      <div>
-        <div class="qr-box" style="margin-bottom:14px">
-          <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Código QR</div>
-          <div id="qr-modal-inner" style="display:flex;align-items:center;justify-content:center;min-height:140px"></div>
-          <div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center">${e.serie||''}</div>
-        </div>
-      </div>
-    </div>`;
+      </div>`;
 
-  openModal('modal-equipo');
-  setTimeout(() => generarQREnEl('qr-modal-inner', e.serie||'', e.modelo||'', 140), 200);
+    openModal('modal-equipo');
+    // Generar QR después de que el DOM esté listo
+    setTimeout(() => {
+      if(e.serie) generarQREnEl('qr-modal-inner', e.serie, e.modelo||'', 150);
+      else document.getElementById('qr-modal-inner').innerHTML = '<span style="color:var(--text3);font-size:12px">Sin No. Serie para QR</span>';
+    }, 300);
+  } catch(err) {
+    console.error('verEquipo:', err);
+    showNotif('Error al cargar equipo: ' + err.message, 'error');
+  }
 }
 window.verEquipo = verEquipo;
 
@@ -795,49 +818,68 @@ async function cargarReportes() {
 // ══════════════════════════════════════════════════════
 function generarQREnEl(elId, serie, modelo, size=160) {
   const el = document.getElementById(elId);
-  if (!el || !serie) return;
+  if (!el) return;
   el.innerHTML = '';
+  if (!serie) { el.innerHTML = '<span style="color:var(--text3);font-size:12px">Sin No. Serie</span>'; return; }
   try {
     new QRCode(el, {
-      text: `CAFECONTROL|SERIE:${serie}|MODELO:${modelo}`,
+      text: `CAFIVER|SERIE:${serie}|MODELO:${modelo}`,
       width: size, height: size,
-      colorDark: '#000', colorLight: '#fff',
+      colorDark: '#1a1008', colorLight: '#ffffff',
       correctLevel: QRCode.CorrectLevel.M
     });
-  } catch(e) { console.warn('QR:', e); }
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--red);font-size:12px">Error generando QR</span>';
+    console.warn('QR error:', e);
+  }
 }
 window.generarQREnEl = generarQREnEl;
 
 window.abrirQR = function(serie, modelo) {
-  document.getElementById('qr-serie-input').value = serie;
   document.getElementById('qr-display').innerHTML = '';
-  generarQREnEl('qr-display', serie, modelo, 160);
-  document.getElementById('qr-info').textContent = modelo + ' · ' + serie;
+  document.getElementById('qr-info').textContent  = serie ? (modelo + ' · ' + serie) : 'Sin No. Serie';
   openModal('modal-qr');
+  setTimeout(() => generarQREnEl('qr-display', serie, modelo, 170), 300);
 };
 
 window.buscarEquipoQR = async function() {
-  const q = document.getElementById('manual-qr').value.trim();
+  const q   = document.getElementById('manual-qr').value.trim();
   if (!q) return;
   const res = document.getElementById('qr-result');
   res.innerHTML = '<div style="color:var(--text3);font-size:13px">Buscando…</div>';
-  const snap = await getDocs(query(collection(db,'clientesEquipo'), where('serie','==',q), limit(1)));
-  const snap2 = snap.empty
-    ? await getDocs(query(collection(db,'equipos'), where('serie','==',q), limit(1)))
-    : snap;
-  if (snap2.empty) {
-    res.innerHTML = `<div class="card-sm" style="color:var(--red)">❌ No encontrado: ${q}</div>`;
-    return;
+  try {
+    // Buscar por serie
+    let snap = await getDocs(query(collection(db,'clientesEquipo'), where('serie','==',q), limit(1)));
+    if (snap.empty) snap = await getDocs(query(collection(db,'equipos'), where('serie','==',q), limit(1)));
+    // Buscar por activoFijo si no encontró
+    if (snap.empty && !isNaN(parseInt(q))) {
+      snap = await getDocs(query(collection(db,'clientesEquipo'), where('activoFijo','==',parseInt(q)), limit(1)));
+      if (snap.empty) snap = await getDocs(query(collection(db,'equipos'), where('activoFijo','==',parseInt(q)), limit(1)));
+    }
+    if (snap.empty) {
+      res.innerHTML = `<div class="card-sm" style="color:var(--red)">❌ No encontrado: "${q}"</div>`;
+      return;
+    }
+    const docRef = snap.docs[0];
+    const e = docRef.data();
+    res.innerHTML = `
+      <div class="card-sm">
+        <div style="font-size:12px;color:var(--green);margin-bottom:8px;font-weight:600">✅ Equipo encontrado</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px;font-family:'Playfair Display',serif">${e.modelo||'-'}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${badgeLinea(e.linea)} ${badgeCentro(e.centro)}</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px">
+          Serie: <span style="font-family:monospace;color:var(--accent);font-weight:600">${e.serie||'Sin serie'}</span>
+          ${e.clienteClave ? ' · '+e.clienteClave : ''}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="verEquipo('${docRef.id}','cl')">👁 Ver ficha</button>
+          <button class="btn btn-primary btn-sm" onclick="nuevaOrdenDesde('${e.serie||''}','${(e.modelo||'').replace(/'/g,'')}','${e.centro||''}','${(e.clienteClave||e.almacen||'').toString().replace(/'/g,'')}')">📋 Registrar Servicio</button>
+        </div>
+      </div>`;
+  } catch(err) {
+    res.innerHTML = `<div class="card-sm" style="color:var(--red)">Error: ${err.message}</div>`;
   }
-  const e = snap2.docs[0].data();
-  res.innerHTML = `
-    <div class="card-sm">
-      <div style="font-size:12px;color:var(--green);margin-bottom:8px">✅ Equipo encontrado</div>
-      <div style="font-weight:500;margin-bottom:6px">${e.modelo}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${badgeLinea(e.linea)} ${badgeCentro(e.centro)}</div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Serie: <span style="font-family:monospace;color:var(--accent)">${e.serie}</span></div>
-      <button class="btn btn-primary btn-sm" onclick="nuevaOrdenDesde('${e.serie||''}','${(e.modelo||'').replace(/'/g,'')}','${e.centro||''}','${e.clienteClave||e.almacen||''}')">📋 Registrar Servicio</button>
-    </div>`;
+};
 };
 
 // ══════════════════════════════════════════════════════
@@ -880,11 +922,24 @@ window.globalSearch = async function(q) {
   if (!q || q.length < 3) return;
   clearTimeout(window._searchTimer);
   window._searchTimer = setTimeout(async () => {
-    const snap = await getDocs(query(
-      collection(db,'clientesEquipo'), where('serie','>=',q), where('serie','<=',q+'\uf8ff'), limit(1)
-    ));
-    if (!snap.empty) verEquipo(snap.docs[0].id, 'cl');
-  }, 500);
+    try {
+      // Buscar por serie exacta en clientesEquipo
+      let snap = await getDocs(query(collection(db,'clientesEquipo'), where('serie','==',q), limit(1)));
+      if (!snap.empty) { verEquipo(snap.docs[0].id, 'cl'); return; }
+      // Buscar por serie exacta en equipos
+      snap = await getDocs(query(collection(db,'equipos'), where('serie','==',q), limit(1)));
+      if (!snap.empty) { verEquipo(snap.docs[0].id, 'eq'); return; }
+      // Buscar por activoFijo
+      const numQ = parseInt(q);
+      if (!isNaN(numQ)) {
+        snap = await getDocs(query(collection(db,'clientesEquipo'), where('activoFijo','==',numQ), limit(1)));
+        if (!snap.empty) { verEquipo(snap.docs[0].id, 'cl'); return; }
+        snap = await getDocs(query(collection(db,'equipos'), where('activoFijo','==',numQ), limit(1)));
+        if (!snap.empty) { verEquipo(snap.docs[0].id, 'eq'); return; }
+      }
+      showNotif('No encontrado: ' + q, 'error');
+    } catch(e) { console.warn('Search:', e.message); }
+  }, 600);
 };
 
 // ══════════════════════════════════════════════════════
@@ -936,9 +991,6 @@ window.badgeEstado  = badgeEstado;
 window.badgeEstadoEq = badgeEstadoEq;
 </script>
 
-<!-- QRCode.js y SignaturePad -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js"></script>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
