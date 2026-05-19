@@ -32,6 +32,11 @@ const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
 
+// Exponer módulos para la vista móvil
+window._db = db;
+window._fbModules = { getDocs, query, collection, where, orderBy, limit,
+  getDoc, doc, addDoc, updateDoc, serverTimestamp };
+
 // ── Centros ────────────────────────────────────────────
 const CENTROS = {
   EUCA:'Cancún', EUMX:'Ciudad de México', EUGU:'Guadalajara',
@@ -58,9 +63,16 @@ let equipoSeleccionado = null;
 onAuthStateChanged(auth, async user => {
   if (user) {
     currentUser = user;
+    window._currentUser = user;
     const snap = await getDoc(doc(db, 'usuarios', user.uid));
     currentPerfil = snap.exists() ? snap.data() : { rol:'tecnico', nombre: user.email };
+    window._mobNombre = currentPerfil.nombre;
     mostrarApp();
+    // Activar vista móvil si es pantalla chica
+    if(window.innerWidth <= 768) {
+      document.getElementById('login-screen').style.display = 'none';
+      mobMostrarApp();
+    }
   } else {
     currentUser  = null;
     currentPerfil = null;
@@ -1068,6 +1080,50 @@ textarea.form-control{resize:vertical;min-height:70px}
 ::-webkit-scrollbar-track{background:var(--bg3)}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
 ::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+
+/* ══ MÓVIL — Vista técnico en campo ══ */
+.mobile-app{display:none;flex-direction:column;height:100vh;background:var(--bg)}
+.mob-header{background:#fff;border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.mob-logo{display:flex;align-items:center;gap:8px}
+.mob-logo-ring{width:34px;height:34px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center}
+.mob-logo-txt{font-size:7px;font-weight:700;color:#fff;font-family:'Playfair Display',serif;text-align:center;line-height:1.3}
+.mob-brand{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--text)}
+.mob-user-info{text-align:right}
+.mob-user-name{font-size:12px;font-weight:600;color:var(--text)}
+.mob-user-role{font-size:10px;color:var(--text3)}
+.mob-content{flex:1;overflow-y:auto;padding:16px}
+.mob-page{display:none}.mob-page.active{display:block}
+.mob-nav{background:#fff;border-top:2px solid var(--border);display:flex;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom)}
+.mob-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 4px 8px;cursor:pointer;color:var(--text3);transition:all .15s;border-top:2px solid transparent;margin-top:-2px;gap:3px}
+.mob-nav-item.active{color:var(--accent);border-top-color:var(--accent)}
+.mob-nav-icon{font-size:22px}
+.mob-nav-lbl{font-size:10px;font-weight:600;letter-spacing:.02em}
+.mob-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.mob-card-title{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--text);margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid var(--accent)}
+.orden-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px;transition:all .15s}
+.orden-card:active{border-color:var(--accent);box-shadow:0 2px 12px rgba(26,16,8,.08)}
+.orden-folio{font-family:monospace;font-size:11px;font-weight:700;color:var(--accent)}
+.orden-modelo{font-size:13px;font-weight:600;color:var(--text);margin:4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.orden-meta{font-size:11px;color:var(--text3);display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.mob-btn-big{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:16px;background:var(--accent);color:#fff;border:none;border-radius:var(--r);font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:12px;transition:all .15s;-webkit-tap-highlight-color:transparent}
+.mob-btn-big:active{background:var(--accent2);transform:scale(.98)}
+.mob-btn-big.green{background:var(--green)}.mob-btn-big.green:active{background:#14532d}
+.mob-btn-big-icon{font-size:22px}
+.mob-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.mob-stat{background:#fff;border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:var(--r);padding:14px;text-align:center}
+.mob-stat-val{font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:var(--text)}
+.mob-stat-lbl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+.mob-alerta{background:#fff;border:1px solid var(--border);border-left:4px solid var(--amber);border-radius:var(--r2);padding:12px;margin-bottom:8px}
+
+@media(max-width:768px){
+  #app-screen{display:none !important}
+  .mobile-app{display:flex !important}
+  .notif{top:auto;bottom:80px;right:12px;left:12px;max-width:none}
+}
+@media(min-width:769px){
+  .mobile-app{display:none !important}
+  #app-screen{display:flex !important}
+}
 </style>
 </head>
 <body>
@@ -1344,18 +1400,508 @@ textarea.form-control{resize:vertical;min-height:70px}
 
 <div class="notif" id="notif"></div>
 
-<!-- Centros inline para los selects del HTML estático -->
+<!-- ═══════════════════════════════════════════
+     VISTA MÓVIL — Técnico en Campo
+     ═══════════════════════════════════════════ -->
+<div class="mobile-app" id="mobile-app">
+
+  <!-- Header -->
+  <div class="mob-header">
+    <div class="mob-logo">
+      <div class="mob-logo-ring"><div class="mob-logo-txt">CAFÉ<br>VER</div></div>
+      <div class="mob-brand">CAFIVER</div>
+    </div>
+    <div class="mob-user-info">
+      <div class="mob-user-name" id="mob-user-name">—</div>
+      <div class="mob-user-role" id="mob-user-role">Técnico de campo</div>
+    </div>
+  </div>
+
+  <!-- Contenido -->
+  <div class="mob-content">
+
+    <!-- HOME técnico -->
+    <div class="mob-page active" id="mob-home">
+      <div class="mob-stats">
+        <div class="mob-stat">
+          <div class="mob-stat-val" id="mob-mis-ordenes">—</div>
+          <div class="mob-stat-lbl">Mis Órdenes</div>
+        </div>
+        <div class="mob-stat" style="border-top-color:var(--amber)">
+          <div class="mob-stat-val" style="color:var(--amber)" id="mob-pendientes">—</div>
+          <div class="mob-stat-lbl">Pendientes</div>
+        </div>
+      </div>
+
+      <button class="mob-btn-big" onclick="mobGoTo('nueva-orden')">
+        <span class="mob-btn-big-icon">📋</span> Nueva Orden de Servicio
+      </button>
+      <button class="mob-btn-big" onclick="mobGoTo('qr')" style="background:var(--bg3);color:var(--text);border:1.5px solid var(--border2)">
+        <span class="mob-btn-big-icon">📷</span> Buscar Equipo por QR
+      </button>
+      <button class="mob-btn-big green" onclick="mobGoTo('mis-ordenes')">
+        <span class="mob-btn-big-icon">📋</span> Ver Mis Órdenes
+      </button>
+
+      <div id="mob-alertas-pm" style="margin-top:4px"></div>
+    </div>
+
+    <!-- MIS ÓRDENES -->
+    <div class="mob-page" id="mob-mis-ordenes-pg">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <button onclick="mobGoTo('home')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text2)">←</button>
+        <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700">Mis Órdenes</div>
+      </div>
+      <div class="filter-bar" style="margin-bottom:12px">
+        <button class="filter-pill active" onclick="mobFiltOrden(this,'')">Todas</button>
+        <button class="filter-pill" onclick="mobFiltOrden(this,'pendiente')">Pendientes</button>
+        <button class="filter-pill" onclick="mobFiltOrden(this,'en proceso')">En proceso</button>
+        <button class="filter-pill" onclick="mobFiltOrden(this,'terminado')">Terminadas</button>
+      </div>
+      <div id="mob-lista-ordenes">
+        <div style="text-align:center;padding:30px;color:var(--text3)">Cargando órdenes…</div>
+      </div>
+      <button class="mob-btn-big" style="margin-top:8px" onclick="mobGoTo('nueva-orden')">
+        <span class="mob-btn-big-icon">➕</span> Nueva Orden
+      </button>
+    </div>
+
+    <!-- QR / BUSCAR -->
+    <div class="mob-page" id="mob-qr-pg">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <button onclick="mobGoTo('home')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text2)">←</button>
+        <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700">Buscar Equipo</div>
+      </div>
+      <div class="mob-card">
+        <div style="text-align:center;font-size:40px;margin-bottom:10px">📷</div>
+        <p style="color:var(--text2);font-size:13px;text-align:center;margin-bottom:14px">Ingresa el No. de Serie o Activo Fijo</p>
+        <div style="display:flex;gap:8px">
+          <input class="form-control" id="mob-qr-input" placeholder="Ej. DOCI05190" style="flex:1">
+          <button class="btn btn-primary" onclick="mobBuscarEquipo()">Buscar</button>
+        </div>
+        <div id="mob-qr-result" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <!-- NUEVA ORDEN -->
+    <div class="mob-page" id="mob-nueva-orden-pg">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <button onclick="mobGoTo('home')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text2)">←</button>
+        <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700">Nueva Orden</div>
+      </div>
+      <div id="mob-form-container"></div>
+    </div>
+
+    <!-- FIRMA MÓVIL -->
+    <div class="mob-page" id="mob-firma-pg">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <button onclick="mobGoTo('nueva-orden')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text2)">←</button>
+        <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700">Firma del Cliente</div>
+      </div>
+      <div class="mob-card">
+        <div class="form-group" style="margin-bottom:12px">
+          <label class="form-label">Nombre del cliente</label>
+          <input class="form-control" id="mob-firma-nombre" placeholder="Nombre completo">
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label class="form-label">Cargo</label>
+          <input class="form-control" id="mob-firma-cargo" placeholder="Ej. Jefe de Mantenimiento">
+        </div>
+        <div class="form-label" style="margin-bottom:6px">Firma del cliente</div>
+        <div style="border:2px solid var(--accent);border-radius:var(--r);overflow:hidden;touch-action:none">
+          <canvas id="mob-sig-canvas" style="background:#fff;display:block;width:100%;height:180px"></canvas>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:8px">
+          <button class="btn btn-ghost btn-sm" onclick="if(mobSigPad)mobSigPad.clear()">🗑 Limpiar firma</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding:10px;background:var(--bg3);border-radius:var(--r2)">
+          <input type="checkbox" id="mob-chk-conforme" style="accent-color:var(--accent);width:16px;height:16px;flex-shrink:0">
+          <label for="mob-chk-conforme" style="font-size:13px;cursor:pointer">El cliente confirma conformidad con el servicio</label>
+        </div>
+        <button class="mob-btn-big green" style="margin-top:14px" onclick="mobFinalizarOrden()">
+          <span class="mob-btn-big-icon">📧</span> Finalizar y Enviar por Correo
+        </button>
+      </div>
+    </div>
+
+  </div><!-- /mob-content -->
+
+  <!-- Barra de navegación inferior -->
+  <div class="mob-nav">
+    <div class="mob-nav-item active" id="mobnav-home" onclick="mobGoTo('home')">
+      <div class="mob-nav-icon">🏠</div>
+      <div class="mob-nav-lbl">Inicio</div>
+    </div>
+    <div class="mob-nav-item" id="mobnav-nueva-orden" onclick="mobGoTo('nueva-orden')">
+      <div class="mob-nav-icon">📋</div>
+      <div class="mob-nav-lbl">Nueva Orden</div>
+    </div>
+    <div class="mob-nav-item" id="mobnav-qr" onclick="mobGoTo('qr')">
+      <div class="mob-nav-icon">📷</div>
+      <div class="mob-nav-lbl">QR</div>
+    </div>
+    <div class="mob-nav-item" id="mobnav-mis-ordenes" onclick="mobGoTo('mis-ordenes')">
+      <div class="mob-nav-icon">📁</div>
+      <div class="mob-nav-lbl">Mis Órdenes</div>
+    </div>
+    <div class="mob-nav-item" onclick="logout()">
+      <div class="mob-nav-icon">🚪</div>
+      <div class="mob-nav-lbl">Salir</div>
+    </div>
+  </div>
+
+</div><!-- /mobile-app -->
+
+<!-- Centros inline -->
 <script>
 const CENTROS_INLINE = {
   EUCA:'Cancún',EUMX:'Ciudad de México',EUGU:'Guadalajara',EUOZ:'Oaxaca',
   EUBA:'Bajío (León)',EUQE:'Querétaro',EUVA:'Veracruz',EUMY:'Monterrey',
   EUPU:'Puebla',EUST:'Saltillo',EUME:'Mérida',EUGR:'Guerrero',EUCS:'Chiapas',EUMA:'Mazatlán'
 };
-// Poblar selects de centros en el HTML estático
-document.querySelectorAll('select').forEach(sel => {
-  if (sel.querySelector('option[value="EUCA"]')) return; // ya tiene
-  if (!sel.querySelector('option[value=""]'))   return; // no es de centros
-});
+
+// ══ LÓGICA MÓVIL ══
+let mobSigPad = null;
+let mobOrdenActual = null;
+let mobFiltro = '';
+
+function mobGoTo(pg) {
+  document.querySelectorAll('.mob-page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.mob-nav-item').forEach(n=>n.classList.remove('active'));
+  const pgMap = {
+    'home':'mob-home', 'mis-ordenes':'mob-mis-ordenes-pg',
+    'qr':'mob-qr-pg', 'nueva-orden':'mob-nueva-orden-pg', 'firma':'mob-firma-pg'
+  };
+  const navMap = {
+    'home':'mobnav-home','mis-ordenes':'mobnav-mis-ordenes',
+    'qr':'mobnav-qr','nueva-orden':'mobnav-nueva-orden'
+  };
+  document.getElementById(pgMap[pg])?.classList.add('active');
+  document.getElementById(navMap[pg])?.classList.add('active');
+  if(pg==='mis-ordenes') mobCargarOrdenes();
+  if(pg==='nueva-orden') mobRenderForm();
+  if(pg==='firma')       mobInitFirma();
+}
+
+async function mobMostrarApp() {
+  document.getElementById('mob-user-name').textContent  = window._mobNombre || '—';
+  document.getElementById('mob-user-role').textContent  = 'Técnico de campo';
+  await mobCargarStats();
+}
+
+async function mobCargarStats() {
+  try {
+    const { getDocs, query, collection, where, orderBy, limit } = window._fbModules;
+    const db = window._db;
+    const uid = window._currentUser?.uid;
+    if(!uid||!db) return;
+    const snap = await getDocs(query(collection(db,'ordenes'), where('tecnicoUid','==',uid), limit(50)));
+    const ordenes = snap.docs.map(d=>d.data());
+    const total   = ordenes.length;
+    const pend    = ordenes.filter(o=>o.estado==='pendiente'||o.estado==='en proceso').length;
+    document.getElementById('mob-mis-ordenes').textContent = total;
+    document.getElementById('mob-pendientes').textContent  = pend;
+    // Alertas PM
+    const alertas = [
+      {eq:'Necta Krea Prime',prox:'Vence en 5 días'},
+      {eq:'Gaggia Z4000',prox:'Vence en 12 días'},
+    ];
+    document.getElementById('mob-alertas-pm').innerHTML = alertas.map(a=>`
+      <div class="mob-alerta">
+        <div style="font-size:12px;font-weight:600;color:var(--amber)">⚠️ PM próximo</div>
+        <div style="font-size:13px;color:var(--text);margin-top:2px">${a.eq}</div>
+        <div style="font-size:11px;color:var(--text3)">${a.prox}</div>
+      </div>`).join('');
+  } catch(e) { console.warn('mobStats:', e); }
+}
+
+async function mobCargarOrdenes() {
+  const cont = document.getElementById('mob-lista-ordenes');
+  cont.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3)">Cargando…</div>';
+  try {
+    const { getDocs, query, collection, where, orderBy, limit } = window._fbModules;
+    const db  = window._db;
+    const uid = window._currentUser?.uid;
+    if(!uid||!db){cont.innerHTML='<div style="color:var(--text3);text-align:center;padding:20px">Sin conexión</div>';return;}
+    let q = [where('tecnicoUid','==',uid)];
+    if(mobFiltro) q.push(where('estado','==',mobFiltro));
+    q.push(orderBy('creadoEn','desc'), limit(30));
+    const snap = await getDocs(query(collection(db,'ordenes'),...q));
+    const ordenes = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!ordenes.length){cont.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Sin órdenes registradas</div>';return;}
+    cont.innerHTML = ordenes.map(o=>`
+      <div class="orden-card" onclick="mobVerOrden('${o.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span class="orden-folio">${o.folio||o.id.slice(0,10)}</span>
+          ${o.tipo==='correctivo'?'<span class="badge badge-red">Correctivo</span>':'<span class="badge badge-green">Preventivo</span>'}
+        </div>
+        <div class="orden-modelo">${o.modelo||'Equipo'}</div>
+        <div class="orden-meta">
+          <span>${o.fechaServicio||''}</span>
+          <span>${CENTROS_INLINE[o.centro]||o.centro||''}</span>
+          <span style="color:var(--green);font-weight:600">$${(o.costoTotal||0).toLocaleString('es-MX')}</span>
+        </div>
+        <div style="margin-top:6px">${mobBadgeEstado(o.estado)}</div>
+        ${o.estado!=='terminado'?`<button class="btn btn-primary btn-sm" style="margin-top:8px;width:100%;justify-content:center" onclick="event.stopPropagation();mobAbrirFirma('${o.id}')">✍️ Obtener Firma</button>`:''}
+      </div>`).join('');
+  } catch(e) {
+    cont.innerHTML=`<div style="color:var(--red);padding:16px;font-size:13px">Error: ${e.message}</div>`;
+  }
+}
+
+function mobFiltOrden(btn, f) {
+  document.querySelectorAll('#mob-mis-ordenes-pg .filter-pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  mobFiltro = f;
+  mobCargarOrdenes();
+}
+
+async function mobVerOrden(id) {
+  // Por ahora solo muestra notif con el folio
+  showNotif('Orden: '+id.slice(0,12),'info');
+}
+
+async function mobBuscarEquipo() {
+  const q   = document.getElementById('mob-qr-input').value.trim();
+  const res = document.getElementById('mob-qr-result');
+  if(!q) return;
+  res.innerHTML = '<div style="color:var(--text3);font-size:13px">Buscando…</div>';
+  try {
+    const { getDocs, query, collection, where, limit } = window._fbModules;
+    const db = window._db;
+    let snap = await getDocs(query(collection(db,'clientesEquipo'), where('serie','==',q), limit(1)));
+    if(snap.empty) snap = await getDocs(query(collection(db,'clientesEquipo'), where('activoFijo','==',parseInt(q)||0), limit(1)));
+    if(snap.empty) snap = await getDocs(query(collection(db,'equipos'), where('serie','==',q), limit(1)));
+    if(snap.empty){res.innerHTML=`<div style="color:var(--red);font-size:13px;padding:10px;background:var(--red-bg);border-radius:var(--r2)">❌ No encontrado: "${q}"</div>`;return;}
+    const e = snap.docs[0].data();
+    res.innerHTML = `
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:14px">
+        <div style="font-size:12px;color:var(--green);font-weight:600;margin-bottom:6px">✅ Equipo encontrado</div>
+        <div style="font-size:15px;font-weight:700;font-family:'Playfair Display',serif;margin-bottom:6px">${e.modelo||'-'}</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:10px">
+          Serie: <span style="font-family:monospace;color:var(--accent);font-weight:600">${e.serie||'-'}</span><br>
+          Centro: ${CENTROS_INLINE[e.centro]||e.centro||'-'}<br>
+          ${e.clienteClave?'Cliente: '+e.clienteClave:''}
+        </div>
+        <button class="mob-btn-big" style="margin:0" onclick="mobNuevaOrdenDesde('${e.serie||''}','${(e.modelo||'').replace(/'/g,'')}','${e.centro||''}','${(e.clienteClave||e.almacen||'').toString().replace(/'/g,'')}')">
+          📋 Registrar Servicio
+        </button>
+      </div>`;
+  } catch(err) {
+    res.innerHTML=`<div style="color:var(--red);font-size:13px">Error: ${err.message}</div>`;
+  }
+}
+
+function mobNuevaOrdenDesde(serie, modelo, centro, cliente) {
+  window._mobPreFill = { serie, modelo, centro, cliente };
+  mobGoTo('nueva-orden');
+}
+
+function mobRenderForm() {
+  const c = document.getElementById('mob-form-container');
+  const pre = window._mobPreFill || {};
+  const TECNICOS = ['Carlos Méndez','Jorge Ruiz','Andrés Torres','Luis García','Roberto Sosa','Patricia Vega'];
+  c.innerHTML = `
+  <div class="mob-card">
+    <div class="mob-card-title">📍 Datos del Equipo</div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">No. de Serie</label>
+      <div style="display:flex;gap:6px">
+        <input class="form-control" id="mfs-serie" value="${pre.serie||''}" placeholder="Ej. DOCI05190" style="flex:1">
+        <button class="btn btn-ghost btn-sm" onclick="mobAutocomplete()">🔍</button>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">Modelo</label>
+      <input class="form-control" id="mfs-modelo" value="${pre.modelo||''}" placeholder="Se llena al buscar">
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Centro</label>
+      <select class="form-control" id="mfs-centro">
+        ${Object.entries(CENTROS_INLINE).map(([k,v])=>`<option value="${k}"${k===pre.centro?' selected':''}>${v}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div class="mob-card">
+    <div class="mob-card-title">🏨 Cliente</div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">Cliente / Hotel</label>
+      <input class="form-control" id="mfs-cliente" value="${pre.cliente||''}" placeholder="Nombre del cliente">
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Correo del Cliente</label>
+      <input class="form-control" id="mfs-email" type="email" placeholder="correo@cliente.com">
+    </div>
+  </div>
+  <div class="mob-card">
+    <div class="mob-card-title">🔧 Servicio</div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">Tipo</label>
+      <select class="form-control" id="mfs-tipo">
+        <option value="correctivo">Correctivo</option>
+        <option value="preventivo">Preventivo</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">Técnico</label>
+      <select class="form-control" id="mfs-tecnico">
+        ${TECNICOS.map(t=>`<option>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">Fecha</label>
+      <input class="form-control" id="mfs-fecha" type="date" value="${new Date().toISOString().slice(0,10)}">
+    </div>
+    <div class="form-group" style="margin-bottom:0">
+      <label class="form-label">Descripción del trabajo</label>
+      <textarea class="form-control" id="mfs-desc" rows="3" placeholder="Describe el fallo y las acciones realizadas…"></textarea>
+    </div>
+  </div>
+  <div class="mob-card">
+    <div class="mob-card-title">💰 Costos</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:13px">Mano de obra</span>
+      <input class="form-control" id="mfs-mo" type="number" min="0" placeholder="0" style="width:110px" oninput="mobCalcTotal()">
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:13px">Refacciones</span>
+      <input class="form-control" id="mfs-ref" type="number" min="0" placeholder="0" style="width:110px" oninput="mobCalcTotal()">
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:13px">Viáticos</span>
+      <input class="form-control" id="mfs-viat" type="number" min="0" placeholder="0" style="width:110px" oninput="mobCalcTotal()">
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0">
+      <span style="font-size:15px;font-weight:700;font-family:'Playfair Display',serif">Total</span>
+      <span style="font-size:18px;font-weight:700;color:var(--green);font-family:'Playfair Display',serif" id="mfs-total">$0.00</span>
+    </div>
+  </div>
+  <div class="mob-card">
+    <div class="mob-card-title">📍 Ubicación</div>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="mobGeo()">📍 Capturar Geolocalización</button>
+    <div id="mob-geo-status" style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center"></div>
+  </div>
+  <button class="mob-btn-big" onclick="mobGuardarOrden(false)" style="margin-top:4px">💾 Guardar Orden</button>
+  <button class="mob-btn-big green" onclick="mobGuardarOrden(true)">✍️ Guardar y Obtener Firma</button>
+  <div style="height:20px"></div>`;
+  window._mobPreFill = null;
+}
+
+function mobCalcTotal() {
+  const s = ['mfs-mo','mfs-ref','mfs-viat'].reduce((a,id)=>{
+    const el=document.getElementById(id); return a+(el?parseFloat(el.value)||0:0);
+  },0);
+  const t=document.getElementById('mfs-total');
+  if(t) t.textContent='$'+s.toLocaleString('es-MX',{minimumFractionDigits:2});
+}
+
+async function mobAutocomplete() {
+  const serie = document.getElementById('mfs-serie')?.value?.trim();
+  if(!serie) return;
+  try {
+    const { getDocs, query, collection, where, limit } = window._fbModules;
+    const db = window._db;
+    const snap = await getDocs(query(collection(db,'clientesEquipo'), where('serie','==',serie), limit(1)));
+    if(!snap.empty){
+      const e=snap.docs[0].data();
+      document.getElementById('mfs-modelo').value = e.modelo||'';
+      document.getElementById('mfs-centro').value = e.centro||'EUCA';
+      document.getElementById('mfs-cliente').value= e.clienteClave||e.almacen||'';
+      showNotif('Equipo encontrado ✓','success');
+    } else { showNotif('No encontrado','error'); }
+  } catch(e){ showNotif('Error: '+e.message,'error'); }
+}
+
+function mobGeo() {
+  if(!navigator.geolocation){showNotif('GPS no disponible','error');return;}
+  const st=document.getElementById('mob-geo-status');
+  st.textContent='Obteniendo ubicación…';
+  navigator.geolocation.getCurrentPosition(p=>{
+    window._mobLat=p.coords.latitude.toFixed(6);
+    window._mobLng=p.coords.longitude.toFixed(6);
+    st.textContent=`✓ ${window._mobLat}, ${window._mobLng} (±${Math.round(p.coords.accuracy)}m)`;
+    st.style.color='var(--green)';
+  },()=>{st.textContent='No se pudo obtener ubicación';st.style.color='var(--amber)';});
+}
+
+async function mobGuardarOrden(irAFirmar) {
+  const folio='OS-'+new Date().getFullYear()+'-'+Date.now().toString().slice(-5);
+  const costoTotal=(parseFloat(document.getElementById('mfs-mo')?.value)||0)
+    +(parseFloat(document.getElementById('mfs-ref')?.value)||0)
+    +(parseFloat(document.getElementById('mfs-viat')?.value)||0);
+  const data={
+    folio, tipo:document.getElementById('mfs-tipo')?.value||'correctivo',
+    serie:document.getElementById('mfs-serie')?.value||'',
+    modelo:document.getElementById('mfs-modelo')?.value||'',
+    centro:document.getElementById('mfs-centro')?.value||'',
+    cliente:document.getElementById('mfs-cliente')?.value||'',
+    emailCliente:document.getElementById('mfs-email')?.value||'',
+    tecnicoNombre:document.getElementById('mfs-tecnico')?.value||'',
+    tecnicoUid:window._currentUser?.uid||'',
+    fechaServicio:document.getElementById('mfs-fecha')?.value||'',
+    descripcion:document.getElementById('mfs-desc')?.value||'',
+    costoManoObra:parseFloat(document.getElementById('mfs-mo')?.value)||0,
+    costoRefacciones:parseFloat(document.getElementById('mfs-ref')?.value)||0,
+    costoViaticos:parseFloat(document.getElementById('mfs-viat')?.value)||0,
+    costoTotal, lat:window._mobLat||null, lng:window._mobLng||null,
+    estado:'pendiente', firmado:false,
+  };
+  try {
+    const { addDoc, collection, serverTimestamp } = window._fbModules;
+    const db = window._db;
+    const ref = await addDoc(collection(db,'ordenes'),{...data, creadoEn:serverTimestamp()});
+    mobOrdenActual={id:ref.id,...data};
+    showNotif(`Orden ${folio} guardada ✓`,'success');
+    if(irAFirmar){ mobGoTo('firma'); }
+    else { mobGoTo('mis-ordenes'); }
+  } catch(e){ showNotif('Error al guardar: '+e.message,'error'); }
+}
+
+async function mobAbrirFirma(ordenId) {
+  const { getDoc, doc } = window._fbModules;
+  const db = window._db;
+  const snap = await getDoc(doc(db,'ordenes',ordenId));
+  if(snap.exists()) mobOrdenActual={id:ordenId,...snap.data()};
+  mobGoTo('firma');
+}
+
+function mobInitFirma() {
+  setTimeout(()=>{
+    const canvas=document.getElementById('mob-sig-canvas');
+    if(!canvas)return;
+    canvas.width=canvas.offsetWidth||350;
+    canvas.height=180;
+    try{ mobSigPad=new SignaturePad(canvas,{penColor:'#1a1008',backgroundColor:'#ffffff',minWidth:1.5,maxWidth:3}); }
+    catch(e){ console.warn(e); }
+  },200);
+}
+
+async function mobFinalizarOrden() {
+  const nombre=document.getElementById('mob-firma-nombre').value.trim();
+  const conforme=document.getElementById('mob-chk-conforme').checked;
+  if(!nombre){showNotif('Ingresa el nombre del cliente','error');return;}
+  if(!conforme){showNotif('El cliente debe confirmar conformidad','error');return;}
+  if(mobSigPad&&mobSigPad.isEmpty()){showNotif('El cliente debe firmar','error');return;}
+  const firmaData=mobSigPad?mobSigPad.toDataURL():null;
+  if(mobOrdenActual?.id){
+    try{
+      const { updateDoc, doc, serverTimestamp } = window._fbModules;
+      const db=window._db;
+      await updateDoc(doc(db,'ordenes',mobOrdenActual.id),{
+        estado:'terminado', firmado:true, firmadoEn:serverTimestamp(),
+        firmanteNombre:nombre, firmaClienteData:firmaData,
+      });
+      const email=mobOrdenActual?.emailCliente||'cliente@hotel.com';
+      showNotif(`✅ Orden cerrada. Reporte enviado a ${email}`,'success');
+      mobGoTo('mis-ordenes');
+    }catch(e){showNotif('Error: '+e.message,'error');}
+  }
+}
+
+function mobBadgeEstado(e){
+  const m={'terminado':'badge-green','en proceso':'badge-amber','pendiente':'badge-gray'};
+  return`<span class="badge ${m[e]||'badge-gray'}">${e||'pendiente'}</span>`;
+}
 </script>
 </body>
 </html>
