@@ -71,11 +71,6 @@ onAuthStateChanged(auth, async user => {
     currentPerfil = snap.exists() ? snap.data() : { rol:'tecnico', nombre: user.email };
     window._mobNombre = currentPerfil.nombre;
     mostrarApp();
-    // Activar vista móvil si es pantalla chica
-    if(window.innerWidth <= 768) {
-      document.getElementById('login-screen').style.display = 'none';
-      mobMostrarApp();
-    }
   } else {
     currentUser  = null;
     currentPerfil = null;
@@ -104,18 +99,29 @@ async function logout() {
 function mostrarLogin() {
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app-screen').style.display   = 'none';
+  document.getElementById('mobile-app').style.display   = 'none';
 }
 
 function mostrarApp() {
   document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app-screen').style.display   = 'flex';
-  document.getElementById('user-avatar').textContent =
-    currentPerfil.nombre.split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase();
-  document.getElementById('user-name').textContent  = currentPerfil.nombre;
-  document.getElementById('user-role-lbl').textContent =
-    currentPerfil.rol === 'gerente' ? 'Acceso total' : 'Técnico de campo';
-  aplicarPermisosPorRol();
-  goTo('dashboard');
+  const isMobile = window.innerWidth <= 768;
+  if (isMobile) {
+    document.getElementById('app-screen').style.display = 'none';
+    document.getElementById('mobile-app').style.display = 'flex';
+    window._mobNombre = currentPerfil?.nombre || currentUser?.email || '';
+    mobMostrarApp();
+  } else {
+    document.getElementById('app-screen').style.display = 'flex';
+    document.getElementById('mobile-app').style.display = 'none';
+    const nombre = currentPerfil?.nombre || currentUser?.email || 'U';
+    document.getElementById('user-avatar').textContent =
+      nombre.split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase();
+    document.getElementById('user-name').textContent     = nombre;
+    document.getElementById('user-role-lbl').textContent =
+      currentPerfil?.rol === 'gerente' ? 'Acceso total' : 'Técnico de campo';
+    aplicarPermisosPorRol();
+    goTo('dashboard');
+  }
 }
 
 function aplicarPermisosPorRol() {
@@ -1174,7 +1180,6 @@ textarea.form-control{resize:vertical;min-height:70px}
 }
 @media(min-width:769px){
   .mobile-app{display:none !important}
-  #app-screen{display:flex !important}
 }
 </style>
 </head>
