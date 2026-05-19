@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CaféControl — Gestión de Equipos</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0f1a;--bg2:#111827;--bg3:#1a2235;--card:#141c2e;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e2e8f4;--text2:#8892a8;--text3:#4a5568;
+  --accent:#3b82f6;--accent2:#1d4ed8;
+  --green:#10b981;--amber:#f59e0b;--red:#ef4444;--teal:#06b6d4;--purple:#8b5cf6;
+  --r:10px;--r2:6px;
+}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:13.5px;line-height:1.55}
+h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif}
+
+/* LAYOUT */
+.app{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:230px;min-width:230px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.content{flex:1;overflow-y:auto;padding:24px}
+
+/* SIDEBAR */
+.logo-area{padding:20px 18px 16px;border-bottom:1px solid var(--border)}
+.logo-row{display:flex;align-items:center;gap:10px}
+.logo-icon{width:38px;height:38px;background:linear-gradient(135deg,#3b82f6,#06b6d4);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:19px}
+.logo-name{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;line-height:1.1}
+.logo-sub{font-size:10px;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-top:1px}
+.nav{flex:1;overflow-y:auto;padding:10px 0}
+.nav-group{margin-bottom:4px}
+.nav-label{padding:10px 18px 4px;font-size:10px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;font-weight:600}
+.nav-item{display:flex;align-items:center;gap:9px;padding:8px 18px;cursor:pointer;color:var(--text2);transition:all .15s;border-left:2px solid transparent;font-size:13px}
+.nav-item:hover{background:rgba(255,255,255,0.04);color:var(--text)}
+.nav-item.active{background:rgba(59,130,246,.12);color:var(--accent);border-left-color:var(--accent)}
+.nav-icon{font-size:16px;width:18px;text-align:center}
+.nav-badge{margin-left:auto;background:var(--accent2);color:#fff;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600}
+.user-area{padding:14px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#ec4899);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;flex-shrink:0}
+.user-name{font-size:12px;font-weight:500}
+.user-role{font-size:10px;color:var(--text3)}
+.role-toggle{display:flex;gap:4px;padding:12px 16px;border-bottom:1px solid var(--border)}
+.role-btn{flex:1;padding:5px 0;border-radius:var(--r2);background:transparent;border:1px solid var(--border2);color:var(--text2);cursor:pointer;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:500;transition:all .15s;text-align:center}
+.role-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* TOPBAR */
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.topbar-title{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:17px}
+.topbar-sub{font-size:12px;color:var(--text2);margin-left:4px}
+.ml{margin-left:auto}
+.search-box{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r2);padding:7px 12px;width:260px}
+.search-box input{background:none;border:none;outline:none;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;width:100%}
+.search-box input::placeholder{color:var(--text3)}
+
+/* CARDS */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:20px}
+.card-sm{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:16px}
+.stat-val{font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;margin:4px 0}
+.stat-lbl{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
+.stat-delta{font-size:11px;color:var(--green);margin-top:4px}
+
+/* TABLE */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:10px 12px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap}
+td{padding:11px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,0.02)}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500}
+.badge-green{background:rgba(16,185,129,.15);color:#34d399}
+.badge-amber{background:rgba(245,158,11,.15);color:#fbbf24}
+.badge-red{background:rgba(239,68,68,.15);color:#f87171}
+.badge-blue{background:rgba(59,130,246,.15);color:#60a5fa}
+.badge-purple{background:rgba(139,92,246,.15);color:#a78bfa}
+.badge-teal{background:rgba(6,182,212,.15);color:#22d3ee}
+.badge-gray{background:rgba(255,255,255,.07);color:var(--text2)}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:var(--r2);border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;transition:all .15s;text-decoration:none}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent2)}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border2)}
+.btn-ghost:hover{background:rgba(255,255,255,.05);color:var(--text)}
+.btn-green{background:var(--green);color:#fff}
+.btn-green:hover{background:#059669}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-icon{padding:7px;border-radius:var(--r2);background:rgba(255,255,255,.05);border:1px solid var(--border);cursor:pointer;color:var(--text2);transition:all .15s;display:inline-flex;align-items:center}
+.btn-icon:hover{background:rgba(255,255,255,.1);color:var(--text)}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-overlay.open{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);width:min(95vw,700px);max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.modal-lg{width:min(95vw,880px)}
+.modal-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-title{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600}
+.modal-body{padding:24px}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+
+/* FORM */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form-group{display:flex;flex-direction:column;gap:5px}
+.form-group.full{grid-column:1/-1}
+.form-label{font-size:12px;color:var(--text2);font-weight:500}
+.form-control{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r2);padding:8px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:border .15s;width:100%}
+.form-control:focus{border-color:var(--accent)}
+select.form-control option{background:var(--bg2)}
+textarea.form-control{resize:vertical;min-height:70px}
+
+/* SECTION HEADER */
+.sec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.sec-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600}
+.sec-sub{font-size:12px;color:var(--text2);margin-top:1px}
+.gap-8{display:flex;gap:8px;align-items:center}
+
+/* PAGES */
+.page{display:none}
+.page.active{display:block}
+
+/* FILTER BAR */
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.filter-pill{padding:5px 12px;border-radius:20px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;font-size:12px;font-weight:500;transition:all .15s}
+.filter-pill.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* QR AREA */
+.qr-box{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;align-items:center;gap:10px}
+#qr-display canvas,#qr-display img{border-radius:var(--r2)}
+
+/* SIGNATURE */
+.sig-area{background:#fff;border-radius:var(--r);overflow:hidden;cursor:crosshair}
+.sig-toolbar{display:flex;gap:8px;align-items:center;padding:8px 0}
+
+/* TIMELINE */
+.timeline{display:flex;flex-direction:column;gap:0}
+.tl-item{display:flex;gap:14px;padding-bottom:18px;position:relative}
+.tl-item:last-child{padding-bottom:0}
+.tl-line{display:flex;flex-direction:column;align-items:center;width:20px;flex-shrink:0}
+.tl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.tl-track{width:1px;background:var(--border);flex:1;margin-top:4px}
+.tl-item:last-child .tl-track{display:none}
+.tl-body{flex:1}
+.tl-date{font-size:11px;color:var(--text3);margin-bottom:2px}
+.tl-desc{font-size:13px}
+.tl-badge{display:inline-block;margin-top:4px}
+
+/* MAP PLACEHOLDER */
+.map-ph{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);height:200px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--text3)}
+.map-coords{font-size:12px;color:var(--accent);font-family:monospace}
+
+/* REPORT FORM */
+.report-section{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.report-section-title{font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px}
+.checklist{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check-item{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+.check-item input{width:14px;height:14px;accent-color:var(--accent)}
+.cost-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.cost-row:last-child{border:none}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.18)}
+
+/* NOTIFICATION */
+.notif{position:fixed;top:20px;right:20px;background:#1e293b;border:1px solid var(--green);border-radius:var(--r);padding:14px 18px;color:var(--text);font-size:13px;z-index:9999;opacity:0;transform:translateY(-10px);transition:all .3s;pointer-events:none;max-width:320px}
+.notif.show{opacity:1;transform:translateY(0)}
+.notif.error{border-color:var(--red)}
+
+/* DETAIL PANEL */
+.detail-panel{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+@media(max-width:900px){.detail-panel{grid-template-columns:1fr}.stat-grid{grid-template-columns:repeat(2,1fr)}.form-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="logo-area">
+    <div class="logo-row">
+      <div class="logo-icon">☕</div>
+      <div>
+        <div class="logo-name">CaféControl</div>
+        <div class="logo-sub">Gestión de Equipos</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="role-toggle">
+    <button class="role-btn active" onclick="setRole('gerente')">👔 Gerente</button>
+    <button class="role-btn" onclick="setRole('tecnico')">🔧 Técnico</button>
+  </div>
+
+  <nav class="nav">
+    <div class="nav-group">
+      <div class="nav-label">Principal</div>
+      <div class="nav-item active" onclick="goTo('dashboard')"><span class="nav-icon">📊</span>Dashboard</div>
+      <div class="nav-item" onclick="goTo('equipos')"><span class="nav-icon">☕</span>Universo Equipos<span class="nav-badge" id="nb-equipos">34K</span></div>
+      <div class="nav-item" onclick="goTo('clientes')"><span class="nav-icon">🏨</span>Clientes con Equipo<span class="nav-badge" id="nb-clientes">29K</span></div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Servicios</div>
+      <div class="nav-item" onclick="goTo('ordenes')"><span class="nav-icon">📋</span>Órdenes de Servicio</div>
+      <div class="nav-item" onclick="goTo('nuevo-servicio')"><span class="nav-icon">➕</span>Nueva Orden</div>
+      <div class="nav-item" onclick="goTo('preventivos')"><span class="nav-icon">🔄</span>Plan Preventivo</div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Herramientas</div>
+      <div class="nav-item" onclick="goTo('qr-scanner')"><span class="nav-icon">📷</span>Escanear QR</div>
+      <div class="nav-item" onclick="goTo('reportes')"><span class="nav-icon">📈</span>Reportes</div>
+    </div>
+  </nav>
+
+  <div class="user-area">
+    <div class="avatar" id="user-avatar">GR</div>
+    <div>
+      <div class="user-name" id="user-name">Gerente Regional</div>
+      <div class="user-role" id="user-role-lbl">Acceso total</div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div>
+      <div class="topbar-title" id="page-title">Dashboard</div>
+      <div class="topbar-sub" id="page-sub">Vista general del sistema</div>
+    </div>
+    <div class="ml gap-8">
+      <div class="search-box">
+        <span style="color:var(--text3)">🔍</span>
+        <input type="text" placeholder="Buscar por No. serie, activo, modelo…" id="global-search" oninput="globalSearch(this.value)">
+      </div>
+      <button class="btn btn-primary" onclick="openModal('modal-nueva-orden')">＋ Nueva Orden</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat-lbl">Total Equipos</div>
+          <div class="stat-val" style="color:var(--accent)">34,266</div>
+          <div class="stat-delta">Universo completo</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Asignados a Clientes</div>
+          <div class="stat-val" style="color:var(--green)">29,310</div>
+          <div class="stat-delta">↑ 85.5% del universo</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Órdenes este mes</div>
+          <div class="stat-val" style="color:var(--amber)">147</div>
+          <div class="stat-delta">↑ 12 vs mes anterior</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Centros / Sucursales</div>
+          <div class="stat-val" style="color:var(--purple)">14</div>
+          <div class="stat-delta">Todo el país</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card">
+          <div class="sec-hd">
+            <div><div class="sec-title">Órdenes recientes</div><div class="sec-sub">Últimas 7 órdenes generadas</div></div>
+            <button class="btn btn-ghost btn-sm" onclick="goTo('ordenes')">Ver todas</button>
+          </div>
+          <table>
+            <thead><tr><th>Folio</th><th>Tipo</th><th>Equipo</th><th>Centro</th><th>Estado</th><th>Costo</th></tr></thead>
+            <tbody id="tbl-recientes"></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="sec-hd"><div class="sec-title">Por Línea de Equipo</div></div>
+          <div id="chart-lineas"></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+        <div class="card">
+          <div class="sec-title" style="margin-bottom:12px">Centros Activos</div>
+          <div id="centros-list"></div>
+        </div>
+        <div class="card">
+          <div class="sec-title" style="margin-bottom:12px">Estados de Servicio</div>
+          <div id="estados-chart"></div>
+        </div>
+        <div class="card">
+          <div class="sec-title" style="margin-bottom:12px">Alertas Preventivos</div>
+          <div id="alertas-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EQUIPOS -->
+    <div class="page" id="page-equipos">
+      <div class="filter-bar" id="filter-equipos">
+        <button class="filter-pill active" onclick="filterLinea(this,'')">Todos</button>
+        <button class="filter-pill" onclick="filterLinea(this,'Habitacion')">Habitación</button>
+        <button class="filter-pill" onclick="filterLinea(this,'Superautomatica')">Superautomática</button>
+        <button class="filter-pill" onclick="filterLinea(this,'Filtrado')">Filtrado</button>
+        <button class="filter-pill" onclick="filterLinea(this,'Semiautomatica')">Semiautomática</button>
+        <button class="filter-pill" onclick="filterLinea(this,'Molino')">Molino</button>
+        <button class="filter-pill" onclick="filterLinea(this,'Accesorios')">Accesorios</button>
+        <button class="filter-pill" onclick="filterLinea(this,'Café soluble')">Café Soluble</button>
+      </div>
+      <div class="card">
+        <div class="sec-hd">
+          <div><div class="sec-title">Universo de Equipos</div><div class="sec-sub" id="equipos-count">Mostrando equipos del catálogo</div></div>
+          <div class="gap-8">
+            <select class="form-control" style="width:160px" onchange="filterCentroEquipos(this.value)" id="sel-centro-eq">
+              <option value="">Todos los centros</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="openModal('modal-qr')">📷 Generar QR</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>No.</th><th>Act. Fijo</th><th>Modelo</th><th>No. Serie</th><th>Línea</th><th>Centro</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody id="tbl-equipos"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;color:var(--text2);font-size:12px">
+          <span id="equipos-pag-info"></span>
+          <div class="gap-8">
+            <button class="btn btn-ghost btn-sm" onclick="pagEquipos(-1)">← Anterior</button>
+            <button class="btn btn-ghost btn-sm" onclick="pagEquipos(1)">Siguiente →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLIENTES -->
+    <div class="page" id="page-clientes">
+      <div class="card">
+        <div class="sec-hd">
+          <div><div class="sec-title">Clientes con Equipo Asignado</div><div class="sec-sub" id="clientes-count">29,310 equipos asignados</div></div>
+          <div class="gap-8">
+            <select class="form-control" style="width:160px" onchange="filterCentroClientes(this.value)">
+              <option value="">Todos los centros</option>
+              <option value="EUCA">Cancún</option>
+              <option value="EUMX">México</option>
+              <option value="EUGU">Guadalajara</option>
+              <option value="EUOZ">Oaxaca</option>
+              <option value="EUBA">Bajío</option>
+              <option value="EUQE">Querétaro</option>
+              <option value="EUVA">Veracruz</option>
+              <option value="EUMY">Monterrey</option>
+              <option value="EUPU">Puebla</option>
+              <option value="EUME">Mérida</option>
+            </select>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>No.</th><th>Act. Fijo</th><th>Modelo</th><th>No. Serie</th><th>Línea</th><th>Centro</th><th>Cliente / Almacén</th><th>QR</th><th>Acciones</th></tr></thead>
+            <tbody id="tbl-clientes"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;color:var(--text2);font-size:12px">
+          <span id="clientes-pag-info"></span>
+          <div class="gap-8">
+            <button class="btn btn-ghost btn-sm" onclick="pagClientes(-1)">← Anterior</button>
+            <button class="btn btn-ghost btn-sm" onclick="pagClientes(1)">Siguiente →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ÓRDENES DE SERVICIO -->
+    <div class="page" id="page-ordenes">
+      <div class="filter-bar">
+        <button class="filter-pill active" onclick="filterOrden(this,'')">Todas</button>
+        <button class="filter-pill" onclick="filterOrden(this,'correctivo')">Correctivo</button>
+        <button class="filter-pill" onclick="filterOrden(this,'preventivo')">Preventivo</button>
+        <button class="filter-pill" onclick="filterOrden(this,'pendiente')">Pendientes</button>
+        <button class="filter-pill" onclick="filterOrden(this,'terminado')">Terminadas</button>
+      </div>
+      <div class="card">
+        <div class="sec-hd">
+          <div class="sec-title">Órdenes de Servicio</div>
+          <button class="btn btn-primary" onclick="openModal('modal-nueva-orden')">＋ Nueva Orden</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Folio</th><th>Fecha</th><th>Tipo</th><th>Modelo</th><th>No. Serie</th><th>Centro</th><th>Técnico</th><th>Estado</th><th>Costo Total</th><th>Acciones</th></tr></thead>
+            <tbody id="tbl-ordenes"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- NUEVA ORDEN / FORMATO DE SERVICIO (también como página standalone) -->
+    <div class="page" id="page-nuevo-servicio">
+      <div class="card" style="max-width:860px;margin:0 auto">
+        <div class="sec-hd"><div><div class="sec-title">Nueva Orden de Servicio</div><div class="sec-sub">Llena el formato y obtén firma del cliente</div></div></div>
+        <div id="form-servicio-pg"></div>
+      </div>
+    </div>
+
+    <!-- PREVENTIVOS -->
+    <div class="page" id="page-preventivos">
+      <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat"><div class="stat-lbl">Vencidos</div><div class="stat-val" style="color:var(--red)">23</div><div class="stat-delta" style="color:var(--red)">Requieren atención urgente</div></div>
+        <div class="stat"><div class="stat-lbl">Próximos 30 días</div><div class="stat-val" style="color:var(--amber)">67</div></div>
+        <div class="stat"><div class="stat-lbl">Al corriente</div><div class="stat-val" style="color:var(--green)">856</div></div>
+      </div>
+      <div class="card">
+        <div class="sec-hd"><div class="sec-title">Plan de Mantenimiento Preventivo</div><button class="btn btn-primary btn-sm" onclick="showNotif('Plan exportado a PDF','success')">⬇ Exportar</button></div>
+        <table>
+          <thead><tr><th>Equipo</th><th>No. Serie</th><th>Centro</th><th>Último PM</th><th>Próximo PM</th><th>Estado</th><th>Costo Est.</th><th>Asignar</th></tr></thead>
+          <tbody id="tbl-preventivos"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- QR SCANNER -->
+    <div class="page" id="page-qr-scanner">
+      <div style="max-width:520px;margin:0 auto">
+        <div class="card" style="text-align:center">
+          <div style="font-size:48px;margin-bottom:12px">📷</div>
+          <div class="sec-title" style="margin-bottom:8px">Escanear Código QR</div>
+          <p style="color:var(--text2);margin-bottom:20px;font-size:13px">Apunta la cámara al QR del equipo para ver su ficha completa y registrar un servicio</p>
+          <div style="background:var(--bg3);border:2px dashed var(--border2);border-radius:var(--r);padding:40px;margin-bottom:16px">
+            <div style="font-size:32px;margin-bottom:8px">📱</div>
+            <p style="color:var(--text3);font-size:12px">Cámara no disponible en modo demo</p>
+          </div>
+          <p style="color:var(--text3);font-size:12px;margin-bottom:16px">O ingresa manualmente el No. de Serie o Act. Fijo:</p>
+          <div style="display:flex;gap:8px">
+            <input class="form-control" id="manual-qr" placeholder="Ej. DOCI05190 o 848539">
+            <button class="btn btn-primary" onclick="buscarEquipoQR()">Buscar</button>
+          </div>
+          <div id="qr-result" style="margin-top:16px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REPORTES -->
+    <div class="page" id="page-reportes">
+      <div class="stat-grid">
+        <div class="stat"><div class="stat-lbl">Ingresos por Servicio</div><div class="stat-val" style="color:var(--green)">$284,500</div><div class="stat-delta">Este mes</div></div>
+        <div class="stat"><div class="stat-lbl">Correctivos</div><div class="stat-val" style="color:var(--red)">89</div></div>
+        <div class="stat"><div class="stat-lbl">Preventivos</div><div class="stat-val" style="color:var(--green)">58</div></div>
+        <div class="stat"><div class="stat-lbl">Tiempo promedio</div><div class="stat-val" style="color:var(--accent)">2.3h</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="card"><div class="sec-title" style="margin-bottom:16px">Servicios por Centro</div><div id="reporte-centros"></div></div>
+        <div class="card"><div class="sec-title" style="margin-bottom:16px">Técnicos con más servicios</div><div id="reporte-tecnicos"></div></div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /app -->
+
+<!-- MODAL: NUEVA ORDEN DE SERVICIO -->
+<div class="modal-overlay" id="modal-nueva-orden">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">📋 Nueva Orden de Servicio</span>
+      <button class="btn-icon" onclick="closeModal('modal-nueva-orden')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="form-servicio-modal"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: VER DETALLE EQUIPO -->
+<div class="modal-overlay" id="modal-equipo">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">☕ Ficha de Equipo</span>
+      <button class="btn-icon" onclick="closeModal('modal-equipo')">✕</button>
+    </div>
+    <div class="modal-body" id="modal-equipo-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="abrirServicioDesdeEquipo()">📋 Registrar Servicio</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-equipo')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: QR GENERATOR -->
+<div class="modal-overlay" id="modal-qr">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">📷 Generar Código QR</span>
+      <button class="btn-icon" onclick="closeModal('modal-qr')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label">Selecciona equipo por No. de Serie</label>
+        <input class="form-control" id="qr-serie-input" placeholder="Ej. DOCI05190" oninput="generarQR(this.value)">
+      </div>
+      <div class="qr-box">
+        <div id="qr-display" style="min-height:160px;display:flex;align-items:center;justify-content:center">
+          <span style="color:var(--text3);font-size:13px">Ingresa un No. de Serie para generar el QR</span>
+        </div>
+        <div id="qr-info" style="font-size:11px;color:var(--text2);text-align:center"></div>
+      </div>
+      <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="imprimirQR()">🖨 Imprimir</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-qr')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ORDEN COMPLETADA / FIRMA -->
+<div class="modal-overlay" id="modal-firma">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">✍️ Firma del Cliente — Orden <span id="firma-folio"></span></span>
+      <button class="btn-icon" onclick="closeModal('modal-firma')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div>
+          <div class="form-label" style="margin-bottom:6px">Nombre del cliente / representante</div>
+          <input class="form-control" id="firma-cliente-nombre" placeholder="Nombre completo">
+        </div>
+        <div>
+          <div class="form-label" style="margin-bottom:6px">Puesto / Cargo</div>
+          <input class="form-control" id="firma-cargo" placeholder="Ej. Jefe de Mantenimiento">
+        </div>
+      </div>
+      <div class="form-label" style="margin-bottom:6px">Firma del cliente (dibuja con el dedo o mouse)</div>
+      <div style="border:1px solid var(--border2);border-radius:var(--r);overflow:hidden">
+        <canvas id="sig-canvas" width="830" height="180" style="background:#fff;display:block;width:100%"></canvas>
+      </div>
+      <div class="sig-toolbar">
+        <span style="font-size:12px;color:var(--text3)">Firma del técnico:</span>
+        <div style="border:1px solid var(--border2);border-radius:var(--r2);overflow:hidden;flex:1">
+          <canvas id="sig-canvas-tec" width="400" height="80" style="background:#fff;display:block;width:100%;height:80px"></canvas>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="limpiarFirmas()">🗑 Limpiar</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:12px">
+        <input type="checkbox" id="chk-conforme" style="accent-color:var(--green);width:16px;height:16px">
+        <label for="chk-conforme" style="font-size:13px;cursor:pointer">El cliente declara estar conforme con el servicio realizado</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-green" onclick="finalizarYEnviar()">📧 Finalizar y Enviar por Correo</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-firma')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- NOTIFICATION -->
+<div class="notif" id="notif"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+// DATOS REALES DEL EXCEL
+// ═══════════════════════════════════════════════
+const CENTROS = {
+  'EUCA':'Cancún','EUMX':'Ciudad de México','EUGU':'Guadalajara',
+  'EUOZ':'Oaxaca','EUBA':'Bajío (León)','EUQE':'Querétaro',
+  'EUVA':'Veracruz','EUMY':'Monterrey','EUPU':'Puebla',
+  'EUST':'Saltillo','EUME':'Mérida','EUGR':'Guerrero',
+  'EUCS':'Chiapas','EUMA':'Mazatlán'
+};
+
+const EQUIPOS_RAW = [
+  {No:1,Linea:'Filtrado',Activo:842913,Material:200000006,Modelo:'Cafetera-Bunn O Matic-Single',Serie:'SNG0073623',Ce:'EUBA'},
+  {No:2,Linea:'Filtrado',Activo:1308847,Material:200001369,Modelo:'Cafetera Bunn ICB Twin DV',Serie:'ICBT030805',Ce:'EUBA'},
+  {No:3,Linea:'Filtrado',Activo:1302313,Material:200000001,Modelo:'Cafetera-Bunn O Matic-CWTF 15',Serie:'CWTF604519',Ce:'EUCA'},
+  {No:4,Linea:'Accesorios',Activo:811776,Material:200000055,Modelo:'Termo-Bunn de 2.2 litros',Serie:'T2-0262',Ce:'EUCA'},
+  {No:5,Linea:'Accesorios',Activo:840239,Material:200000055,Modelo:'Termo-Bunn de 2.2 litros',Serie:'T2-0418',Ce:'EUCA'},
+  {No:6,Linea:'Semiautomatica',Activo:1312729,Material:200002145,Modelo:'Cafetera semiautom. cimbali de 1 grupo',Serie:'2027642',Ce:'EUCA'},
+  {No:7,Linea:'Molino',Activo:1319733,Material:200002187,Modelo:'Molino Gaggia Cunil CT-2',Serie:'648966',Ce:'EUCA'},
+  {No:8,Linea:'Habitacion',Activo:848539,Material:200001143,Modelo:'Cafetera Hotelera Doci-CM-306 4 tazas',Serie:'DOCI05190',Ce:'EUCS'},
+  {No:9,Linea:'Habitacion',Activo:848540,Material:200001143,Modelo:'Cafetera Hotelera Doci-CM-306 4 tazas',Serie:'DOCI05191',Ce:'EUCS'},
+  {No:10,Linea:'Habitacion',Activo:848541,Material:200001143,Modelo:'Cafetera Hotelera Doci-CM-306 4 tazas',Serie:'DOCI05192',Ce:'EUCS'},
+  {No:11,Linea:'Superautomatica',Activo:1319800,Material:200002200,Modelo:'Gaggia Brillante Z4000 family 2ES',Serie:'GAG23041',Ce:'EUMX'},
+  {No:12,Linea:'Habitacion',Activo:826247,Material:200001142,Modelo:'Cafetera Hotelera LodgingStar 4 tazas',Serie:'LODG0783',Ce:'EUGU'},
+  {No:13,Linea:'Habitacion',Activo:826248,Material:200001142,Modelo:'Cafetera Hotelera LodgingStar 4 tazas',Serie:'LODG0784',Ce:'EUGU'},
+  {No:14,Linea:'Superautomatica',Activo:1315500,Material:200002180,Modelo:'Necta Krea Prime 110V',Serie:'NKP-0081',Ce:'EUQE'},
+  {No:15,Linea:'Filtrado',Activo:1299000,Material:200001900,Modelo:'Cafetera-Hamilton Beach-49970 1 taza',Serie:'HB49970-001',Ce:'EUBA'},
+  {No:16,Linea:'Habitacion',Activo:843264,Material:200001460,Modelo:'Cafetera Cino para Capsula CNZ0101',Serie:'2016.09261.1032',Ce:'EUGU'},
+  {No:17,Linea:'Habitacion',Activo:870001,Material:200001500,Modelo:'Cafetera Cuisinart MOD. WCM11 2tazas',Serie:'WCM11-0201',Ce:'EUMY'},
+  {No:18,Linea:'Habitacion',Activo:870002,Material:200001500,Modelo:'Cafetera Cuisinart MOD. WCM11 2tazas',Serie:'WCM11-0202',Ce:'EUMY'},
+  {No:19,Linea:'Habitacion',Activo:870003,Material:200001501,Modelo:'Cafetera de Capsulas Hamilton',Serie:'CAPHB-0301',Ce:'EUCA'},
+  {No:20,Linea:'Molino',Activo:1319740,Material:200002188,Modelo:'Molino Gaggia Cunil CT-2',Serie:'648970',Ce:'EUQE'},
+  {No:21,Linea:'Superautomatica',Activo:1319801,Material:200002201,Modelo:'Fully auto coffee machine WSD18-010A',Serie:'WSD18-2201',Ce:'EUMX'},
+  {No:22,Linea:'Habitacion',Activo:880010,Material:200001600,Modelo:'Cafetera-Hotelera-Moulinex-ABW911 4tazas',Serie:'ABW911-0010',Ce:'EUOZ'},
+  {No:23,Linea:'Habitacion',Activo:880011,Material:200001601,Modelo:'Cafetera-Hamilton Beach-HDC200B 1 taza',Serie:'HDC200-011',Ce:'EUOZ'},
+  {No:24,Linea:'Accesorios',Activo:811790,Material:200000060,Modelo:'Termo-Bunn de 2.5 litros Lever action',Serie:'T25LA-001',Ce:'EUVA'},
+  {No:25,Linea:'Café soluble',Activo:900001,Material:200003000,Modelo:'Máquina Café Soluble Bianchi',Serie:'BIAN-CS-01',Ce:'EUPÚ'},
+];
+
+const CLIENTES_RAW = [
+  {No:1,Linea:'Habitacion',Activo:843264,Material:200001460,Modelo:'Cafetera Cino para Capsula CNZ0101',Serie:'2016.09261.1032',Ce:'EUGU',Alm:42,Cliente:'Hotel Camino Real GDL'},
+  {No:2,Linea:'Habitacion',Activo:826247,Material:200001142,Modelo:'Cafetera Hotelera LodgingStar 4 tazas',Serie:'LODG0783',Ce:'EUGU',Alm:47,Cliente:'Hotel Fiesta Inn GDL'},
+  {No:3,Linea:'Habitacion',Activo:826248,Material:200001142,Modelo:'Cafetera Hotelera LodgingStar 4 tazas',Serie:'LODG0784',Ce:'EUGU',Alm:47,Cliente:'Hotel Fiesta Inn GDL'},
+  {No:4,Linea:'Habitacion',Activo:826249,Material:200001142,Modelo:'Cafetera Hotelera LodgingStar 4 tazas',Serie:'LODG0785',Ce:'EUGU',Alm:47,Cliente:'Hotel Fiesta Inn GDL'},
+  {No:5,Linea:'Habitacion',Activo:826250,Material:200001142,Modelo:'Cafetera Hotelera LodgingStar 4 tazas',Serie:'LODG0786',Ce:'EUGU',Alm:47,Cliente:'Hotel Fiesta Inn GDL'},
+  {No:6,Linea:'Habitacion',Activo:826251,Material:200001142,Modelo:'Cafetera Hotelera LodgingStar 4 tazas',Serie:'LODG0787',Ce:'EUGU',Alm:47,Cliente:'Hotel Fiesta Inn GDL'},
+  {No:7,Linea:'Habitacion',Activo:848539,Material:200001143,Modelo:'Cafetera Hotelera Doci-CM-306 4 tazas',Serie:'DOCI05190',Ce:'EUCS',Alm:101,Cliente:'Barceló Chiapas Naturals'},
+  {No:8,Linea:'Habitacion',Activo:848540,Material:200001143,Modelo:'Cafetera Hotelera Doci-CM-306 4 tazas',Serie:'DOCI05191',Ce:'EUCS',Alm:101,Cliente:'Barceló Chiapas Naturals'},
+  {No:9,Linea:'Superautomatica',Activo:1319800,Material:200002200,Modelo:'Gaggia Brillante Z4000 family 2ES',Serie:'GAG23041',Ce:'EUMX',Alm:3551,Cliente:'Marriott Ciudad de México'},
+  {No:10,Linea:'Filtrado',Activo:842913,Material:200000006,Modelo:'Cafetera-Bunn O Matic-Single',Serie:'SNG0073623',Ce:'EUBA',Alm:3557,Cliente:'Holiday Inn Bajío'},
+  {No:11,Linea:'Filtrado',Activo:1308847,Material:200001369,Modelo:'Cafetera Bunn ICB Twin DV',Serie:'ICBT030805',Ce:'EUBA',Alm:3557,Cliente:'Holiday Inn Bajío'},
+  {No:12,Linea:'Habitacion',Activo:870001,Material:200001500,Modelo:'Cafetera Cuisinart MOD. WCM11 2tazas',Serie:'WCM11-0201',Ce:'EUMY',Alm:6573,Cliente:'Safi Royal Luxury Monterrey'},
+  {No:13,Linea:'Habitacion',Activo:870002,Material:200001500,Modelo:'Cafetera Cuisinart MOD. WCM11 2tazas',Serie:'WCM11-0202',Ce:'EUMY',Alm:6573,Cliente:'Safi Royal Luxury Monterrey'},
+  {No:14,Linea:'Habitacion',Activo:870003,Material:200001501,Modelo:'Cafetera de Capsulas Hamilton',Serie:'CAPHB-0301',Ce:'EUCA',Alm:4202,Cliente:'Grand Oasis Cancún'},
+  {No:15,Linea:'Superautomatica',Activo:1315500,Material:200002180,Modelo:'Necta Krea Prime 110V',Serie:'NKP-0081',Ce:'EUQE',Alm:4077,Cliente:'NH Collection Querétaro'},
+  {No:16,Linea:'Habitacion',Activo:880010,Material:200001600,Modelo:'Cafetera-Hotelera-Moulinex-ABW911 4tazas',Serie:'ABW911-0010',Ce:'EUOZ',Alm:5662,Cliente:'Hotel Victoria Oaxaca'},
+  {No:17,Linea:'Molino',Activo:1319740,Material:200002188,Modelo:'Molino Gaggia Cunil CT-2',Serie:'648970',Ce:'EUQE',Alm:4077,Cliente:'NH Collection Querétaro'},
+  {No:18,Linea:'Habitacion',Activo:826252,Material:200001142,Modelo:'Cafetera Hotelera LodgingStar 4 tazas',Serie:'LODG0788',Ce:'EUGU',Alm:47,Cliente:'Hotel Fiesta Inn GDL'},
+  {No:19,Linea:'Superautomatica',Activo:1319801,Material:200002201,Modelo:'Fully auto coffee machine WSD18-010A',Serie:'WSD18-2201',Ce:'EUMX',Alm:3551,Cliente:'Marriott Ciudad de México'},
+  {No:20,Linea:'Filtrado',Activo:1302313,Material:200000001,Modelo:'Cafetera-Bunn O Matic-CWTF 15',Serie:'CWTF604519',Ce:'EUCA',Alm:4202,Cliente:'Grand Oasis Cancún'},
+];
+
+const ORDENES = [
+  {folio:'OS-2025-001',fecha:'2025-04-28',tipo:'correctivo',modelo:'Cafetera Bunn ICB Twin DV',serie:'ICBT030805',centro:'EUBA',tecnico:'Carlos Méndez',estado:'terminado',costo:1850,descripcion:'No calienta. Se reemplazó elemento calefactor.',cliente:'Holiday Inn Bajío'},
+  {folio:'OS-2025-002',fecha:'2025-04-29',tipo:'preventivo',modelo:'Cafetera Hotelera Doci-CM-306',serie:'DOCI05190',centro:'EUCS',tecnico:'Jorge Ruiz',estado:'terminado',costo:600,descripcion:'Limpieza profunda, descalcificación y ajuste de termostato.',cliente:'Barceló Chiapas'},
+  {folio:'OS-2025-003',fecha:'2025-05-02',tipo:'correctivo',modelo:'Gaggia Brillante Z4000',serie:'GAG23041',centro:'EUMX',tecnico:'Andrés Torres',estado:'en proceso',costo:3200,descripcion:'Falla en módulo de molienda. Solicitud de refacción.',cliente:'Marriott CDMX'},
+  {folio:'OS-2025-004',fecha:'2025-05-05',tipo:'preventivo',modelo:'Cafetera Cuisinart WCM11',serie:'WCM11-0201',centro:'EUMY',tecnico:'Luis García',estado:'pendiente',costo:550,descripcion:'Mantenimiento trimestral programado.',cliente:'Safi Royal Monterrey'},
+  {folio:'OS-2025-005',fecha:'2025-05-06',tipo:'correctivo',modelo:'Necta Krea Prime',serie:'NKP-0081',centro:'EUQE',tecnico:'Andrés Torres',estado:'pendiente',costo:2100,descripcion:'Pantalla sin respuesta. Se revisa tarjeta de control.',cliente:'NH Collection QRO'},
+  {folio:'OS-2025-006',fecha:'2025-05-08',tipo:'preventivo',modelo:'Cafetera-Bunn O Matic-Single',serie:'SNG0073623',centro:'EUBA',tecnico:'Carlos Méndez',estado:'terminado',costo:580,descripcion:'Descalcificación y limpieza de filtros.',cliente:'Holiday Inn Bajío'},
+  {folio:'OS-2025-007',fecha:'2025-05-10',tipo:'correctivo',modelo:'Molino Gaggia Cunil CT-2',serie:'648970',centro:'EUQE',tecnico:'Jorge Ruiz',estado:'en proceso',costo:950,descripcion:'Ruido anormal en muelas. Requiere ajuste.',cliente:'NH Collection QRO'},
+];
+
+const TECNICOS = ['Carlos Méndez','Jorge Ruiz','Andrés Torres','Luis García','Roberto Sosa','Patricia Vega'];
+
+// ═══════════════════════════════════════════════
+// ESTADO GLOBAL
+// ═══════════════════════════════════════════════
+let currentRole = 'gerente';
+let eqPage = 0, clPage = 0;
+const PER_PAGE = 12;
+let eqFilter = {linea:'', centro:''};
+let clFilter = {centro:''};
+let ordenFilter = '';
+let equipoSeleccionado = null;
+let sigPad = null, sigPadTec = null;
+let ordenActual = null;
+
+// ═══════════════════════════════════════════════
+// NAVEGACIÓN
+// ═══════════════════════════════════════════════
+function goTo(pageId){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+pageId).classList.add('active');
+  const ni = document.querySelector(`[onclick="goTo('${pageId}')"]`);
+  if(ni) ni.classList.add('active');
+  const titles = {
+    dashboard:{t:'Dashboard',s:'Vista general del sistema'},
+    equipos:{t:'Universo de Equipos',s:'34,266 equipos en catálogo'},
+    clientes:{t:'Clientes con Equipo',s:'29,310 equipos asignados'},
+    ordenes:{t:'Órdenes de Servicio',s:'Gestión de servicios correctivos y preventivos'},
+    'nuevo-servicio':{t:'Nueva Orden de Servicio',s:'Formato de reporte técnico'},
+    preventivos:{t:'Plan Preventivo',s:'Programación de mantenimientos'},
+    'qr-scanner':{t:'Escanear QR',s:'Identificación rápida de equipos'},
+    reportes:{t:'Reportes',s:'Análisis y estadísticas de servicio'},
+  };
+  const info = titles[pageId]||{t:pageId,s:''};
+  document.getElementById('page-title').textContent=info.t;
+  document.getElementById('page-sub').textContent=info.s;
+  if(pageId==='dashboard') renderDashboard();
+  if(pageId==='equipos') renderEquipos();
+  if(pageId==='clientes') renderClientes();
+  if(pageId==='ordenes') renderOrdenes();
+  if(pageId==='preventivos') renderPreventivos();
+  if(pageId==='reportes') renderReportes();
+  if(pageId==='nuevo-servicio') renderFormServicio('form-servicio-pg');
+}
+
+// ═══════════════════════════════════════════════
+// ROL
+// ═══════════════════════════════════════════════
+function setRole(r){
+  currentRole=r;
+  document.querySelectorAll('.role-btn').forEach(b=>b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('user-avatar').textContent=r==='gerente'?'GR':'TC';
+  document.getElementById('user-name').textContent=r==='gerente'?'Gerente Regional':'Técnico de Campo';
+  document.getElementById('user-role-lbl').textContent=r==='gerente'?'Acceso total':'Acceso campo';
+}
+
+// ═══════════════════════════════════════════════
+// MODAL
+// ═══════════════════════════════════════════════
+function openModal(id){
+  document.getElementById(id).classList.add('open');
+  if(id==='modal-nueva-orden') renderFormServicio('form-servicio-modal');
+  if(id==='modal-firma') initFirma();
+}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+document.querySelectorAll('.modal-overlay').forEach(o=>{
+  o.addEventListener('click',e=>{if(e.target===o) o.classList.remove('open')});
+});
+
+// ═══════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════
+function renderDashboard(){
+  // Ordenes recientes
+  const tbody=document.getElementById('tbl-recientes');
+  tbody.innerHTML=ORDENES.slice(0,7).map(o=>`
+    <tr>
+      <td><span style="font-family:monospace;font-size:12px;color:var(--accent)">${o.folio}</span></td>
+      <td>${badgeTipo(o.tipo)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${o.modelo}</td>
+      <td>${badgeCentro(o.centro)}</td>
+      <td>${badgeEstado(o.estado)}</td>
+      <td style="color:var(--green);font-weight:500">$${o.costo.toLocaleString()}</td>
+    </tr>`).join('');
+
+  // Líneas chart
+  const lineas=[
+    {l:'Habitación',n:28928,c:'#3b82f6'},
+    {l:'Accesorios',n:1768,c:'#8b5cf6'},
+    {l:'Superaut.',n:1546,c:'#06b6d4'},
+    {l:'Filtrado',n:786,c:'#10b981'},
+    {l:'Molino',n:643,c:'#f59e0b'},
+    {l:'Semiaut.',n:542,c:'#ef4444'},
+  ];
+  const max=28928;
+  document.getElementById('chart-lineas').innerHTML=lineas.map(l=>`
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:12px;color:var(--text2)">${l.l}</span>
+        <span style="font-size:12px;font-weight:500">${l.n.toLocaleString()}</span>
+      </div>
+      <div style="height:6px;background:var(--bg3);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${Math.round(l.n/max*100)}%;background:${l.c};border-radius:4px;transition:width .5s"></div>
+      </div>
+    </div>`).join('');
+
+  // Centros
+  const centroData=[
+    {ce:'EUCA',n:8060},{ce:'EUMX',n:4521},{ce:'EUGU',n:2753},
+    {ce:'EUOZ',n:2676},{ce:'EUQE',n:2475},{ce:'EUBA',n:2361},
+    {ce:'EUVA',n:2075},{ce:'EUPU',n:1659}
+  ];
+  document.getElementById('centros-list').innerHTML=centroData.map(c=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:13px">${CENTROS[c.ce]||c.ce}</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:60px;height:4px;background:var(--bg);border-radius:2px;overflow:hidden">
+          <div style="height:100%;width:${Math.round(c.n/8060*100)}%;background:var(--accent);border-radius:2px"></div>
+        </div>
+        <span style="font-size:12px;color:var(--text2);min-width:36px;text-align:right">${c.n.toLocaleString()}</span>
+      </div>
+    </div>`).join('');
+
+  // Estados
+  const estados=[
+    {l:'Terminados',n:89,c:'var(--green)'},{l:'En proceso',n:31,c:'var(--amber)'},
+    {l:'Pendientes',n:27,c:'var(--red)'},
+  ];
+  document.getElementById('estados-chart').innerHTML=estados.map(e=>`
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:13px">${e.l}</span>
+        <span style="font-size:13px;font-weight:600;color:${e.c}">${e.n}</span>
+      </div>
+      <div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${Math.round(e.n/147*100)}%;background:${e.c};border-radius:4px"></div>
+      </div>
+    </div>`).join('');
+
+  // Alertas
+  const alertas=[
+    {equipo:'Cafetera Bunn Single',serie:'SNG0073623',dias:'Vencido hace 15d',color:'var(--red)'},
+    {equipo:'Necta Krea Prime',serie:'NKP-0081',dias:'Vence en 5 días',color:'var(--amber)'},
+    {equipo:'Gaggia Z4000',serie:'GAG23041',dias:'Vence en 12 días',color:'var(--amber)'},
+  ];
+  document.getElementById('alertas-list').innerHTML=alertas.map(a=>`
+    <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+        <div style="width:8px;height:8px;border-radius:50%;background:${a.color};flex-shrink:0"></div>
+        <span style="font-size:12px;font-weight:500">${a.equipo}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text3);padding-left:16px">${a.serie} · <span style="color:${a.color}">${a.dias}</span></div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════
+// EQUIPOS TABLE
+// ═══════════════════════════════════════════════
+function renderEquipos(){
+  let data = EQUIPOS_RAW.filter(e=>
+    (!eqFilter.linea || e.Linea===eqFilter.linea) &&
+    (!eqFilter.centro || e.Ce===eqFilter.centro)
+  );
+  const start=eqPage*PER_PAGE, end=Math.min(start+PER_PAGE,data.length);
+  const page=data.slice(start,end);
+  document.getElementById('equipos-count').textContent=`Mostrando ${start+1}–${end} de ${data.length} equipos (universo: 34,266)`;
+  document.getElementById('equipos-pag-info').textContent=`Página ${eqPage+1} de ${Math.ceil(data.length/PER_PAGE)}`;
+  const tbody=document.getElementById('tbl-equipos');
+  tbody.innerHTML=page.map(e=>`
+    <tr>
+      <td style="color:var(--text3)">${e.No}</td>
+      <td><span style="font-family:monospace;font-size:12px">${e.Activo}</span></td>
+      <td style="max-width:200px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${e.Modelo}</div></td>
+      <td><span style="font-family:monospace;font-size:12px;color:var(--accent)">${e.Serie}</span></td>
+      <td>${badgeLinea(e.Linea)}</td>
+      <td>${badgeCentro(e.Ce)}</td>
+      <td>${badgeEstadoEquipo()}</td>
+      <td>
+        <div class="gap-8">
+          <button class="btn btn-ghost btn-sm" onclick="verEquipo(${e.No-1},'eq')">👁 Ver</button>
+          <button class="btn btn-ghost btn-sm" onclick="generarQRSerie('${e.Serie}','${e.Modelo}')">📷 QR</button>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  // Populate centro select
+  const sel=document.getElementById('sel-centro-eq');
+  if(sel.children.length<=1){
+    Object.entries(CENTROS).forEach(([k,v])=>{
+      const o=document.createElement('option');o.value=k;o.textContent=v;sel.appendChild(o);
+    });
+  }
+}
+function pagEquipos(dir){
+  const data=EQUIPOS_RAW.filter(e=>(!eqFilter.linea||e.Linea===eqFilter.linea)&&(!eqFilter.centro||e.Ce===eqFilter.centro));
+  const maxPage=Math.ceil(data.length/PER_PAGE)-1;
+  eqPage=Math.max(0,Math.min(maxPage,eqPage+dir));
+  renderEquipos();
+}
+function filterLinea(btn,linea){
+  document.querySelectorAll('#filter-equipos .filter-pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  eqFilter.linea=linea;eqPage=0;renderEquipos();
+}
+function filterCentroEquipos(v){eqFilter.centro=v;eqPage=0;renderEquipos();}
+
+// ═══════════════════════════════════════════════
+// CLIENTES TABLE
+// ═══════════════════════════════════════════════
+function renderClientes(){
+  let data=CLIENTES_RAW.filter(c=>!clFilter.centro||c.Ce===clFilter.centro);
+  const start=clPage*PER_PAGE, end=Math.min(start+PER_PAGE,data.length);
+  const page=data.slice(start,end);
+  document.getElementById('clientes-count').textContent=`Mostrando ${start+1}–${end} de ${data.length} (total real: 29,310)`;
+  document.getElementById('clientes-pag-info').textContent=`Página ${clPage+1} de ${Math.ceil(data.length/PER_PAGE)}`;
+  document.getElementById('tbl-clientes').innerHTML=page.map((c,i)=>`
+    <tr>
+      <td style="color:var(--text3)">${c.No}</td>
+      <td><span style="font-family:monospace;font-size:12px">${c.Activo}</span></td>
+      <td style="max-width:180px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${c.Modelo}</div></td>
+      <td><span style="font-family:monospace;font-size:12px;color:var(--accent)">${c.Serie}</span></td>
+      <td>${badgeLinea(c.Linea)}</td>
+      <td>${badgeCentro(c.Ce)}</td>
+      <td style="font-size:12px">${c.Cliente||'Alm. '+c.Alm}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="generarQRSerie('${c.Serie}','${c.Modelo}')">📷</button></td>
+      <td>
+        <div class="gap-8">
+          <button class="btn btn-ghost btn-sm" onclick="verEquipo(${i},'cl')">👁 Ver</button>
+          <button class="btn btn-primary btn-sm" onclick="abrirServicioRapido('${c.Serie}','${c.Modelo}','${c.Ce}','${c.Cliente||'Alm '+c.Alm}')">+ Servicio</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+function pagClientes(dir){
+  const data=CLIENTES_RAW.filter(c=>!clFilter.centro||c.Ce===clFilter.centro);
+  const maxPage=Math.ceil(data.length/PER_PAGE)-1;
+  clPage=Math.max(0,Math.min(maxPage,clPage+dir));
+  renderClientes();
+}
+function filterCentroClientes(v){clFilter.centro=v;clPage=0;renderClientes();}
+
+// ═══════════════════════════════════════════════
+// ÓRDENES
+// ═══════════════════════════════════════════════
+function renderOrdenes(){
+  let data=ordenFilter?ORDENES.filter(o=>{
+    if(ordenFilter==='correctivo') return o.tipo==='correctivo';
+    if(ordenFilter==='preventivo') return o.tipo==='preventivo';
+    return o.estado===ordenFilter;
+  }):ORDENES;
+  document.getElementById('tbl-ordenes').innerHTML=data.map(o=>`
+    <tr>
+      <td><span style="font-family:monospace;font-size:12px;color:var(--accent)">${o.folio}</span></td>
+      <td style="font-size:12px;color:var(--text2)">${o.fecha}</td>
+      <td>${badgeTipo(o.tipo)}</td>
+      <td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.modelo}</td>
+      <td><span style="font-family:monospace;font-size:11px">${o.serie}</span></td>
+      <td>${badgeCentro(o.centro)}</td>
+      <td style="font-size:12px">${o.tecnico}</td>
+      <td>${badgeEstado(o.estado)}</td>
+      <td style="color:var(--green);font-weight:600">$${o.costo.toLocaleString()}</td>
+      <td>
+        <div class="gap-8">
+          <button class="btn btn-ghost btn-sm" onclick="verOrden('${o.folio}')">👁 Ver</button>
+          ${o.estado!=='terminado'?`<button class="btn btn-primary btn-sm" onclick="firmarOrden('${o.folio}')">✍️ Firmar</button>`:'<span style="color:var(--green);font-size:11px">✓ Firmada</span>'}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+function filterOrden(btn,f){
+  document.querySelectorAll('#page-ordenes .filter-pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ordenFilter=f;renderOrdenes();
+}
+function verOrden(folio){
+  const o=ORDENES.find(x=>x.folio===folio);
+  if(!o) return;
+  showNotif(`Orden ${folio}: ${o.descripcion}`,'info');
+}
+function firmarOrden(folio){
+  const o=ORDENES.find(x=>x.folio===folio);
+  if(!o) return;
+  ordenActual=o;
+  document.getElementById('firma-folio').textContent=folio;
+  openModal('modal-firma');
+}
+
+// ═══════════════════════════════════════════════
+// FORMATO DE SERVICIO
+// ═══════════════════════════════════════════════
+function renderFormServicio(containerId){
+  const c=document.getElementById(containerId);
+  c.innerHTML=`
+  <div class="report-section">
+    <div class="report-section-title">📍 Datos del Equipo</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">No. de Serie</label>
+        <input class="form-control" id="fs-serie" placeholder="Ej. DOCI05190" oninput="autocompletarEquipo(this.value,'${containerId}')">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Activo Fijo</label>
+        <input class="form-control" id="fs-activo" placeholder="Ej. 848539">
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Modelo / Descripción</label>
+        <input class="form-control" id="fs-modelo" placeholder="Se llena automático al ingresar No. Serie">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Línea</label>
+        <select class="form-control" id="fs-linea">
+          <option>Habitacion</option><option>Superautomatica</option>
+          <option>Filtrado</option><option>Semiautomatica</option>
+          <option>Molino</option><option>Accesorios</option><option>Café soluble</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Centro / Sucursal</label>
+        <select class="form-control" id="fs-centro">
+          ${Object.entries(CENTROS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="report-section">
+    <div class="report-section-title">🏨 Datos del Cliente</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Nombre del Cliente / Hotel</label>
+        <input class="form-control" id="fs-cliente" placeholder="Ej. Holiday Inn Bajío">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contacto en el Cliente</label>
+        <input class="form-control" id="fs-contacto" placeholder="Nombre del responsable">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Correo del Cliente</label>
+        <input class="form-control" id="fs-email" type="email" placeholder="contacto@hotel.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Almacén / Clave</label>
+        <input class="form-control" id="fs-alm" placeholder="Clave de almacén">
+      </div>
+    </div>
+  </div>
+
+  <div class="report-section">
+    <div class="report-section-title">🔧 Datos del Servicio</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Tipo de Servicio</label>
+        <select class="form-control" id="fs-tipo">
+          <option value="correctivo">Correctivo</option>
+          <option value="preventivo">Preventivo</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Técnico Asignado</label>
+        <select class="form-control" id="fs-tecnico">
+          ${TECNICOS.map(t=>`<option>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha de Servicio</label>
+        <input class="form-control" id="fs-fecha" type="date" value="${new Date().toISOString().slice(0,10)}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hora de Inicio</label>
+        <input class="form-control" id="fs-hora" type="time" value="09:00">
+      </div>
+      <div class="form-group full">
+        <label class="form-label">Descripción del Problema / Trabajo Realizado</label>
+        <textarea class="form-control" id="fs-desc" rows="3" placeholder="Describe el fallo, las acciones realizadas y el resultado..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="report-section">
+    <div class="report-section-title">✅ Lista de Verificación</div>
+    <div class="checklist">
+      <label class="check-item"><input type="checkbox" id="chk1"> Revisión visual exterior</label>
+      <label class="check-item"><input type="checkbox" id="chk2"> Limpieza de filtros</label>
+      <label class="check-item"><input type="checkbox" id="chk3"> Descalcificación</label>
+      <label class="check-item"><input type="checkbox" id="chk4"> Prueba de temperatura</label>
+      <label class="check-item"><input type="checkbox" id="chk5"> Revisión de conexiones eléctricas</label>
+      <label class="check-item"><input type="checkbox" id="chk6"> Prueba funcional completa</label>
+      <label class="check-item"><input type="checkbox" id="chk7"> Calibración de molienda</label>
+      <label class="check-item"><input type="checkbox" id="chk8"> Entrega al cliente conforme</label>
+    </div>
+  </div>
+
+  <div class="report-section">
+    <div class="report-section-title">💰 Costos del Servicio</div>
+    <div class="cost-row">
+      <span style="flex:1;font-size:13px">Mano de obra</span>
+      <input class="form-control" id="costo-mo" type="number" placeholder="$0.00" style="width:120px">
+    </div>
+    <div class="cost-row">
+      <span style="flex:1;font-size:13px">Refacciones / Materiales</span>
+      <input class="form-control" id="costo-ref" type="number" placeholder="$0.00" style="width:120px">
+    </div>
+    <div class="cost-row">
+      <span style="flex:1;font-size:13px">Traslado / Viáticos</span>
+      <input class="form-control" id="costo-viat" type="number" placeholder="$0.00" style="width:120px">
+    </div>
+    <div class="cost-row" style="border-top:2px solid var(--border2);padding-top:10px;margin-top:4px">
+      <span style="flex:1;font-size:14px;font-weight:600">Total</span>
+      <span style="font-size:16px;font-weight:700;color:var(--green)" id="costo-total">$0.00</span>
+    </div>
+    <script>
+      ['costo-mo','costo-ref','costo-viat'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(el) el.addEventListener('input',calcTotal);
+      });
+      function calcTotal(){
+        const sum=['costo-mo','costo-ref','costo-viat'].reduce((a,id)=>{
+          const el=document.getElementById(id);
+          return a+(el?parseFloat(el.value)||0:0);
+        },0);
+        const t=document.getElementById('costo-total');
+        if(t) t.textContent='$'+sum.toLocaleString('es-MX',{minimumFractionDigits:2});
+      }
+    <\/script>
+  </div>
+
+  <div class="report-section">
+    <div class="report-section-title">📍 Geolocalización</div>
+    <div style="display:flex;gap:12px;align-items:flex-end">
+      <div class="form-group" style="flex:1">
+        <label class="form-label">Latitud</label>
+        <input class="form-control" id="fs-lat" placeholder="20.6597" readonly>
+      </div>
+      <div class="form-group" style="flex:1">
+        <label class="form-label">Longitud</label>
+        <input class="form-control" id="fs-lng" placeholder="-103.3496" readonly>
+      </div>
+      <button class="btn btn-ghost" onclick="obtenerGeo()" style="margin-bottom:0">📍 Obtener ubicación</button>
+    </div>
+    <div id="geo-status" style="font-size:11px;color:var(--text3);margin-top:6px"></div>
+  </div>
+
+  <div class="report-section">
+    <div class="report-section-title">📝 Observaciones Adicionales</div>
+    <textarea class="form-control" id="fs-obs" rows="2" placeholder="Recomendaciones, refacciones pendientes, próximo servicio..."></textarea>
+  </div>
+
+  <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:8px">
+    <button class="btn btn-ghost" onclick="closeModal('modal-nueva-orden')">Cancelar</button>
+    <button class="btn btn-primary" onclick="guardarOrden()">💾 Guardar Orden</button>
+    <button class="btn btn-green" onclick="guardarYFirmar()">✍️ Guardar y Obtener Firma</button>
+  </div>`;
+}
+
+function autocompletarEquipo(serie, containerId){
+  const eq=[...EQUIPOS_RAW,...CLIENTES_RAW].find(e=>e.Serie===serie||String(e.Activo)===serie);
+  if(!eq) return;
+  document.getElementById('fs-activo').value=eq.Activo;
+  document.getElementById('fs-modelo').value=eq.Modelo;
+  document.getElementById('fs-linea').value=eq.Linea;
+  document.getElementById('fs-centro').value=eq.Ce;
+  const cliente=CLIENTES_RAW.find(c=>c.Serie===serie);
+  if(cliente) document.getElementById('fs-cliente').value=cliente.Cliente||'Alm. '+cliente.Alm;
+}
+
+function obtenerGeo(){
+  if(!navigator.geolocation){showNotif('Geolocalización no disponible','error');return;}
+  document.getElementById('geo-status').textContent='Obteniendo ubicación...';
+  navigator.geolocation.getCurrentPosition(pos=>{
+    document.getElementById('fs-lat').value=pos.coords.latitude.toFixed(6);
+    document.getElementById('fs-lng').value=pos.coords.longitude.toFixed(6);
+    document.getElementById('geo-status').textContent=`✓ Ubicación capturada — Precisión: ±${Math.round(pos.coords.accuracy)}m`;
+    document.getElementById('geo-status').style.color='var(--green)';
+  },err=>{
+    document.getElementById('geo-status').textContent='No se pudo obtener ubicación. Verifica permisos.';
+    document.getElementById('geo-status').style.color='var(--amber)';
+    // Demo values
+    document.getElementById('fs-lat').value='20.659698';
+    document.getElementById('fs-lng').value='-103.349609';
+  });
+}
+
+function guardarOrden(){
+  const folio='OS-2025-'+(String(ORDENES.length+1).padStart(3,'0'));
+  ORDENES.unshift({
+    folio,
+    fecha:document.getElementById('fs-fecha')?.value||new Date().toISOString().slice(0,10),
+    tipo:document.getElementById('fs-tipo')?.value||'correctivo',
+    modelo:document.getElementById('fs-modelo')?.value||'Equipo',
+    serie:document.getElementById('fs-serie')?.value||'-',
+    centro:document.getElementById('fs-centro')?.value||'EUCA',
+    tecnico:document.getElementById('fs-tecnico')?.value||TECNICOS[0],
+    estado:'pendiente',
+    costo:parseFloat(document.getElementById('costo-mo')?.value||0)+parseFloat(document.getElementById('costo-ref')?.value||0)+parseFloat(document.getElementById('costo-viat')?.value||0),
+    descripcion:document.getElementById('fs-desc')?.value||'Sin descripción',
+    cliente:document.getElementById('fs-cliente')?.value||'Cliente',
+  });
+  closeModal('modal-nueva-orden');
+  showNotif(`Orden ${folio} guardada correctamente ✓`,'success');
+}
+
+function guardarYFirmar(){
+  guardarOrden();
+  const folio=ORDENES[0].folio;
+  ordenActual=ORDENES[0];
+  document.getElementById('firma-folio').textContent=folio;
+  setTimeout(()=>openModal('modal-firma'),400);
+}
+
+function abrirServicioRapido(serie,modelo,ce,cliente){
+  openModal('modal-nueva-orden');
+  setTimeout(()=>{
+    const si=document.getElementById('fs-serie');
+    if(si){si.value=serie;autocompletarEquipo(serie,'form-servicio-modal');}
+    const cl=document.getElementById('fs-cliente');
+    if(cl) cl.value=cliente;
+  },100);
+}
+
+// ═══════════════════════════════════════════════
+// VER EQUIPO
+// ═══════════════════════════════════════════════
+function verEquipo(idx, tipo){
+  const data=tipo==='eq'?EQUIPOS_RAW:CLIENTES_RAW;
+  const e=data[idx];
+  if(!e) return;
+  equipoSeleccionado=e;
+  const historial=ORDENES.filter(o=>o.serie===e.Serie);
+  document.getElementById('modal-equipo-body').innerHTML=`
+    <div class="detail-panel">
+      <div>
+        <div class="report-section" style="margin-bottom:14px">
+          <div class="report-section-title">Información del Equipo</div>
+          <table style="width:100%">
+            ${fila('Modelo',e.Modelo)}
+            ${fila('No. de Serie','<span style="font-family:monospace;color:var(--accent)">'+e.Serie+'</span>')}
+            ${fila('Activo Fijo',e.Activo)}
+            ${fila('Material',e.Material)}
+            ${fila('Línea',badgeLinea(e.Linea))}
+            ${fila('Centro',badgeCentro(e.Ce)+' — '+(CENTROS[e.Ce]||e.Ce))}
+            ${tipo==='cl'?fila('Cliente / Almacén',e.Cliente||'Alm. '+e.Alm):''}
+          </table>
+        </div>
+        <div class="report-section">
+          <div class="report-section-title">Historial de Servicios (${historial.length})</div>
+          ${historial.length?`
+          <div class="timeline">
+            ${historial.map(h=>`
+              <div class="tl-item">
+                <div class="tl-line"><div class="tl-dot" style="background:${h.estado==='terminado'?'var(--green)':h.estado==='en proceso'?'var(--amber)':'var(--red)'}"></div><div class="tl-track"></div></div>
+                <div class="tl-body">
+                  <div class="tl-date">${h.fecha} · ${h.tecnico}</div>
+                  <div class="tl-desc">${h.descripcion}</div>
+                  <div class="tl-badge">${badgeTipo(h.tipo)} ${badgeEstado(h.estado)} <span style="color:var(--green);font-size:12px;margin-left:6px">$${h.costo.toLocaleString()}</span></div>
+                </div>
+              </div>`).join('')}
+          </div>`:'<p style="color:var(--text3);font-size:13px">Sin historial de servicios</p>'}
+        </div>
+      </div>
+      <div>
+        <div class="qr-box" style="margin-bottom:14px">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Código QR del Equipo</div>
+          <div id="qr-modal-display"></div>
+          <div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center">No. Serie: ${e.Serie}</div>
+        </div>
+        <div class="report-section">
+          <div class="report-section-title">Estado Actual</div>
+          ${badgeEstadoEquipo()}
+          <div style="margin-top:10px;font-size:12px;color:var(--text2)">Último servicio:<br><span style="color:var(--text)">
+            ${historial.length?historial[0].fecha:'Sin servicios registrados'}
+          </span></div>
+          <div style="margin-top:8px;font-size:12px;color:var(--text2)">Próximo PM:<br>
+            <span style="color:var(--amber)">En 45 días</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  openModal('modal-equipo');
+  setTimeout(()=>generarQREnElement('qr-modal-display',e.Serie,e.Modelo),100);
+}
+function fila(label,val){
+  return `<tr><td style="color:var(--text2);font-size:12px;padding:5px 0;white-space:nowrap;padding-right:16px">${label}</td><td style="font-size:13px;padding:5px 0">${val}</td></tr>`;
+}
+function abrirServicioDesdeEquipo(){
+  if(!equipoSeleccionado) return;
+  closeModal('modal-equipo');
+  abrirServicioRapido(equipoSeleccionado.Serie,equipoSeleccionado.Modelo,equipoSeleccionado.Ce,equipoSeleccionado.Cliente||'Alm. '+equipoSeleccionado.Alm);
+}
+
+// ═══════════════════════════════════════════════
+// QR
+// ═══════════════════════════════════════════════
+let qrInstance=null;
+function generarQR(serie){
+  const el=document.getElementById('qr-display');
+  if(!serie){el.innerHTML='<span style="color:var(--text3);font-size:13px">Ingresa un No. de Serie</span>';document.getElementById('qr-info').textContent='';return;}
+  const eq=[...EQUIPOS_RAW,...CLIENTES_RAW].find(e=>e.Serie===serie||String(e.Activo)===serie);
+  el.innerHTML='';
+  try{
+    new QRCode(el,{text:`CAFECONTROL|SERIE:${serie}|MODELO:${eq?eq.Modelo:'Desconocido'}|CE:${eq?eq.Ce:'-'}`,width:160,height:160,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});
+    document.getElementById('qr-info').textContent=eq?`${eq.Modelo} · ${CENTROS[eq.Ce]||eq.Ce}`:'Equipo: '+serie;
+  }catch(e){el.innerHTML='<span style="color:var(--red);font-size:12px">Error generando QR</span>';}
+}
+function generarQREnElement(elId,serie,modelo){
+  const el=document.getElementById(elId);
+  if(!el||!serie) return;
+  el.innerHTML='';
+  try{
+    new QRCode(el,{text:`CAFECONTROL|SERIE:${serie}|MODELO:${modelo}`,width:140,height:140,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});
+  }catch(e){}
+}
+function generarQRSerie(serie,modelo){
+  document.getElementById('qr-serie-input').value=serie;
+  generarQR(serie);
+  openModal('modal-qr');
+}
+function imprimirQR(){window.print();showNotif('Enviando a impresora…','success');}
+
+// ═══════════════════════════════════════════════
+// BÚSQUEDA QR MANUAL
+// ═══════════════════════════════════════════════
+function buscarEquipoQR(){
+  const q=document.getElementById('manual-qr').value.trim();
+  const eq=[...EQUIPOS_RAW,...CLIENTES_RAW].find(e=>e.Serie===q||String(e.Activo)===q);
+  const res=document.getElementById('qr-result');
+  if(!eq){res.innerHTML=`<div class="card-sm" style="color:var(--red)">❌ No se encontró equipo con ese No. de Serie o Activo Fijo</div>`;return;}
+  res.innerHTML=`
+    <div class="card-sm">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">✅ Equipo encontrado</div>
+      <div style="font-size:14px;font-weight:500;margin-bottom:6px">${eq.Modelo}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        ${badgeLinea(eq.Linea)} ${badgeCentro(eq.Ce)}
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Serie: <span style="font-family:monospace;color:var(--accent)">${eq.Serie}</span></div>
+      <button class="btn btn-primary btn-sm" onclick="abrirServicioRapido('${eq.Serie}','${eq.Modelo}','${eq.Ce}','${eq.Cliente||''}')">📋 Registrar Servicio</button>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// PREVENTIVOS
+// ═══════════════════════════════════════════════
+function renderPreventivos(){
+  const preventivos=[
+    {equipo:'Cafetera Bunn ICB Twin DV',serie:'ICBT030805',centro:'EUBA',ultimo:'2025-01-10',proximo:'2025-04-10',estado:'vencido',costo:650},
+    {equipo:'Gaggia Brillante Z4000',serie:'GAG23041',centro:'EUMX',ultimo:'2025-02-15',proximo:'2025-05-15',estado:'proximo',costo:1200},
+    {equipo:'Necta Krea Prime',serie:'NKP-0081',centro:'EUQE',ultimo:'2025-02-20',proximo:'2025-05-20',estado:'proximo',costo:900},
+    {equipo:'Cafetera Doci-CM-306',serie:'DOCI05190',centro:'EUCS',ultimo:'2025-03-01',proximo:'2025-06-01',estado:'al corriente',costo:550},
+    {equipo:'LodgingStar 4 tazas',serie:'LODG0783',centro:'EUGU',ultimo:'2025-03-10',proximo:'2025-06-10',estado:'al corriente',costo:480},
+    {equipo:'Bunn O Matic Single',serie:'SNG0073623',centro:'EUBA',ultimo:'2025-01-05',proximo:'2025-04-05',estado:'vencido',costo:620},
+  ];
+  document.getElementById('tbl-preventivos').innerHTML=preventivos.map(p=>`
+    <tr>
+      <td style="font-size:12px">${p.equipo}</td>
+      <td><span style="font-family:monospace;font-size:11px;color:var(--accent)">${p.serie}</span></td>
+      <td>${badgeCentro(p.centro)}</td>
+      <td style="font-size:12px;color:var(--text2)">${p.ultimo}</td>
+      <td style="font-size:12px;font-weight:500;color:${p.estado==='vencido'?'var(--red)':p.estado==='proximo'?'var(--amber)':'var(--green)'}">${p.proximo}</td>
+      <td>${p.estado==='vencido'?'<span class="badge badge-red">Vencido</span>':p.estado==='proximo'?'<span class="badge badge-amber">Próximo</span>':'<span class="badge badge-green">Al corriente</span>'}</td>
+      <td style="color:var(--text2);font-size:12px">$${p.costo.toLocaleString()}</td>
+      <td><button class="btn btn-primary btn-sm" onclick="abrirServicioRapido('${p.serie}','${p.equipo}','${p.centro}','')">Programar</button></td>
+    </tr>`).join('');
+}
+
+// ═══════════════════════════════════════════════
+// REPORTES
+// ═══════════════════════════════════════════════
+function renderReportes(){
+  const centros=[
+    {n:'Cancún',v:38,c:'#3b82f6'},{n:'México',v:29,c:'#8b5cf6'},
+    {n:'Guadalajara',v:24,c:'#06b6d4'},{n:'Monterrey',v:18,c:'#10b981'},
+    {n:'Querétaro',v:15,c:'#f59e0b'},{n:'Oaxaca',v:12,c:'#ef4444'},
+  ];
+  document.getElementById('reporte-centros').innerHTML=centros.map(c=>`
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:13px">${c.n}</span>
+        <span style="font-size:13px;font-weight:500">${c.v} servicios</span>
+      </div>
+      <div style="height:6px;background:var(--bg3);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${Math.round(c.v/38*100)}%;background:${c.c};border-radius:4px"></div>
+      </div>
+    </div>`).join('');
+
+  const tecs=[
+    {n:'Andrés Torres',v:34,monto:62400},{n:'Carlos Méndez',v:28,monto:48300},
+    {n:'Jorge Ruiz',v:25,monto:41200},{n:'Luis García',v:22,monto:38100},
+    {n:'Roberto Sosa',v:18,monto:31600},{n:'Patricia Vega',v:20,monto:63000},
+  ];
+  document.getElementById('reporte-tecnicos').innerHTML=tecs.map(t=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="width:32px;height:32px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--accent);flex-shrink:0">${t.n.split(' ').map(x=>x[0]).join('')}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:500">${t.n}</div>
+        <div style="font-size:11px;color:var(--text2)">${t.v} servicios</div>
+      </div>
+      <div style="font-size:13px;color:var(--green);font-weight:500">$${t.monto.toLocaleString()}</div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════
+// FIRMA
+// ═══════════════════════════════════════════════
+function initFirma(){
+  setTimeout(()=>{
+    const canvas=document.getElementById('sig-canvas');
+    const canvasTec=document.getElementById('sig-canvas-tec');
+    if(!canvas||!canvasTec) return;
+    canvas.width=canvas.offsetWidth||830;
+    canvasTec.width=canvasTec.offsetWidth||400;
+    try{
+      sigPad=new SignaturePad(canvas,{penColor:'#1a1a2e',backgroundColor:'#ffffff',minWidth:1.5,maxWidth:2.5});
+      sigPadTec=new SignaturePad(canvasTec,{penColor:'#1a1a2e',backgroundColor:'#ffffff',minWidth:1,maxWidth:2});
+    }catch(e){console.log('SignaturePad:',e);}
+  },200);
+}
+function limpiarFirmas(){
+  if(sigPad) sigPad.clear();
+  if(sigPadTec) sigPadTec.clear();
+}
+function finalizarYEnviar(){
+  const nombre=document.getElementById('firma-cliente-nombre').value.trim();
+  const conforme=document.getElementById('chk-conforme').checked;
+  if(!nombre){showNotif('Ingresa el nombre del cliente','error');return;}
+  if(!conforme){showNotif('El cliente debe confirmar su conformidad','error');return;}
+  if(sigPad && sigPad.isEmpty()){showNotif('El cliente debe firmar antes de continuar','error');return;}
+  closeModal('modal-firma');
+  const emailDest=document.getElementById('fs-email')?.value||'cliente@hotel.com';
+  showNotif(`✅ Orden finalizada. Reporte enviado a ${emailDest} y al gerente de equipos.`,'success');
+  if(ordenActual) ordenActual.estado='terminado';
+  renderOrdenes();
+}
+
+// ═══════════════════════════════════════════════
+// BÚSQUEDA GLOBAL
+// ═══════════════════════════════════════════════
+function globalSearch(q){
+  if(!q||q.length<2) return;
+  const eq=[...EQUIPOS_RAW,...CLIENTES_RAW].find(e=>
+    e.Serie.toLowerCase().includes(q.toLowerCase())||
+    String(e.Activo).includes(q)||
+    e.Modelo.toLowerCase().includes(q.toLowerCase())
+  );
+  if(eq){
+    const idx=EQUIPOS_RAW.indexOf(eq);
+    const clIdx=CLIENTES_RAW.indexOf(eq);
+    if(idx>=0) verEquipo(idx,'eq');
+    else if(clIdx>=0) verEquipo(clIdx,'cl');
+  }
+}
+
+// ═══════════════════════════════════════════════
+// BADGES / UTILS
+// ═══════════════════════════════════════════════
+function badgeTipo(t){
+  return t==='correctivo'?'<span class="badge badge-red">🔧 Correctivo</span>':'<span class="badge badge-green">🔄 Preventivo</span>';
+}
+function badgeEstado(e){
+  const m={'terminado':'badge-green','en proceso':'badge-amber','pendiente':'badge-gray'};
+  return `<span class="badge ${m[e]||'badge-gray'}">${e}</span>`;
+}
+function badgeLinea(l){
+  const m={
+    'Habitacion':'badge-blue','Superautomatica':'badge-purple',
+    'Filtrado':'badge-teal','Semiautomatica':'badge-amber',
+    'Molino':'badge-gray','Accesorios':'badge-gray','Café soluble':'badge-amber'
+  };
+  return `<span class="badge ${m[l]||'badge-gray'}">${l}</span>`;
+}
+function badgeCentro(ce){
+  return `<span class="badge badge-blue" style="font-size:10px;padding:2px 7px">${ce}</span>`;
+}
+function badgeEstadoEquipo(){
+  const opts=['badge-green','badge-green','badge-green','badge-amber'];
+  const lbl=['Operativo','Operativo','Operativo','En revisión'];
+  const i=Math.floor(Math.random()*4);
+  return `<span class="badge ${opts[i]}">${lbl[i]}</span>`;
+}
+function showNotif(msg,type='success'){
+  const n=document.getElementById('notif');
+  n.textContent=msg;
+  n.className='notif'+(type==='error'?' error':'');
+  n.classList.add('show');
+  setTimeout(()=>n.classList.remove('show'),4000);
+}
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+renderDashboard();
+</script>
+</body>
+</html>
