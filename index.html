@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <style>
 /* ═══════════════════════════════════════════
    CAFIVER — DESIGN SYSTEM
@@ -1366,61 +1367,113 @@ async function mStats(){
 }
 
 // ESCÁNER QR
-let scanStream=null,scanActive=false;
+// ── ESCÁNER QR con jsQR ──
+let scanStream=null,scanActive=false,scanRAF=null;
+
 window.iniciarEscaner=async function(){
-  const btn=elID('btn-scan'),vid=elID('qr-video'),frame=elID('qr-frame'),line=elID('scan-line');
-  if(scanActive){
-    if(scanStream)scanStream.getTracks().forEach(t=>t.stop());
-    scanActive=false;vid.style.display='none';frame.style.display='flex';btn.textContent='Activar Cámara para QR';
-    return;
-  }
+  const btn=elID('btn-scan'),vid=elID('qr-video'),frame=elID('qr-frame');
+  if(scanActive){detenerEscaner();return;}
   try{
-    scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-    vid.srcObject=scanStream;vid.play();
-    vid.style.display='block';frame.style.display='none';
+    scanStream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}
+    });
+    vid.srcObject=scanStream;
+    await vid.play();
+    vid.style.display='block';
+    frame.style.display='none';
     btn.textContent='⏹ Detener Cámara';
+    btn.style.background='var(--danger)';
     scanActive=true;
-    // Scan loop con canvas
+    notif('📷 Cámara activa — apunta al código QR');
     const canvas=document.createElement('canvas');
-    const tick=()=>{
+    const ctx=canvas.getContext('2d');
+    function tick(){
       if(!scanActive)return;
       if(vid.readyState===vid.HAVE_ENOUGH_DATA){
         canvas.width=vid.videoWidth;canvas.height=vid.videoHeight;
-        canvas.getContext('2d').drawImage(vid,0,0);
-        // Aquí iría jsQR — por ahora instruir búsqueda manual
+        ctx.drawImage(vid,0,0);
+        const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+        try{
+          const code=jsQR(img.data,img.width,img.height,{inversionAttempts:'dontInvert'});
+          if(code&&code.data){detenerEscaner();procesarQREscaneado(code.data);return;}
+        }catch(e){}
       }
-      requestAnimationFrame(tick);
-    };
-    tick();
-    notif('Cámara activa — apunta al código QR del equipo');
-  }catch(e){
-    notif('No se pudo acceder a la cámara. Usa la búsqueda manual.','warn');
-    vid.style.display='none';frame.style.display='flex';
+      scanRAF=requestAnimationFrame(tick);
+    }
+    scanRAF=requestAnimationFrame(tick);
+  }catch(err){
+    notif('No se pudo acceder a la cámara. Usa búsqueda manual.','warn');
+    const vid2=elID('qr-video'),frame2=elID('qr-frame'),btn2=elID('btn-scan');
+    if(vid2)vid2.style.display='none';if(frame2)frame2.style.display='flex';
+    if(btn2){btn2.textContent='Activar Cámara para QR';btn2.style.background='';}
   }
 };
 
+function detenerEscaner(){
+  scanActive=false;
+  if(scanRAF)cancelAnimationFrame(scanRAF);
+  if(scanStream)scanStream.getTracks().forEach(t=>t.stop());
+  scanStream=null;
+  const vid=elID('qr-video'),frame=elID('qr-frame'),btn=elID('btn-scan');
+  if(vid){vid.style.display='none';vid.srcObject=null;}
+  if(frame)frame.style.display='flex';
+  if(btn){btn.textContent='Activar Cámara para QR';btn.style.background='';}
+}
+
+async function procesarQREscaneado(texto){
+  let serie='';
+  if(texto.includes('CAFIVER|SERIE:')){
+    const m=texto.match(/SERIE:([^|]+)/);
+    if(m)serie=m[1];
+  }else{
+    serie=texto.trim();
+  }
+  if(!serie){notif('QR no reconocido','warn');return;}
+  elID('m-busq').value=serie;
+  notif('✅ QR leído: '+serie);
+  await mBuscarPorSerie(serie);
+}
+
 window.mBuscar=async function(){
-  const q=elID('m-busq').value.trim(),res=elID('m-bres');
+  const q=elID('m-busq').value.trim();
   if(!q)return;
+  await mBuscarPorSerie(q);
+};
+
+async function mBuscarPorSerie(q){
+  const res=elID('m-bres');
   res.innerHTML='<div style="color:var(--text3);text-align:center;padding:14px">Buscando…</div>';
   try{
-    let s=await getDocs(query(collection(db,'clientesEquipo'),where('serie','==',q),limit(1)));
-    if(s.empty)s=await getDocs(query(collection(db,'equipos'),where('serie','==',q),limit(1)));
-    if(s.empty&&!isNaN(parseInt(q))){s=await getDocs(query(collection(db,'clientesEquipo'),where('activoFijo','==',parseInt(q)),limit(1)));}
-    if(s.empty){res.innerHTML=`<div class="mcard" style="color:var(--danger);text-align:center">❌ No encontrado: "${q}"</div>`;return;}
-    const e=s.docs[0].data();const eid=s.docs[0].id;const ecol=s.docs[0].ref.parent.id==='clientesEquipo'?'cl':'eq';
+    let snap=await getDocs(query(collection(db,'clientesEquipo'),where('serie','==',q),limit(1)));
+    if(snap.empty)snap=await getDocs(query(collection(db,'equipos'),where('serie','==',q),limit(1)));
+    if(snap.empty&&!isNaN(parseInt(q))){
+      snap=await getDocs(query(collection(db,'clientesEquipo'),where('activoFijo','==',parseInt(q)),limit(1)));
+      if(snap.empty)snap=await getDocs(query(collection(db,'equipos'),where('activoFijo','==',parseInt(q)),limit(1)));
+    }
+    if(snap.empty){
+      res.innerHTML=`<div class="mcard" style="color:var(--danger);text-align:center">❌ No encontrado: "<strong>${q}</strong>"</div>`;
+      return;
+    }
+    const docRef=snap.docs[0];
+    const e={id:docRef.id,...docRef.data()};
+    const col=docRef.ref.parent.id==='clientesEquipo'?'cl':'eq';
+    const sv=e.serie||'';
+    const mod=e.modelo||'';
     const nm=e.clienteNombre||e.razonSocial||String(e.clienteClave||e.almacen||'—');
     res.innerHTML=`<div class="mcard" style="border-top:3px solid var(--success)">
-      <div style="font-size:11px;color:var(--success);font-weight:700;letter-spacing:.08em;margin-bottom:6px">✅ EQUIPO ENCONTRADO</div>
-      <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:700;margin-bottom:8px">${getModelo(e)||'-'}</div>
+      <div style="font-size:11px;color:var(--success);font-weight:700;letter-spacing:.08em;margin-bottom:8px">✅ EQUIPO ENCONTRADO</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:700;margin-bottom:6px">${mod||'-'}</div>
       <div class="g8" style="margin-bottom:10px">${bL(e.linea)} ${bC(e.centro)}</div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Serie: <span style="font-family:monospace;color:var(--caramel);font-weight:700">${e.serie||'-'}</span></div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${nm!=='—'?'Cliente: '+nm:''}</div>
-      <button class="mbtn gold" style="margin-bottom:8px" onclick="mVerFicha('${eid}','${ecol}')">📋 Ver Ficha Completa</button>
-      <button class="mbtn" onclick="mNOD('${esc(getSerie(e)||'')}','${esc(getModelo(e))}','${e.centro||''}','${esc(String(nm))}')">⚡ Registrar Servicio Rápido</button>
+      <div style="background:var(--cream);border-radius:var(--r3);padding:10px;margin-bottom:12px;font-size:12px">
+        <div style="margin-bottom:3px">Serie: <span style="font-family:monospace;color:var(--caramel);font-weight:700">${sv||'-'}</span></div>
+        <div style="margin-bottom:3px">Activo Fijo: <strong>${e.activoFijo||'—'}</strong></div>
+        ${nm!=='—'?`<div>Cliente: <strong>${nm}</strong></div>`:''}
+      </div>
+      <button class="mbtn" style="background:var(--gold);color:var(--espresso);font-weight:700;margin-bottom:8px" onclick="mVerFicha('${docRef.id}','${col}')">📋 Ver Ficha Completa</button>
+      <button class="mbtn" onclick="mNOD('${esc(sv)}','${esc(mod)}','${e.centro||''}','${esc(String(nm))}')">⚡ Registrar Servicio</button>
     </div>`;
   }catch(er){res.innerHTML=`<div class="mcard" style="color:var(--danger)">Error: ${er.message}</div>`;}
-};
+}
 window.mNOD=function(serie,modelo,centro,cliente){window._mp={serie,modelo,centro,cliente};mGo('nueva-orden');};
 
 // Ficha equipo en móvil
@@ -1560,12 +1613,13 @@ window.mFinalizar=async function(){
 };
 
 // ── HELPERS ──
-// Normalizar campo serie — el importador guarda como 'serie', el docId también puede ser la serie
+// El importador.js guarda exactamente: serie, modelo, activoFijo, no, linea, centro, almacen
+// getSerie solo lee el campo 'serie' — NO usa e.id como fallback (evita duplicar la serie en No.)
 function getSerie(e) {
-  return e.serie || e['Número de serie'] || e['numero_de_serie'] || e.id || '';
+  return e.serie || '';
 }
 function getModelo(e) {
-  return e.modelo || e['Texto breve de material'] || e.descripcion || '';
+  return e.modelo || '';
 }
 
 function bT(t){return t==='correctivo'?'<span class="bdg br">🔧 Correctivo</span>':'<span class="bdg bg">🔄 Preventivo</span>';}
