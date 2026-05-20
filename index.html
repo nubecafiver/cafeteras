@@ -422,7 +422,7 @@ select.fc option{background:#fff}
 
 <!-- MODALES -->
 <div class="mo" id="m-nueva-orden"><div class="md mdlg"><div class="mdh"><span class="mdt">📋 Nueva Orden de Servicio</span><button class="bico" onclick="cMod('m-nueva-orden')">✕</button></div><div class="mdb"><div id="frm-mod"></div></div></div></div>
-<div class="mo" id="m-equipo"><div class="md mdlg"><div class="mdh"><span class="mdt">☕ Ficha de Equipo</span><button class="bico" onclick="cMod('m-equipo')">✕</button></div><div class="mdb" id="m-eq-body"></div><div class="mdf"><button class="btn btn-p" onclick="srvDesdeEq()">📋 Registrar Servicio</button><button class="btn btn-g" onclick="cMod('m-equipo')">Cerrar</button></div></div></div>
+<div class="mo" id="m-equipo"><div class="md" style="width:min(100%,1000px);max-height:92vh"><div class="mdh"><span class="mdt">☕ Ficha de Equipo</span><button class="bico" onclick="cMod('m-equipo')">✕</button></div><div class="mdb" id="m-eq-body"></div><div class="mdf"><button class="btn btn-p" onclick="srvDesdeEq()" style="font-size:14px;padding:9px 18px">📋 Registrar Nuevo Servicio</button><button class="btn btn-g btn-s" onclick="aQR(eqSel?.serie||'',eqSel?.modelo||'')">📷 Imprimir QR</button><button class="btn btn-g" onclick="cMod('m-equipo')">Cerrar</button></div></div></div>
 <div class="mo" id="m-qr-mod"><div class="md"><div class="mdh"><span class="mdt">📷 Código QR</span><button class="bico" onclick="cMod('m-qr-mod')">✕</button></div><div class="mdb"><div class="qrb"><div id="qr-disp" style="min-height:170px;display:flex;align-items:center;justify-content:center;background:#fff;padding:8px;border-radius:var(--r2)"></div><div id="qr-lbl" style="font-size:11px;color:var(--text2);text-align:center"></div></div><div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-p btn-s" onclick="window.print()">🖨 Imprimir</button><button class="btn btn-g btn-s" onclick="cMod('m-qr-mod')">Cerrar</button></div></div></div></div>
 <div class="mo" id="m-firma"><div class="md mdlg"><div class="mdh"><span class="mdt">✍️ Firma — <span id="d-ffolio"></span></span><button class="bico" onclick="cMod('m-firma')">✕</button></div><div class="mdb"><div class="fg" style="margin-bottom:14px"><div class="fgp"><label class="flbl">Nombre del cliente</label><input class="fc" id="d-fn" placeholder="Nombre completo"></div><div class="fgp"><label class="flbl">Cargo</label><input class="fc" id="d-fc" placeholder="Ej. Jefe de Mantenimiento"></div></div><div class="flbl" style="margin-bottom:6px">Firma del cliente</div><div style="border:2px solid var(--accent);border-radius:var(--r);overflow:hidden"><canvas id="d-sig" width="820" height="180" style="background:#fff;display:block;width:100%"></canvas></div><div style="display:flex;gap:10px;align-items:center;margin-top:10px"><span style="font-size:12px;color:var(--text2);font-weight:600;white-space:nowrap">Firma técnico:</span><div style="border:1.5px solid var(--border2);border-radius:var(--r2);overflow:hidden;flex:1"><canvas id="d-sig-tec" width="400" height="80" style="background:#fff;display:block;width:100%;height:80px"></canvas></div><button class="btn btn-g btn-s" onclick="dLimpF()">🗑 Limpiar</button></div><div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding:10px;background:var(--bg3);border-radius:var(--r2)"><input type="checkbox" id="d-conf" style="accent-color:var(--accent);width:16px;height:16px"><label for="d-conf" style="font-size:13px;cursor:pointer">El cliente declara estar conforme con el servicio</label></div></div><div class="mdf"><button class="btn btn-gr" onclick="dFin()">📧 Finalizar y Enviar por Correo</button><button class="btn btn-g" onclick="cMod('m-firma')">Cancelar</button></div></div></div>
 
@@ -562,12 +562,12 @@ async function cCl(){
     if(clSrch){
       const q=clSrch.toLowerCase();
       it=it.filter(c=>
-        (c.clienteNombre||'').toLowerCase().includes(q)||
-        (c.razonSocial||'').toLowerCase().includes(q)||
-        (String(c.clienteClave||'')).toLowerCase().includes(q)||
-        (c.almacen||'').toLowerCase().includes(q)||
-        (c.serie||'').toLowerCase().includes(q)||
-        (c.modelo||'').toLowerCase().includes(q)
+        String(c.clienteNombre||'').toLowerCase().includes(q)||
+        String(c.razonSocial||'').toLowerCase().includes(q)||
+        String(c.clienteClave||'').toLowerCase().includes(q)||
+        String(c.almacen||'').toLowerCase().includes(q)||
+        String(c.serie||'').toLowerCase().includes(q)||
+        String(c.modelo||'').toLowerCase().includes(q)
       ).slice(0,PG);
     }
     document.getElementById('cl-cnt').textContent=`Mostrando ${it.length} (total: 29,310)`;
@@ -600,23 +600,205 @@ window.fClCe=(v)=>{clC=v;clSrch='';cCl();};
 window.fClSrch=(v)=>{clSrch=v;clearTimeout(window._clSt);window._clSt=setTimeout(cCl,400);};
 window.pCl=(d)=>{cCl();};
 
-// ── VER EQUIPO ──
+// ── VER EQUIPO — Ficha completa ──
 async function vEq(id,col){
   try{
     const cn=col==='cl'?'clientesEquipo':'equipos';
     const s=await getDoc(doc(db,cn,id));
     if(!s.exists()){notif('No encontrado','err');return;}
     const e={id:s.id,...s.data()};eqSel=e;
+
+    // Historial de servicios
     let hist=[];
-    try{if(e.serie){const hs=await getDocs(query(collection(db,'ordenes'),where('serie','==',e.serie),limit(5)));hist=hs.docs.map(d=>({id:d.id,...d.data()}));}}catch(he){console.warn(he.message);}
-    document.getElementById('m-eq-body').innerHTML=`<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:16px"><div><div class="rs" style="margin-bottom:12px"><div class="rst">Información del Equipo</div><table style="width:100%">${fr('Modelo',e.modelo||'-')}${fr('No. de Serie',`<span style="font-family:monospace;color:var(--accent);font-weight:700">${e.serie||'Sin serie'}</span>`)}${fr('Activo Fijo',e.activoFijo||'-')}${fr('Línea',bL(e.linea))}${fr('Centro',bC(e.centro)+' — '+(CE[e.centro]||e.centro||'-'))}${e.clienteClave?fr('Cliente',e.clienteClave):''}</table></div><div class="rs"><div class="rst">Historial (${hist.length})</div>${hist.length?hist.map(h=>`<div style="padding:8px 0;border-bottom:1px solid var(--border)"><div style="font-size:11px;color:var(--text3);margin-bottom:2px">${fF(h.creadoEn)} · ${h.tecnicoNombre||'-'}</div><div style="font-size:13px;margin-bottom:4px">${h.descripcion||'-'}</div>${bT(h.tipo)} ${bE(h.estado)} <span style="color:var(--green);font-size:12px;margin-left:6px;font-weight:600">$${(h.costoTotal||0).toLocaleString('es-MX')}</span></div>`).join(''):'<p style="color:var(--text3);font-size:13px">Sin historial</p>'}</div></div><div><div class="qrb" style="margin-bottom:12px"><div style="font-size:12px;color:var(--text2);font-weight:600">Código QR</div><div id="qr-ficha" style="background:#fff;padding:8px;border-radius:var(--r2);min-height:160px;display:flex;align-items:center;justify-content:center"></div><div style="font-size:11px;color:var(--text3);text-align:center">${e.serie||'Sin No. Serie'}</div></div></div></div>`;
+    try{
+      if(e.serie){
+        const hs=await getDocs(query(collection(db,'ordenes'),where('serie','==',e.serie),limit(10)));
+        hist=hs.docs.map(d=>({id:d.id,...d.data()}));
+        // Ordenar por fecha descendente en cliente
+        hist.sort((a,b)=>{
+          const fa=a.creadoEn?.seconds||0, fb=b.creadoEn?.seconds||0;
+          return fb-fa;
+        });
+      }
+    }catch(he){console.warn(he.message);}
+
+    const ultimoServ = hist[0];
+    const totalGastado = hist.reduce((a,h)=>a+(h.costoTotal||0),0);
+    const corrects = hist.filter(h=>h.tipo==='correctivo').length;
+    const prevents = hist.filter(h=>h.tipo==='preventivo').length;
+    const cliente = e.clienteNombre||e.razonSocial||String(e.clienteClave||e.almacen||'—');
+
+    // Especificaciones técnicas según línea
+    const specs = getSpecs(e.linea, e.modelo);
+
+    document.getElementById('m-eq-body').innerHTML=`
+    <!-- HEADER EQUIPO -->
+    <div style="background:var(--accent);color:#fff;padding:18px 20px;margin:-20px -20px 20px;border-radius:var(--r) var(--r) 0 0">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div>
+          <div style="font-size:11px;opacity:.6;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">Ficha de Equipo</div>
+          <div style="font-family:'Playfair Display',serif;font-size:19px;font-weight:700;line-height:1.3">${e.modelo||'Sin modelo'}</div>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+            ${bL(e.linea)} ${bC(e.centro)}
+            <span style="background:rgba(255,255,255,.15);color:#fff;padding:3px 8px;border-radius:20px;font-size:11px">${e.estado||'Operativo'}</span>
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:10px;opacity:.6;margin-bottom:3px">No. Serie</div>
+          <div style="font-family:monospace;font-size:15px;font-weight:700;background:rgba(255,255,255,.15);padding:4px 10px;border-radius:var(--r2)">${e.serie||'Sin serie'}</div>
+          <div style="font-size:10px;opacity:.6;margin-top:6px;margin-bottom:2px">Activo Fijo</div>
+          <div style="font-size:13px;font-weight:600">${e.activoFijo||'—'}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RESUMEN RÁPIDO -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px">
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r2);padding:12px;text-align:center">
+        <div style="font-size:20px;font-weight:700;font-family:'Playfair Display',serif;color:var(--text)">${hist.length}</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:2px">Servicios</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r2);padding:12px;text-align:center">
+        <div style="font-size:20px;font-weight:700;font-family:'Playfair Display',serif;color:var(--red)">${corrects}</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:2px">Correctivos</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r2);padding:12px;text-align:center">
+        <div style="font-size:20px;font-weight:700;font-family:'Playfair Display',serif;color:var(--green)">${prevents}</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:2px">Preventivos</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r2);padding:12px;text-align:center">
+        <div style="font-size:16px;font-weight:700;font-family:'Playfair Display',serif;color:var(--teal)">$${totalGastado.toLocaleString('es-MX',{maximumFractionDigits:0})}</div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:2px">Total invertido</div>
+      </div>
+    </div>
+
+    <!-- COLUMNAS PRINCIPALES -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
+
+      <!-- Columna 1: Datos del equipo -->
+      <div>
+        <div class="rs">
+          <div class="rst">📋 Datos del Equipo</div>
+          <table style="width:100%">
+            ${fr('Modelo',`<strong>${e.modelo||'-'}</strong>`)}
+            ${fr('No. de Serie',`<span style="font-family:monospace;color:var(--accent);font-weight:700">${e.serie||'Sin serie'}</span>`)}
+            ${fr('Activo Fijo',e.activoFijo||'—')}
+            ${fr('Material',e.material||e.descripcion||'—')}
+            ${fr('Línea',bL(e.linea))}
+            ${fr('Centro',CE[e.centro]||e.centro||'—')}
+          </table>
+        </div>
+        <div class="rs">
+          <div class="rst">🏨 Cliente Asignado</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${cliente}</div>
+          ${e.emailCliente?`<div style="font-size:11px;color:var(--teal)">✉️ ${e.emailCliente}</div>`:''}
+          ${e.telCliente?`<div style="font-size:11px;color:var(--text2);margin-top:3px">📞 ${e.telCliente}</div>`:''}
+          <div style="font-size:11px;color:var(--text3);margin-top:6px">Alm/Clave: ${String(e.clienteClave||e.almacen||'—')}</div>
+        </div>
+      </div>
+
+      <!-- Columna 2: Especificaciones técnicas -->
+      <div>
+        <div class="rs">
+          <div class="rst">⚙️ Especificaciones Técnicas</div>
+          <table style="width:100%">
+            ${specs.map(([k,v])=>fr(k,v)).join('')}
+          </table>
+        </div>
+        <div class="rs">
+          <div class="rst">🔧 Estado Actual</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <div style="width:10px;height:10px;border-radius:50%;background:var(--green);flex-shrink:0"></div>
+            <span style="font-size:13px;font-weight:600;color:var(--green)">Operativo</span>
+          </div>
+          ${ultimoServ?`
+            <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Último servicio:</div>
+            <div style="font-size:12px;font-weight:500">${fF(ultimoServ.creadoEn)}</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px">${ultimoServ.tecnicoNombre||'—'}</div>
+            <div style="margin-top:6px">${bT(ultimoServ.tipo)} ${bE(ultimoServ.estado)}</div>
+          `:`<div style="font-size:12px;color:var(--text3);font-style:italic">Sin servicios registrados</div>`}
+          <div style="margin-top:10px;padding:8px;background:${hist.length===0?'var(--amber-bg)':'var(--green-bg)'};border-radius:var(--r2)">
+            <div style="font-size:11px;font-weight:600;color:${hist.length===0?'var(--amber)':'var(--green)'}">
+              ${hist.length===0?'⚠️ Sin historial — requiere revisión':'✅ Equipo con historial registrado'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Columna 3: QR + Acción rápida -->
+      <div>
+        <div class="qrb" style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--text2);font-weight:600;text-align:center">Código QR del Equipo</div>
+          <div id="qr-ficha" style="background:#fff;padding:8px;border-radius:var(--r2);min-height:150px;display:flex;align-items:center;justify-content:center;width:100%"></div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;font-family:monospace">${e.serie||'Sin serie'}</div>
+          <button class="btn btn-g btn-s" onclick="window.print()" style="width:100%;justify-content:center">🖨 Imprimir QR</button>
+        </div>
+        <div class="rs">
+          <div class="rst">⏰ Plan Preventivo</div>
+          <div style="font-size:12px;margin-bottom:6px">${getPMInfo(e.linea)}</div>
+          ${ultimoServ?`<div style="font-size:11px;color:var(--text3)">Último PM: ${fF(ultimoServ.creadoEn)}</div>`:'<div style="font-size:11px;color:var(--amber);font-weight:600">⚠️ Sin PM registrado</div>'}
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORIAL COMPLETO -->
+    <div class="rs">
+      <div class="rst" style="display:flex;justify-content:space-between;align-items:center">
+        <span>📅 Historial de Servicios (${hist.length})</span>
+        ${hist.length?`<span style="font-size:11px;color:var(--text3)">Total invertido: <strong style="color:var(--green)">$${totalGastado.toLocaleString('es-MX')}</strong></span>`:''}
+      </div>
+      ${hist.length?`
+        <div style="max-height:200px;overflow-y:auto">
+          <table style="width:100%">
+            <thead><tr>
+              <th style="font-size:10px">Fecha</th><th style="font-size:10px">Tipo</th>
+              <th style="font-size:10px">Técnico</th><th style="font-size:10px">Descripción</th>
+              <th style="font-size:10px">Estado</th><th style="font-size:10px">Costo</th>
+            </tr></thead>
+            <tbody>${hist.map(h=>`<tr>
+              <td style="font-size:11px;white-space:nowrap">${fF(h.creadoEn)}</td>
+              <td>${bT(h.tipo)}</td>
+              <td style="font-size:11px">${h.tecnicoNombre||'—'}</td>
+              <td style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h.descripcion||'—'}</td>
+              <td>${bE(h.estado)}</td>
+              <td style="font-size:12px;font-weight:600;color:var(--green)">$${(h.costoTotal||0).toLocaleString('es-MX')}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+      `:'<div style="text-align:center;padding:16px;color:var(--text3);font-size:13px">Este equipo no tiene servicios registrados aún</div>'}
+    </div>`;
+
     oMod('m-equipo');
-    setTimeout(()=>gQR('qr-ficha',e.serie||'',e.modelo||'',160),300);
-  }catch(er){notif('Error: '+er.message,'err');}
+    setTimeout(()=>gQR('qr-ficha',e.serie||'',e.modelo||'',150),300);
+  }catch(er){notif('Error: '+er.message,'err');console.error(er);}
 }
 window.vEq=vEq;
-window.srvDesdeEq=function(){if(!eqSel)return;cMod('m-equipo');nOD(eqSel.serie||eqSel.id||'',eqSel.modelo||'',eqSel.centro||'',String(eqSel.clienteClave||eqSel.almacen||''));};
+window.srvDesdeEq=function(){
+  if(!eqSel)return;
+  cMod('m-equipo');
+  const cliente=eqSel.clienteNombre||eqSel.razonSocial||String(eqSel.clienteClave||eqSel.almacen||'');
+  nOD(eqSel.serie||eqSel.id||'',eqSel.modelo||'',eqSel.centro||'',cliente);
+};
 
+// Especificaciones técnicas por línea
+function getSpecs(linea, modelo){
+  const base = [
+    ['Línea', linea||'—'],
+    ['Tipo caldera', linea==='Superautomatica'?'Termo-bloque':'Convencional'],
+    ['Capacidad', linea==='Filtrado'?'1.8 L':'1–2 tazas/min'],
+    ['Voltaje', '127V / 60Hz'],
+    ['Consumo', linea==='Superautomatica'?'1,450 W':'900 W'],
+    ['Ciclo PM', getPMInfo(linea)],
+  ];
+  if(linea==='Superautomatica')base.push(['Molienda integrada','Sí'],['Pantalla','Táctil']);
+  if(linea==='Habitacion')base.push(['Uso','Habitación hotelera'],['Filtro','Permanente']);
+  if(linea==='Filtrado')base.push(['Jarra','Vidrio / Termal'],['Programable','Sí']);
+  return base;
+}
+function getPMInfo(linea){
+  const m={Habitacion:'Cada 6 meses',Superautomatica:'Cada 3 meses',Filtrado:'Cada 6 meses',Semiautomatica:'Cada 4 meses',Molino:'Cada 3 meses',Accesorios:'Anual'};
+  return m[linea]||'Cada 6 meses';
+}
 // ── ÓRDENES ──
 async function cOrd(f=''){
   if(f)ordF=f;
