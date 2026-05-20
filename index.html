@@ -291,9 +291,11 @@ canvas{display:block;width:100%}
 
 /* Print */
 @media print{
-  .sidebar,.topbar,.mob-nav,.mob-hdr,.mdf,.btn{display:none!important}
-  .mo.open{position:static;background:none;padding:0}
-  .md{box-shadow:none;border:none;max-height:none}
+  .sidebar,.topbar,.mob-nav,.mob-hdr,.mdf,.btn,.fpb,.sh .btn,.card:not(#qm-grid):not(.card:has(#qm-grid)){display:none!important}
+  #pg-qr-masivo .card:first-child{display:none!important}
+  .d-content{padding:0!important;overflow:visible!important}
+  #qm-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))!important;gap:8px!important;padding:8px!important}
+  body{overflow:visible!important}html{overflow:visible!important}
 }
 </style>
 </head>
@@ -346,6 +348,7 @@ canvas{display:block;width:100%}
       <div class="sb-item" data-nav="preventivos"        onclick="goTo('preventivos')"><span class="sb-ico">🔄</span>Plan Preventivo</div>
       <div class="sb-section">Análisis</div>
       <div class="sb-item gerente-only" data-nav="reportes" onclick="goTo('reportes')"><span class="sb-ico">📊</span>Reportes y Excel</div>
+      <div class="sb-item" data-nav="qr-masivo"            onclick="goTo('qr-masivo')"><span class="sb-ico">⬡</span>QR en Masa</div>
       <div class="sb-section">Cuenta</div>
       <div class="sb-item" onclick="doLogout()"><span class="sb-ico">→</span>Cerrar Sesión</div>
     </nav>
@@ -520,13 +523,37 @@ canvas{display:block;width:100%}
         </div>
       </div>
 
+      <!-- QR EN MASA -->
+      <div class="pg" id="pg-qr-masivo">
+        <div class="card" style="margin-bottom:16px">
+          <div class="sh">
+            <div><div class="sh-ttl">⬡ Generador de QR en Masa</div><div class="sh-sub">Genera e imprime códigos QR para pegar en los equipos</div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:14px;align-items:flex-end">
+            <div class="fgp"><label class="flbl">Centro</label><select class="fc" id="qm-centro"><option value="">Todos los centros</option></select></div>
+            <div class="fgp"><label class="flbl">Línea</label><select class="fc" id="qm-linea"><option value="">Todas las líneas</option><option>Habitacion</option><option>Superautomatica</option><option>Filtrado</option><option>Semiautomatica</option><option>Molino</option><option>Accesorios</option></select></div>
+            <div class="fgp"><label class="flbl">Tamaño</label><select class="fc" id="qm-size"><option value="80">Pequeño — etiqueta 3×3</option><option value="120" selected>Mediano — etiqueta 5×5</option><option value="160">Grande — hoja carta</option></select></div>
+            <button class="btn btn-p" onclick="generarQRMasa()" style="height:38px;white-space:nowrap">⬡ Generar QR</button>
+          </div>
+          <div id="qm-status" style="margin-top:10px;font-size:12px;color:var(--text3)"></div>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--cream)">
+            <span id="qm-count" style="font-size:13px;font-weight:600;color:var(--text)"></span>
+            <button class="btn btn-gold" onclick="window.print()" id="btn-qm-print" style="display:none">🖨 Imprimir / Guardar PDF</button>
+          </div>
+          <div id="qm-grid" style="padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px">
+            <div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--text3)">
+              <div style="font-size:40px;margin-bottom:10px">⬡</div>
+              Selecciona filtros y haz clic en "Generar QR"
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
-
-<!-- ═══════════════════════════════════
-     MOBILE — TÉCNICO EN CAMPO
-═══════════════════════════════════ -->
 <div id="s-mob" class="scr">
   <div class="mob-hdr">
     <div class="mob-logo">
@@ -778,6 +805,11 @@ window.goTo=function(id){
   if(id==='ordenes')cOrd();
   if(id==='preventivos')rPrev();
   if(id==='reportes')cRep();
+  if(id==='qr-masivo'){
+    // Poblar select de centros del módulo QR masivo
+    const sel=elID('qm-centro');
+    if(sel&&sel.options.length<=1){Object.entries(CE).forEach(([k,v])=>{const o=document.createElement('option');o.value=k;o.textContent=v;sel.appendChild(o);});}
+  }
 };
 
 // ── DASHBOARD ──
@@ -812,13 +844,13 @@ async function cEq(){
     elID('t-eq').innerHTML=it.length?it.map(e=>`<tr>
       <td style="color:var(--text3);font-size:12px">${e.no||'-'}</td>
       <td><span style="font-family:monospace;font-size:11px">${e.activoFijo||'-'}</span></td>
-      <td style="max-width:200px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500">${e.modelo||'-'}</div></td>
-      <td><span style="font-family:monospace;font-size:12px;color:var(--caramel);font-weight:700">${e.serie||e.id||'-'}</span></td>
+      <td style="max-width:200px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500">${getModelo(e)||'-'}</div></td>
+      <td><span style="font-family:monospace;font-size:12px;color:var(--caramel);font-weight:700">${getSerie(e)||'-'}</span></td>
       <td>${bL(e.linea)}</td><td>${bC(e.centro)}</td>
       <td><span class="bdg bg">Operativo</span></td>
       <td><div class="g4">
         <button class="btn btn-g btn-sm" onclick="vEq('${e.id}','eq')">Ver ficha</button>
-        <button class="btn-icon btn-sm" onclick="aQR('${esc(e.serie||e.id)}','${esc(e.modelo)}')" title="QR">⬡</button>
+        <button class="btn-icon btn-sm" onclick="aQR('${esc(getSerie(e))}','${esc(getModelo(e))}')" title="QR">⬡</button>
       </div></td></tr>`).join(''):`<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3)">Sin resultados para estos filtros</td></tr>`;
   }catch(er){elID('t-eq').innerHTML=`<tr><td colspan="8" style="color:var(--danger);padding:16px">Error: ${er.message}</td></tr>`;}
 }
@@ -856,12 +888,12 @@ async function cCl(){
         <td style="color:var(--text3);font-size:12px">${c.no||'-'}</td>
         <td><span style="font-family:monospace;font-size:11px">${c.activoFijo||'-'}</span></td>
         <td style="max-width:170px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500">${c.modelo||'-'}</div></td>
-        <td><span style="font-family:monospace;font-size:12px;color:var(--caramel);font-weight:700">${c.serie||c.id||'-'}</span></td>
+        <td><span style="font-family:monospace;font-size:12px;color:var(--caramel);font-weight:700">${getSerie(c)||'-'}</span></td>
         <td>${bL(c.linea)}</td><td>${bC(c.centro)}</td>
         <td style="min-width:120px">${clienteHTML}</td>
         <td><div class="g4">
           <button class="btn btn-g btn-sm" onclick="vEq('${c.id}','cl')">Ver ficha</button>
-          <button class="btn btn-p btn-sm" onclick="nOD('${esc(c.serie||c.id)}','${esc(c.modelo)}','${c.centro||''}','${esc(String(nm||clave||''))}')">+ Servicio</button>
+          <button class="btn btn-p btn-sm" onclick="nOD('${esc(getSerie(c))}','${esc(getModelo(c))}','${c.centro||''}','${esc(String(nm||clave||''))}')">+ Servicio</button>
         </div></td></tr>`;}).join(''):`<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3)">Sin resultados</td></tr>`;
   }catch(er){elID('t-cl').innerHTML=`<tr><td colspan="8" style="color:var(--danger);padding:16px">Error: ${er.message}</td></tr>`;}
 }
@@ -889,7 +921,7 @@ async function vEq(id,col){
       <div style="font-size:10px;color:var(--gold2);letter-spacing:.15em;text-transform:uppercase;font-weight:600">Ficha de Equipo</div>
       <div class="eq-hero-modelo">${e.modelo||'Sin modelo'}</div>
       <div class="g8">
-        <div class="eq-serie-pill">⬡ ${e.serie||'Sin serie'}</div>
+        <div class="eq-serie-pill">⬡ ${getSerie(e)||'Sin serie'}</div>
         ${bL(e.linea)} ${bC(e.centro)}
       </div>
     </div>
@@ -903,8 +935,8 @@ async function vEq(id,col){
       <div>
         <div class="fsec"><div class="fsec-ttl">📋 Datos del Equipo</div>
           <table style="width:100%">
-            ${fr('Modelo',`<strong>${e.modelo||'-'}</strong>`)}
-            ${fr('No. de Serie',`<span style="font-family:monospace;color:var(--caramel);font-weight:700">${e.serie||'Sin serie'}</span>`)}
+            ${fr('Modelo',`<strong>${getModelo(e)||'-'}</strong>`)}
+            ${fr('No. de Serie',`<span style="font-family:monospace;color:var(--caramel);font-weight:700">${getSerie(e)||'Sin serie'}</span>`)}
             ${fr('Activo Fijo',e.activoFijo||'—')}
             ${fr('Material',e.material||e.descripcion||'—')}
             ${fr('Línea',bL(e.linea))}
@@ -933,7 +965,7 @@ async function vEq(id,col){
         <div class="qrb" style="margin-bottom:12px">
           <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.1em;text-transform:uppercase">Código QR del Equipo</div>
           <div id="qr-ficha" style="background:#fff;padding:8px;border-radius:var(--r3);min-height:150px;display:flex;align-items:center;justify-content:center;width:100%"></div>
-          <div style="font-size:10px;color:var(--text3);font-family:monospace">${e.serie||'Sin serie'}</div>
+          <div style="font-size:10px;color:var(--text3);font-family:monospace">${getSerie(e)||'Sin serie'}</div>
         </div>
         <div class="fsec"><div class="fsec-ttl">✅ Estado del Equipo</div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -953,7 +985,7 @@ async function vEq(id,col){
     :'<div style="text-align:center;padding:18px;color:var(--text3);font-size:13px">Este equipo no tiene servicios registrados aún</div>'}
     </div>`;
     oMod('m-equipo');
-    setTimeout(()=>gQR('qr-ficha',e.serie||'',e.modelo||'',148),300);
+    setTimeout(()=>gQR('qr-ficha',getSerie(e)||'',getModelo(e)||'',148),300);
   }catch(er){notif('Error: '+er.message,'err');console.error(er);}
 }
 window.vEq=vEq;
@@ -1072,7 +1104,7 @@ window.exportEquipos=async function(){
     const wb=XLSX.utils.book_new();
     const rows=[['CAFIVER — Equipos por Centro',centro?CE[centro]:' Todos los centros','','','','','',''],['Generado:',new Date().toLocaleDateString('es-MX'),'','','','','',''],[''],
       ['No.','Activo Fijo','Modelo','No. Serie','Línea','Centro','Cliente / Almacén','Estado']];
-    it.forEach((e,i)=>rows.push([e.no||i+1,e.activoFijo||'',e.modelo||'',e.serie||'',e.linea||'',CE[e.centro]||e.centro||'',e.clienteNombre||e.razonSocial||String(e.clienteClave||e.almacen||''),'Operativo']));
+    it.forEach((e,i)=>rows.push([e.no||i+1,e.activoFijo||'',getModelo(e)||'',getSerie(e)||'',e.linea||'',CE[e.centro]||e.centro||'',e.clienteNombre||e.razonSocial||String(e.clienteClave||e.almacen||''),'Operativo']));
     const ws=XLSX.utils.aoa_to_sheet(rows);
     ws['!cols']=[{wch:8},{wch:12},{wch:32},{wch:16},{wch:18},{wch:18},{wch:28},{wch:12}];
     XLSX.utils.book_append_sheet(wb,ws,'Equipos');
@@ -1119,10 +1151,10 @@ function rFrm(cid){
   <div class="fsec"><div class="fsec-ttl">📍 Identificación del Equipo</div>
     <div class="fg">
       <div class="fgp"><label class="flbl">No. de Serie</label>
-        <div class="g4"><input class="fc" id="fs-s" value="${pre.serie||''}" placeholder="Ej. DOCI05190" style="flex:1"><button class="btn btn-g btn-sm" onclick="aCS()">Autocompletar</button></div>
+        <div class="g4"><input class="fc" id="fs-s" value="${prgetSerie(e)||''}" placeholder="Ej. DOCI05190" style="flex:1"><button class="btn btn-g btn-sm" onclick="aCS()">Autocompletar</button></div>
       </div>
       <div class="fgp"><label class="flbl">Activo Fijo</label><input class="fc" id="fs-a" value="${pre.activo||''}" placeholder="Ej. 848539"></div>
-      <div class="fgp fp-full"><label class="flbl">Modelo</label><input class="fc" id="fs-m" value="${pre.modelo||''}" placeholder="Se autocompleta al buscar No. Serie"></div>
+      <div class="fgp fp-full"><label class="flbl">Modelo</label><input class="fc" id="fs-m" value="${prgetModelo(e)||''}" placeholder="Se autocompleta al buscar No. Serie"></div>
       <div class="fgp"><label class="flbl">Línea</label><select class="fc" id="fs-l"><option>Habitacion</option><option>Superautomatica</option><option>Filtrado</option><option>Semiautomatica</option><option>Molino</option><option>Accesorios</option><option>Café soluble</option></select></div>
       <div class="fgp"><label class="flbl">Centro</label><select class="fc" id="fs-ce">${Object.entries(CE).map(([k,v])=>`<option value="${k}"${k===pre.centro?' selected':''}>${v}</option>`).join('')}</select></div>
     </div>
@@ -1198,7 +1230,7 @@ window.aCS=async function(){
     if(s.empty){notif('Serie no encontrada en el sistema','warn');return;}
     const e=s.docs[0].data();
     elID('fs-a').value=e.activoFijo||'';
-    elID('fs-m').value=e.modelo||'';
+    elID('fs-m').value=getModelo(e)||'';
     elID('fs-l').value=e.linea||'Habitacion';
     elID('fs-ce').value=e.centro||'EUCA';
     const nm=e.clienteNombre||e.razonSocial||String(e.clienteClave||e.almacen||'');
@@ -1380,12 +1412,12 @@ window.mBuscar=async function(){
     const nm=e.clienteNombre||e.razonSocial||String(e.clienteClave||e.almacen||'—');
     res.innerHTML=`<div class="mcard" style="border-top:3px solid var(--success)">
       <div style="font-size:11px;color:var(--success);font-weight:700;letter-spacing:.08em;margin-bottom:6px">✅ EQUIPO ENCONTRADO</div>
-      <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:700;margin-bottom:8px">${e.modelo||'-'}</div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:700;margin-bottom:8px">${getModelo(e)||'-'}</div>
       <div class="g8" style="margin-bottom:10px">${bL(e.linea)} ${bC(e.centro)}</div>
       <div style="font-size:12px;color:var(--text2);margin-bottom:4px">Serie: <span style="font-family:monospace;color:var(--caramel);font-weight:700">${e.serie||'-'}</span></div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${nm!=='—'?'Cliente: '+nm:''}</div>
       <button class="mbtn gold" style="margin-bottom:8px" onclick="mVerFicha('${eid}','${ecol}')">📋 Ver Ficha Completa</button>
-      <button class="mbtn" onclick="mNOD('${esc(e.serie||'')}','${esc(e.modelo)}','${e.centro||''}','${esc(String(nm))}')">⚡ Registrar Servicio Rápido</button>
+      <button class="mbtn" onclick="mNOD('${esc(getSerie(e)||'')}','${esc(getModelo(e))}','${e.centro||''}','${esc(String(nm))}')">⚡ Registrar Servicio Rápido</button>
     </div>`;
   }catch(er){res.innerHTML=`<div class="mcard" style="color:var(--danger)">Error: ${er.message}</div>`;}
 };
@@ -1410,7 +1442,7 @@ async function mVerFicha(id,col){
       <div style="font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:700;margin-bottom:8px">${e.modelo||'Sin modelo'}</div>
       <div class="g8">${bL(e.linea)} ${bC(e.centro)}</div>
       <div style="margin-top:10px;background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);border-radius:20px;padding:4px 12px;display:inline-flex;align-items:center;gap:6px">
-        <span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--gold2)">${e.serie||'Sin serie'}</span>
+        <span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--gold2)">${getSerie(e)||'Sin serie'}</span>
       </div>
     </div>
     <div class="msts">
@@ -1431,7 +1463,7 @@ async function mVerFicha(id,col){
       ${hist.length?hist.slice(0,5).map(h=>`<div style="padding:9px 0;border-bottom:1px solid var(--border)"><div class="g8" style="justify-content:space-between;margin-bottom:3px"><span style="font-size:11px;color:var(--text3)">${fF(h.creadoEn)}</span>${bT(h.tipo)}</div><div style="font-size:12px;font-weight:500;margin-bottom:3px">${h.descripcion||'—'}</div><div class="g8">${bE(h.estado)}<span style="font-size:12px;font-weight:700;color:var(--success)">$${(h.costoTotal||0).toLocaleString('es-MX')}</span></div></div>`).join('')
     :'<p style="color:var(--text3);font-size:13px;text-align:center;padding:10px">Sin servicios registrados</p>'}
     </div>
-    <button class="mbtn gold" style="font-size:15px;padding:16px" onclick="mNOD('${esc(e.serie||'')}','${esc(e.modelo)}','${e.centro||''}','${esc(nm)}')">📋 Registrar Servicio</button>
+    <button class="mbtn gold" style="font-size:15px;padding:16px" onclick="mNOD('${esc(getSerie(e)||'')}','${esc(getModelo(e))}','${e.centro||''}','${esc(nm)}')">📋 Registrar Servicio</button>
     <div style="height:16px"></div>`;
   }catch(er){body.innerHTML=`<div class="mcard" style="color:var(--danger)">Error: ${er.message}</div>`;}
 }
@@ -1468,8 +1500,8 @@ function mRF(){
   const pre=window._mp||{};
   c.innerHTML=`
   <div class="mcard"><div class="mctit">📍 Datos del Equipo</div>
-    <div class="fgp" style="margin-bottom:10px"><label class="flbl">No. de Serie</label><div class="g4"><input class="fc" id="mfs-s" value="${pre.serie||''}" placeholder="Ej. DOCI05190" style="flex:1"><button class="btn btn-g btn-sm" onclick="mAC()">Auto</button></div></div>
-    <div class="fgp" style="margin-bottom:10px"><label class="flbl">Modelo</label><input class="fc" id="mfs-m" value="${pre.modelo||''}" placeholder="Se autocompleta"></div>
+    <div class="fgp" style="margin-bottom:10px"><label class="flbl">No. de Serie</label><div class="g4"><input class="fc" id="mfs-s" value="${prgetSerie(e)||''}" placeholder="Ej. DOCI05190" style="flex:1"><button class="btn btn-g btn-sm" onclick="mAC()">Auto</button></div></div>
+    <div class="fgp" style="margin-bottom:10px"><label class="flbl">Modelo</label><input class="fc" id="mfs-m" value="${prgetModelo(e)||''}" placeholder="Se autocompleta"></div>
     <div class="fgp"><label class="flbl">Centro</label><select class="fc" id="mfs-ce">${Object.entries(CE).map(([k,v])=>`<option value="${k}"${k===pre.centro?' selected':''}>${v}</option>`).join('')}</select></div>
   </div>
   <div class="mcard"><div class="mctit">🏨 Cliente</div>
@@ -1503,7 +1535,7 @@ function mcr(l,id){return`<div style="display:flex;justify-content:space-between
 window.mCT=function(){const s=(parseFloat(elID('mc-mo')?.value)||0)+(parseFloat(elID('mc-rf')?.value)||0)+(parseFloat(elID('mc-vi')?.value)||0);const t=elID('mc-t');if(t)t.textContent='$'+s.toLocaleString('es-MX',{minimumFractionDigits:2});};
 window.mAC=async function(){
   const sv=elID('mfs-s')?.value?.trim();if(!sv)return;
-  try{let s=await getDocs(query(collection(db,'clientesEquipo'),where('serie','==',sv),limit(1)));if(s.empty)s=await getDocs(query(collection(db,'equipos'),where('serie','==',sv),limit(1)));if(s.empty){notif('No encontrado','warn');return;}const e=s.docs[0].data();elID('mfs-m').value=e.modelo||'';elID('mfs-ce').value=e.centro||'EUCA';const nm=e.clienteNombre||e.razonSocial||String(e.clienteClave||e.almacen||'');if(nm)elID('mfs-cl').value=nm;notif('✓ Datos cargados automáticamente');}catch(e){notif('Error','err');}
+  try{let s=await getDocs(query(collection(db,'clientesEquipo'),where('serie','==',sv),limit(1)));if(s.empty)s=await getDocs(query(collection(db,'equipos'),where('serie','==',sv),limit(1)));if(s.empty){notif('No encontrado','warn');return;}const e=s.docs[0].data();elID('mfs-m').value=getModelo(e)||'';elID('mfs-ce').value=e.centro||'EUCA';const nm=e.clienteNombre||e.razonSocial||String(e.clienteClave||e.almacen||'');if(nm)elID('mfs-cl').value=nm;notif('✓ Datos cargados automáticamente');}catch(e){notif('Error','err');}
 };
 window.mGeoC=function(){if(!navigator.geolocation){notif('GPS no disponible','warn');return;}const st=elID('m-geo-s');st.textContent='Obteniendo ubicación…';navigator.geolocation.getCurrentPosition(p=>{window._mLat=p.coords.latitude.toFixed(6);window._mLng=p.coords.longitude.toFixed(6);st.textContent=`✓ ${window._mLat}, ${window._mLng} (±${Math.round(p.coords.accuracy)}m)`;st.style.color='var(--success)';},(e)=>{st.textContent='No se pudo obtener';st.style.color='var(--warning)';});};
 
@@ -1528,6 +1560,14 @@ window.mFinalizar=async function(){
 };
 
 // ── HELPERS ──
+// Normalizar campo serie — el importador guarda como 'serie', el docId también puede ser la serie
+function getSerie(e) {
+  return e.serie || e['Número de serie'] || e['numero_de_serie'] || e.id || '';
+}
+function getModelo(e) {
+  return e.modelo || e['Texto breve de material'] || e.descripcion || '';
+}
+
 function bT(t){return t==='correctivo'?'<span class="bdg br">🔧 Correctivo</span>':'<span class="bdg bg">🔄 Preventivo</span>';}
 function bE(e){return`<span class="bdg ${{'terminado':'bg','en proceso':'ba','pendiente':'bk','urgente':'br'}[e]||'bk'}">${e||'pendiente'}</span>`;}
 function bL(l){const m={Habitacion:'bb',Superautomatica:'bp',Filtrado:'bt',Semiautomatica:'ba',Molino:'bk',Accesorios:'bk','Café soluble':'ba'};return`<span class="bdg ${m[l]||'bk'}">${l||'-'}</span>`;}
@@ -1538,6 +1578,71 @@ function fF(ts){if(!ts)return'—';if(ts.toDate)return ts.toDate().toLocaleDateS
 function esc(s){return String(s||'').replace(/'/g,'\u2019').replace(/"/g,'\u201d').replace(/\\/g,'').replace(/\n/g,' ').slice(0,80);}
 function notif(msg,type=''){const n=elID('notif');n.textContent=msg;n.className='notif'+(type==='err'?' err':type==='warn'?' warn':'');n.classList.add('on');clearTimeout(window._nt);window._nt=setTimeout(()=>n.classList.remove('on'),4800);}
 window.notif=notif;
+
+// ── QR EN MASA ──
+// Poblar select de centros en QR masivo también
+['sl-eq-ce','sl-cl-ce','r-centro-sel','qm-centro'].forEach(id=>{const s=elID(id);if(!s)return;if(s.options.length>1)return;Object.entries(CE).forEach(([k,v])=>{const o=document.createElement('option');o.value=k;o.textContent=v;s.appendChild(o);});});
+
+window.generarQRMasa=async function(){
+  const centro=elID('qm-centro')?.value||'';
+  const linea=elID('qm-linea')?.value||'';
+  const size=parseInt(elID('qm-size')?.value||'120');
+  const grid=elID('qm-grid');
+  const status=elID('qm-status');
+  const printBtn=elID('btn-qm-print');
+  const countEl=elID('qm-count');
+  grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--text3)">Cargando equipos…</div>';
+  status.textContent='Consultando Firestore…';
+  printBtn.style.display='none';
+  try{
+    let cs=[];
+    if(centro)cs.push(where('centro','==',centro));
+    if(linea)cs.push(where('linea','==',linea));
+    cs.push(limit(300));
+    // Buscar en clientesEquipo primero (tienen cliente asignado), luego en equipos
+    const [s1,s2]=await Promise.all([
+      getDocs(query(collection(db,'clientesEquipo'),...cs)),
+      getDocs(query(collection(db,'equipos'),...cs))
+    ]);
+    // Combinar sin duplicados por serie
+    const seen=new Set();
+    const items=[];
+    [...s1.docs,...s2.docs].forEach(d=>{
+      const e={id:d.id,...d.data()};
+      const sv=getSerie(e);
+      if(!seen.has(sv)){seen.add(sv);items.push(e);}
+    });
+    if(!items.length){grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--text3)">Sin equipos para estos filtros</div>';status.textContent='';return;}
+    countEl.textContent=`${items.length} equipos`;
+    status.textContent=`Generando ${items.length} códigos QR…`;
+    grid.innerHTML='';
+    // Generar QRs en lotes para no bloquear UI
+    const BATCH=20;
+    for(let i=0;i<items.length;i+=BATCH){
+      await new Promise(r=>setTimeout(r,0)); // yield para no bloquear
+      items.slice(i,Math.min(i+BATCH,items.length)).forEach(e=>{
+        const sv=getSerie(e);
+        const mod=getModelo(e);
+        const div=document.createElement('div');
+        div.style.cssText='background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;break-inside:avoid';
+        div.innerHTML=`
+          <div id="qrm-${sv.replace(/\W/g,'_')}" style="display:flex;align-items:center;justify-content:center;margin-bottom:8px"></div>
+          <div style="font-family:monospace;font-size:10px;font-weight:700;color:var(--caramel);word-break:break-all;margin-bottom:3px">${sv||'Sin serie'}</div>
+          <div style="font-size:9px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${mod||'-'}</div>
+          <div style="font-size:9px;color:var(--text3)">${e.centro||''}</div>`;
+        grid.appendChild(div);
+        if(sv){
+          try{new QRCode(div.querySelector(`#qrm-${sv.replace(/\W/g,'_')}`),{text:`CAFIVER|SERIE:${sv}|MODELO:${mod}`,width:size,height:size,colorDark:'#1c0f05',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});}
+          catch(qe){}
+        }
+      });
+      status.textContent=`Generando QR… ${Math.min(i+BATCH,items.length)} / ${items.length}`;
+    }
+    status.textContent=`✅ ${items.length} QR generados${centro?' — '+CE[centro]:''}${linea?' · '+linea:''}`;
+    printBtn.style.display='inline-flex';
+    notif(`✅ ${items.length} códigos QR listos para imprimir`);
+  }catch(er){grid.innerHTML=`<div style="grid-column:1/-1;color:var(--danger);padding:20px">Error: ${er.message}</div>`;status.textContent='';notif('Error: '+er.message,'err');}
+};
 </script>
 </body>
 </html>
