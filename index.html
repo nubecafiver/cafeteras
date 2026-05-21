@@ -733,10 +733,12 @@ function renderDashboard(){
 // ══ EQUIPOS ══
 function renderEquipos(){
   var w=document.getElementById('view-equipos');if(!w)return;
-  var data=equipos.filter(function(e){
-    if(eqFiltros.linea&&e.linea!==eqFiltros.linea)return false;
+  // Usar clientesEquipo que tiene linea, serie y modelo completos
+  var srcData = clientes.length > equipos.length ? clientes : equipos;
+  var data=srcData.filter(function(e){
+    if(eqFiltros.linea&&(e.linea||'').trim()!==eqFiltros.linea.trim())return false;
     if(eqFiltros.centro&&e.centro!==eqFiltros.centro)return false;
-    if(eqFiltros.q){var q=eqFiltros.q.toLowerCase();if(!(String(e.activoFijo||'').includes(q)||String(e.serie||'').toLowerCase().includes(q)||(e.modelo||'').toLowerCase().includes(q)))return false;}
+    if(eqFiltros.q){var q=eqFiltros.q.toLowerCase();var sv=String(e.serie||e['Número de serie']||e['Numero de serie']||'').toLowerCase();if(!(String(e.activoFijo||'').includes(q)||sv.includes(q)||(e.modelo||'').toLowerCase().includes(q)))return false;}
     return true;
   });
   w.innerHTML=
@@ -757,7 +759,7 @@ function renderEquipos(){
       +'<td style="color:#9aa0a6;font-size:11px">'+e.no+'</td>'
       +'<td><span style="font-family:monospace;font-weight:700;color:#1a73e8">'+e.activoFijo+'</span></td>'
       +'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+e.modelo+'</td>'
-      +'<td style="font-family:monospace;font-size:11px">'+e.serie+'</td>'
+      +'<td style="font-family:monospace;font-size:11px">'+(e.serie||'—')+'</td>'
       +'<td>'+lbl(e.linea)+'</td>'
       +'<td>'+bCe(e.centro)+'</td>'
       +'<td><div style="display:flex;gap:3px">'
@@ -794,7 +796,7 @@ function renderClientes(){
       +'<td style="color:#9aa0a6;font-size:11px">'+c.no+'</td>'
       +'<td><span style="font-family:monospace;font-weight:700;color:#1a73e8">'+c.activoFijo+'</span></td>'
       +'<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+c.modelo+'</td>'
-      +'<td style="font-family:monospace;font-size:11px">'+c.serie+'</td>'
+      +'<td style="font-family:monospace;font-size:11px">'+(c.serie||'—')+'</td>'
       +'<td>'+lbl(c.linea)+'</td>'
       +'<td>'+bCe(c.centro)+'</td>'
       +'<td style="font-size:12px;font-weight:500">'+(c.clienteNombre||c.razonSocial||String(c.clienteClave||c.almacen||'—'))+'</td>'
@@ -810,8 +812,8 @@ function renderClientes(){
 
 // ══ PANEL LATERAL ══
 function openPanel(docId, col){
-  var colName = col==='cl' ? clientes : equipos;
-  var e = colName.find(function(x){return x.id===docId;});
+  // Buscar en ambas colecciones
+  var e = clientes.find(function(x){return x.id===docId;}) || equipos.find(function(x){return x.id===docId;});
   if(!e){toast('Equipo no encontrado');return;}
   openEqId = docId;
   document.getElementById('dp-title').textContent = e.modelo||'Equipo';
@@ -849,7 +851,7 @@ function dpTab(tab, eObj, col){
       +'</div></div></div>'
       +'<div class="dp-sec-t">Datos del equipo</div>'
       +dpRow('Activo Fijo','<strong style="color:#1a73e8;font-family:monospace">'+e.activoFijo+'</strong>')
-      +dpRow('No. de Serie','<span style="font-family:monospace">'+e.serie+'</span>')
+      +dpRow('No. de Serie','<span style="font-family:monospace">'+(e.serie||'—')+'</span>')
       +dpRow('Modelo',e.modelo)
       +dpRow('Línea',lbl(e.linea))
       +dpRow('Centro',bCe(e.centro)+' — '+(CENTROS[e.centro]||e.centro||'—'))
