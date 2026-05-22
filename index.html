@@ -748,41 +748,94 @@ function renderDashboard(){
 // ══ EQUIPOS ══
 function renderEquipos(){
   var w=document.getElementById('view-equipos');if(!w)return;
-  var data=equipos.filter(function(e){
-    if(eqFiltros.linea&&e.linea!==eqFiltros.linea)return false;
-    if(eqFiltros.centro&&e.centro!==eqFiltros.centro)return false;
-    if(eqFiltros.q){var q=eqFiltros.q.toLowerCase();if(!(String(e.activoFijo||'').includes(q)||String(e.serie||'').toLowerCase().includes(q)||(e.modelo||'').toLowerCase().includes(q)))return false;}
-    return true;
-  });
   w.innerHTML=
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
-    +'<button class="btn btn-sm'+(eqFiltros.linea===''?' btn-blue':'')+'" onclick="eqFiltros.linea=\'\';renderEquipos()">Todos</button>'
-    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" onclick="eqFiltros.linea=\''+l+'\';renderEquipos()">'+l+'</button>';}).join('')
+    +'<button class="btn btn-sm'+(eqFiltros.linea===''?' btn-blue':'')+'" onclick="eqFiltros.linea=\'\';eqFiltros.q=\'\';buscarEquiposFirestore()">Todos</button>'
+    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" onclick="eqFiltros.linea=\''+l+'\';buscarEquiposFirestore()">'+l+'</button>';}).join('')
     +'</div>'
     +'<div class="tbl-box">'
-    +'<div class="tbl-hdr"><span class="tbl-hdr-title">Universo de Equipos — '+data.length.toLocaleString()+' registros</span>'
+    +'<div class="tbl-hdr"><span class="tbl-hdr-title">Universo de Equipos</span>'
     +'<div class="tbl-tools">'
-    +'<input class="fi-sm" type="text" placeholder="🔍 No. Activo, Serie, Modelo..." style="width:230px" value="'+eqFiltros.q+'" oninput="eqFiltros.q=this.value;renderEquipos()">'
-    +'<select class="fi-sm" onchange="eqFiltros.centro=this.value;renderEquipos()">'
+    +'<input class="fi-sm" type="text" id="eq-q" placeholder="&#128269; No. Activo, Serie, Modelo..." style="width:230px" value="'+eqFiltros.q+'" oninput="eqFiltros.q=this.value;buscarEquiposFirestore()">'
+    +'<select class="fi-sm" onchange="eqFiltros.centro=this.value;buscarEquiposFirestore()">'
     +'<option value="">Todos los centros</option>'
-    +Object.entries(CENTROS).map(function(c){return'<option value="'+c[0]+'"'+(eqFiltros.centro===c[0]?' selected':'')+'>'+c[1]+'</option>';}).join('')
+    +Object.entries(CENTROS).map(function(ce){return'<option value="'+ce[0]+'"'+(eqFiltros.centro===ce[0]?' selected':'')+'>'+ce[1]+'</option>';}).join('')
     +'</select></div></div>'
-    +'<div style="overflow-x:auto"><table><thead><tr><th>No.</th><th>Activo Fijo</th><th>Modelo</th><th>No. Serie</th><th>Línea</th><th>Centro</th><th>Acciones</th></tr></thead><tbody>'
-    +(data.length?data.slice(0,50).map(function(e){return'<tr style="cursor:pointer" ondblclick="openPanel(e.id,\'eq\')">'
-      +'<td style="color:#9aa0a6;font-size:11px">'+e.no+'</td>'
+    +'<div style="overflow-x:auto"><table><thead><tr><th>No.</th><th>Activo Fijo</th><th>Modelo</th><th>No. Serie</th><th>Linea</th><th>Centro</th><th>Acciones</th></tr></thead>'
+    +'<tbody id="eq-tbody"><tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Selecciona una linea o escribe un activo fijo para buscar</td></tr></tbody>'
+    +'</table></div>'
+    +'<div id="eq-footer" style="padding:10px 16px;font-size:12px;color:#9aa0a6;text-align:center;border-top:1px solid #e8eaed"></div>'
+    +'</div>';
+  if(eqFiltros.linea||eqFiltros.q||eqFiltros.centro)buscarEquiposFirestore();
+}
+// ══ CLIENTES ══
+function buscarEquiposFirestore(){
+  var tbody=document.getElementById('eq-tbody');
+  if(tbody)tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px;color:#9aa0a6">Buscando...</td></tr>';
+  var q=(eqFiltros.q||'').trim();
+  var col=db.collection('clientesEquipo');
+  var queries=[];
+  if(eqFiltros.linea){
+    var qr=col.where('linea','==',eqFiltros.linea);
+    if(eqFiltros.centro)qr=qr.where('centro','==',eqFiltros.centro);
+    queries.push(qr.limit(200).get());
+  }
+  if(q){
+    var af=parseInt(q);
+    if(!isNaN(af))queries.push(col.where('activoFijo','==',af).limit(20).get());
+    else queries.push(col.where('serie','==',q).limit(20).get());
+  }
+  if(!eqFiltros.linea&&!q&&eqFiltros.centro){
+    queries.push(col.where('centro','==',eqFiltros.centro).limit(100).get());
+  }
+  if(!queries.length){
+    if(tbody)tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Selecciona una linea o escribe un activo fijo para buscar</td></tr>';
+    return;
+  }
+  Promise.all(queries).then(function(snaps){
+    var seen=new Set(),items=[];
+    snaps.forEach(function(s){
+      s.docs.forEach(function(d){
+        if(!seen.has(d.id)){
+          seen.add(d.id);
+          var e={id:d.id,...d.data()};
+          // Filtro adicional por modelo en cliente
+          if(q&&isNaN(parseInt(q))&&e.serie!==q){
+            if(!(e.modelo||'').toLowerCase().includes(q.toLowerCase())&&
+               !(e.serie||'').toLowerCase().includes(q.toLowerCase()))return;
+          }
+          items.push(e);
+        }
+      });
+    });
+    renderEquiposTabla(items);
+  }).catch(function(err){
+    toast('Error: '+err.message);
+    if(tbody)tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px;color:#ea4335">Error al buscar</td></tr>';
+  });
+}
+
+function renderEquiposTabla(data){
+  // Actualizar solo tbody y footer sin re-renderizar toda la vista
+  var tbody=document.getElementById('eq-tbody');
+  var footer=document.getElementById('eq-footer');
+  if(!tbody){renderEquipos();return;}
+  tbody.innerHTML=data.length?data.map(function(e){
+    var sv=e.serie||'—';
+    return'<tr style="cursor:pointer" ondblclick="openPanel(''+e.id+'','cl')">'
+      +'<td style="color:#9aa0a6;font-size:11px">'+(e.no||'—')+'</td>'
       +'<td><span style="font-family:monospace;font-weight:700;color:#1a73e8">'+e.activoFijo+'</span></td>'
-      +'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+e.modelo+'</td>'
-      +'<td style="font-family:monospace;font-size:11px">'+e.serie+'</td>'
+      +'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+(e.modelo||'—')+'</td>'
+      +'<td style="font-family:monospace;font-size:11px">'+sv+'</td>'
       +'<td>'+lbl(e.linea)+'</td>'
       +'<td>'+bCe(e.centro)+'</td>'
       +'<td><div style="display:flex;gap:3px">'
-      +'<button class="icon-btn" onclick="event.stopPropagation();openPanel(\''+e.id+'\',\'eq\')" title="Ver ficha">👁</button>'
-      +'<button class="icon-btn" onclick="event.stopPropagation();abrirOrdenDesde('+e.activoFijo+',\''+esc(e.modelo)+'\',\''+e.centro+'\',\'\')" title="Nueva orden">📋</button>'
-      +'<button class="icon-btn" onclick="event.stopPropagation();printEtiquetaAF('+e.activoFijo+',\''+esc(e.modelo)+'\',\''+e.centro+'\')" title="Etiqueta">🏷</button>'
-      +'</div></td></tr>';}).join(''):'<tr><td colspan="7" class="empty-state">Sin equipos</td></tr>')
-    +'</tbody></table></div>'
-    +(data.length>50?'<div style="padding:10px 16px;font-size:12px;color:#9aa0a6;text-align:center">Mostrando 50 de '+data.length+' — usa los filtros para encontrar equipos específicos</div>':'')
-    +'</div>';
+      +'<button class="icon-btn" onclick="event.stopPropagation();openPanel(''+e.id+'','cl')" title="Ver ficha">👁</button>'
+      +'<button class="icon-btn" onclick="event.stopPropagation();abrirOrdenDesde('+e.activoFijo+',''+esc(e.modelo)+'',''+e.centro+'','')" title="Nueva orden">📋</button>'
+      +'<button class="icon-btn" onclick="event.stopPropagation();printEtiquetaAF('+e.activoFijo+',''+esc(e.modelo)+'',''+e.centro+'')" title="Etiqueta">🏷</button>'
+      +'</div></td></tr>';
+  }).join(''):'<tr><td colspan="7" style="text-align:center;padding:20px;color:#9aa0a6">Sin resultados</td></tr>';
+  if(footer)footer.textContent=data.length>0?data.length+' equipo(s) encontrado(s)'+(data.length>=200?' — refina la búsqueda para más':''):'Sin resultados para estos filtros';
 }
 
 // ══ CLIENTES ══
@@ -954,7 +1007,7 @@ function renderOrdenes(){
       +'<td style="font-size:11px">'+o.tecnicoNombre+'</td>'
       +'<td>'+bEst(o.estado)+'</td>'
       +'<td style="font-weight:600;color:#34a853">'+fmt$(o.costoTotal)+'</td>'
-      +'<td><div style="display:flex;gap:3px">'+(o.estado!=='terminado'?'<button class="icon-btn" onclick="event.stopPropagation();abrirFirma(\''+o.id+'\')" title="Firma">✍️</button>':'')+'<button class="icon-btn" onclick="event.stopPropagation();printOrden(\''+o.id+'\')" title="Imprimir formato">&#128424;</button></div></td>'
+      +'<td><div style="display:flex;gap:3px">'+(o.estado!=='terminado'?'<button class="icon-btn" onclick="event.stopPropagation();editOrden(\''+o.id+'\')" title="Editar">✏️</button>':'')+(o.estado!=='terminado'?'<button class="icon-btn" onclick="event.stopPropagation();abrirFirma(\''+o.id+'\')" title="Firma">✍️</button>':'')+'<button class="icon-btn" onclick="event.stopPropagation();printOrden(\''+o.id+'\')" title="Imprimir">&#128424;</button></div></td>'
       +'</tr>';}).join('')
       :'<tr><td colspan="10" class="empty-state">Sin órdenes</td></tr>')
     +'</tbody></table></div></div>';
@@ -1260,6 +1313,48 @@ function capturaGeo(){
   },function(){document.getElementById('geo-status').textContent='No se pudo obtener la ubicación';document.getElementById('geo-status').style.color='#f9ab00';});
 }
 
+function editOrden(ordId){
+  var ord=ordenes.find(function(o){return o.id===ordId;});
+  if(!ord){toast('Orden no encontrada');return;}
+  // Abrir formulario con datos de la orden
+  openFormOrden();
+  // Llenar campos
+  document.getElementById('orden-modal-title').textContent='Editar Orden — '+ord.folio;
+  document.getElementById('o-af').value=ord.activoFijo||'';
+  document.getElementById('o-serie').value=ord.serie||'';
+  document.getElementById('o-modelo').value=ord.modelo||'';
+  document.getElementById('o-centro').value=ord.centro||'';
+  document.getElementById('o-cliente').value=ord.cliente||'';
+  document.getElementById('o-email').value=ord.emailCliente||'';
+  document.getElementById('o-tipo').value=ord.tipo||'correctivo';
+  document.getElementById('o-tecnico').value=ord.tecnicoNombre||TECNICOS[0];
+  document.getElementById('o-fecha').value=ord.fechaServicio||new Date().toISOString().slice(0,10);
+  document.getElementById('o-hora').value=ord.horaInicio||'';
+  document.getElementById('o-prioridad').value=ord.prioridad||'normal';
+  document.getElementById('o-desc').value=ord.descripcion||'';
+  document.getElementById('o-refacciones').value=ord.refaccionesDesc||'';
+  document.getElementById('o-obs').value=ord.observaciones||'';
+  document.getElementById('o-mo').value=ord.costoManoObra||'';
+  document.getElementById('o-ref').value=ord.costoRefacciones||'';
+  document.getElementById('o-viat').value=ord.costoViaticos||'';
+  calcTotal();
+  // Checklist
+  if(ord.checklist&&ord.checklist.length){
+    ord.checklist.forEach(function(ck,i){
+      var el=document.getElementById('ck'+(i+1));
+      if(el)el.checked=ck.ok||false;
+    });
+  }
+  if(ord.lat&&ord.lng){
+    geoLat=ord.lat;geoLng=ord.lng;
+    document.getElementById('geo-status').textContent='GPS guardado: '+ord.lat+', '+ord.lng;
+    document.getElementById('geo-status').style.color='#34a853';
+  }
+  // Guardar ID para actualizar en vez de crear
+  window._editandoOrdenId=ordId;
+  window._editandoFolio=ord.folio;
+}
+
 function saveOrden(irFirmar){
   var af=document.getElementById('o-af').value.trim();
   var tipo=document.getElementById('o-tipo').value;
@@ -1268,8 +1363,22 @@ function saveOrden(irFirmar){
   var ct=(parseFloat(document.getElementById('o-mo').value)||0)+(parseFloat(document.getElementById('o-ref').value)||0)+(parseFloat(document.getElementById('o-viat').value)||0);
   var ck=['Revisión visual','Limpieza filtros','Descalcificación','Prueba temp.','Revisión eléctrica','Prueba funcional','Calibración','Entrega conforme'].map(function(l,i){return{item:l,ok:document.getElementById('ck'+(i+1)).checked};});
   var data={folio:folio(),tipo:tipo,activoFijo:parseInt(af)||af,serie:document.getElementById('o-serie').value,modelo:document.getElementById('o-modelo').value,centro:document.getElementById('o-centro').value,cliente:document.getElementById('o-cliente').value,emailCliente:document.getElementById('o-email').value,tecnicoNombre:tec,tecnicoUid:curUser?curUser.uid:'',fechaServicio:document.getElementById('o-fecha').value,horaInicio:document.getElementById('o-hora').value,descripcion:document.getElementById('o-desc').value,refaccionesDesc:document.getElementById('o-refacciones').value,observaciones:document.getElementById('o-obs').value,checklist:ck,costoManoObra:parseFloat(document.getElementById('o-mo').value)||0,costoRefacciones:parseFloat(document.getElementById('o-ref').value)||0,costoViaticos:parseFloat(document.getElementById('o-viat').value)||0,costoTotal:ct,lat:geoLat,lng:geoLng,prioridad:document.getElementById('o-prioridad').value,estado:'pendiente',firmado:false,creadoEn:firebase.firestore.FieldValue.serverTimestamp()};
-  db.collection('ordenes').add(data).then(function(ref){
-    ordenActual={id:ref.id,...data};
+  // Si es edición, actualizar; si es nuevo, crear
+  var promise;
+  if(window._editandoOrdenId){
+    data.folio=window._editandoFolio||data.folio;
+    data.estado=ordenes.find(function(o){return o.id===window._editandoOrdenId;})||{}.estado||'pendiente';
+    promise=db.collection('ordenes').doc(window._editandoOrdenId).update(data).then(function(){
+      return {id:window._editandoOrdenId};
+    });
+  }else{
+    promise=db.collection('ordenes').add(data);
+  }
+  promise.then(function(ref){
+    var savedId=ref.id||window._editandoOrdenId;
+    ordenActual={id:savedId,...data};
+    window._editandoOrdenId=null;window._editandoFolio=null;
+    document.getElementById('orden-modal-title').textContent='Nueva Orden de Servicio';
     closeFormOrden();
     var _t=document.getElementById('toast');
     _t.innerHTML='✅ Orden <b>'+data.folio+'</b> guardada &nbsp;<span onclick="printOrden(ordenActual.id)" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-weight:600">&#128424; Imprimir</span>';
@@ -1440,28 +1549,21 @@ function buildFormatoOrden(ord){
 function printOrden(ordId){
   var ord=ordId?ordenes.find(function(o){return o.id===ordId;})||ordenActual:ordenActual;
   if(!ord){toast('No se encontro la orden');return;}
-  var el=document.getElementById('formato-orden-print');
-  el.innerHTML=buildFormatoOrden(ord);
-  el.style.display='block';
-  document.getElementById('ficha-print').innerHTML='';
-  var st=document.createElement('style');st.id='sto';
-  // CSS de impresion - NO sobreescribir display en hijos para respetar grid/flex
-  st.textContent=[
-    '@media print{',
-    'body>*:not(#formato-orden-print){display:none!important;}',
-    '#formato-orden-print{display:block!important;position:fixed;top:0;left:0;width:100%;font-family:Inter,sans-serif;padding:20px;background:#fff;z-index:99999;}',
-    '@page{size:letter;margin:1.5cm;}',
-    '}'
-  ].join('');
-  document.head.appendChild(st);
-  // Dar tiempo al navegador para renderizar antes de imprimir
-  setTimeout(function(){
-    window.print();
-    setTimeout(function(){
-      var s=document.getElementById('sto');if(s)document.head.removeChild(s);
-      el.style.display='none';el.innerHTML='';
-    },1000);
-  },300);
+  var contenido=buildFormatoOrden(ord);
+  var win=window.open('','_blank','width=850,height:1100');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8">'
+    +'<title>Orden '+ord.folio+'</title>'
+    +'<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">'
+    +'<style>'
+    +'*{box-sizing:border-box;margin:0;padding:0}'
+    +'body{font-family:Inter,sans-serif;padding:24px;max-width:750px;margin:0 auto;color:#1c1e21}'
+    +'@media print{body{padding:0}@page{size:letter;margin:1.5cm}}'
+    +'</style>'
+    +'</head><body>'
+    +contenido
+    +'<script>window.onload=function(){window.print();}<\/script>'
+    +'</body></html>');
+  win.document.close();
 }
 
 function printFicha(){
