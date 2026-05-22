@@ -591,7 +591,7 @@ function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.c
 function setSyncUI(s,m){var p=document.getElementById('topbar-sync'),t=document.getElementById('sync-txt');if(p)p.className='sync-pill '+s;if(t)t.textContent=m;}
 function setStatus(msg,cls){var el=document.getElementById('scanner-status');if(!el)return;el.textContent=msg;el.className='scanner-status '+(cls||'');}
 
-function lbl(l){var m={Habitacion:'pill-hab',Superautomatica:'pill-sup',Filtrado:'pill-fil',Semiautomatica:'pill-sem',Molino:'pill-mol',Accesorios:'pill-acc','Café soluble':'pill-acc'};return'<span class="pill '+(m[l]||'pill-acc')+'">'+l+'</span>';}
+function lbl(l){var m={Habitacion:'pill-hab',Superautomatica:'pill-sup',Filtrado:'pill-fil',Semiautomatica:'pill-sem',Molino:'pill-mol',Accesorios:'pill-acc','Caf soluble':'pill-acc','Café soluble':'pill-acc','Cafe soluble':'pill-acc'};return'<span class="pill '+(m[l]||'pill-acc')+'">'+l+'</span>';}
 function bCe(ce){return'<span class="pill" style="background:#f0f2f5;color:#5f6368;font-size:10px;padding:2px 8px;font-weight:700">'+(ce||'—')+'</span>';}
 function bTipo(t){return t==='correctivo'?'<span class="pill pill-proc">🔧 Correctivo</span>':'<span class="pill pill-ok">🔄 Preventivo</span>';}
 function bEst(e){var m={'terminado':'pill-ok','en proceso':'pill-pend','pendiente':'pill-acc','urgente':'pill-venc'};return'<span class="pill '+(m[e]||'pill-acc')+'">'+(e||'pendiente')+'</span>';}
@@ -751,7 +751,7 @@ function renderEquipos(){
   w.innerHTML=
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
     +'<button class="btn btn-sm'+(eqFiltros.linea===''?' btn-blue':'')+'" onclick="eqFiltros.linea=\'\';eqFiltros.q=\'\';buscarEquiposFirestore()">Todos</button>'
-    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Café soluble'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" onclick="eqFiltros.linea=\''+l+'\';buscarEquiposFirestore()">'+l+'</button>';}).join('')
+    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" onclick="eqFiltros.linea=\''+l+'\';buscarEquiposFirestore()">'+l+'</button>';}).join('')
     +'</div>'
     +'<div class="tbl-box">'
     +'<div class="tbl-hdr"><span class="tbl-hdr-title">Universo de Equipos</span>'
@@ -776,7 +776,14 @@ function buscarEquiposFirestore(){
   var col=db.collection('clientesEquipo');
   var queries=[];
   if(eqFiltros.linea){
-    var qr=col.where('linea','==',eqFiltros.linea);
+    // Para Cafe soluble el valor en Firestore puede tener caracteres especiales
+    // Usar rango >= <= para capturar todas las variantes
+    var qr;
+    if(eqFiltros.linea==='Cafe soluble'){
+      qr=col.where('linea','>=','Caf').where('linea','<=','Cag');
+    }else{
+      qr=col.where('linea','==',eqFiltros.linea);
+    }
     if(eqFiltros.centro)qr=qr.where('centro','==',eqFiltros.centro);
     queries.push(qr.limit(200).get());
   }
@@ -1073,7 +1080,7 @@ function renderQR(){
     +'</select>'
     +'<select class="fi-sm" id="qr-lin" onchange="renderQR()">'
     +'<option value="">Todas las líneas</option>'
-    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Café soluble'].map(function(l){return'<option value="'+l+'"'+(lin===l?' selected':'')+'>'+l+'</option>';}).join('')
+    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'].map(function(l){return'<option value="'+l+'"'+(lin===l?' selected':'')+'>'+l+'</option>';}).join('')
     +'</select>'
     +'<span style="font-size:12px;color:#9aa0a6">'+data.length+' equipo(s)</span>'
     +'<button class="btn btn-sm" onclick="switchView(\'etiquetas\')">🏷 Imprimir etiquetas</button>'
@@ -1120,7 +1127,7 @@ function renderEtiquetas(){
   w.innerHTML=
     '<div style="background:#fff;border-bottom:1px solid #e8eaed;padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(0,0,0,.07)">'
     +'<select class="fi-sm" onchange="etiqFilt.ce=this.value;renderEtiquetas()"><option value="">Todos los centros</option>'+Object.entries(CENTROS).map(function(c){return'<option value="'+c[0]+'"'+(etiqFilt.ce===c[0]?' selected':'')+'>'+c[1]+'</option>';}).join('')+'</select>'
-    +'<select class="fi-sm" onchange="etiqFilt.lin=this.value;renderEtiquetas()"><option value="">Todas las líneas</option>'+['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Café soluble'].map(function(l){return'<option value="'+l+'"'+(etiqFilt.lin===l?' selected':'')+'>'+l+'</option>';}).join('')+'</select>'
+    +'<select class="fi-sm" onchange="etiqFilt.lin=this.value;renderEtiquetas()"><option value="">Todas las líneas</option>'+['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'].map(function(l){return'<option value="'+l+'"'+(etiqFilt.lin===l?' selected':'')+'>'+l+'</option>';}).join('')+'</select>'
     +'<input class="fi-sm" type="text" placeholder="🔍 Buscar..." style="width:180px" value="'+etiqFilt.q+'" oninput="etiqFilt.q=this.value;renderEtiquetas()">'
     +'<span style="font-size:12px;color:#9aa0a6">'+data.length+' etiqueta(s) · '+Math.ceil(data.length/ETIQ_POR_HOJA)+' hoja(s)</span>'
     +'<button class="btn btn-blue btn-sm" style="margin-left:auto" onclick="printTodasEtiquetas()">🖨 Imprimir todas</button>'
@@ -1169,6 +1176,36 @@ function renderReportes(){
   var prev=ordenes.filter(function(o){return o.tipo==='preventivo';}).length;
   var byTec={};ordenes.forEach(function(o){if(!byTec[o.tecnicoNombre||'—']){byTec[o.tecnicoNombre||'—']={n:0,c:0};}byTec[o.tecnicoNombre||'—'].n++;byTec[o.tecnicoNombre||'—'].c+=o.costoTotal||0;});
   var byCe={};ordenes.forEach(function(o){if(!byCe[o.centro||'—']){byCe[o.centro||'—']={n:0,c:0};}byCe[o.centro||'—'].n++;byCe[o.centro||'—'].c+=o.costoTotal||0;});
+  // Calcular tabla de equipos por centro y línea
+  var LINEAS=['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'];
+  var tabCentro={};
+  clientes.forEach(function(c){
+    var ce=c.centro||'—';
+    var alm=String(c.almacen||'—');
+    var key=ce+'|'+alm;
+    if(!tabCentro[key])tabCentro[key]={ce:ce,alm:alm,total:0};
+    LINEAS.forEach(function(l){tabCentro[key][l]=tabCentro[key][l]||0;});
+    // Normalizar línea para Cafe soluble
+    var lin=c.linea||'—';
+    if(lin.startsWith('Caf')&&lin.includes('soluble'))lin='Cafe soluble';
+    if(tabCentro[key][lin]!==undefined)tabCentro[key][lin]++;
+    tabCentro[key].total++;
+  });
+  // Agrupar por centro
+  var tabByCe={};
+  Object.values(tabCentro).forEach(function(r){
+    if(!tabByCe[r.ce])tabByCe[r.ce]={ce:r.ce,rows:[],totals:{}};
+    tabByCe[r.ce].rows.push(r);
+    LINEAS.forEach(function(l){tabByCe[r.ce].totals[l]=(tabByCe[r.ce].totals[l]||0)+(r[l]||0);});
+    tabByCe[r.ce].totals.total=(tabByCe[r.ce].totals.total||0)+r.total;
+  });
+  var totalGeneral={total:0};
+  LINEAS.forEach(function(l){totalGeneral[l]=0;});
+  Object.values(tabByCe).forEach(function(ce){
+    LINEAS.forEach(function(l){totalGeneral[l]=(totalGeneral[l]||0)+(ce.totals[l]||0);});
+    totalGeneral.total+=ce.totals.total||0;
+  });
+
   w.innerHTML=
     '<div style="font-size:18px;font-weight:700;color:#1c1e21;margin-bottom:18px">Reportes y Exportación</div>'
     +'<div class="stats-grid">'
@@ -1188,6 +1225,38 @@ function renderReportes(){
     +'</tbody></table></div></div>'
     +'</div>'
     +'<div class="tbl-box"><div class="tbl-hdr"><span class="tbl-hdr-title">Exportar a Excel</span></div>'
+    // Tabla clientes con equipos por plazas
+    +'<div class="tbl-box" style="margin-bottom:16px"><div class="tbl-hdr"><span class="tbl-hdr-title">Clientes con Equipos por Plazas</span>'
+    +'<button class="btn btn-sm btn-blue" onclick="exportExcelPlazas()">⬇ Excel</button></div>'
+    +'<div style="overflow-x:auto"><table style="font-size:11px"><thead><tr>'
+    +'<th>Plaza</th><th>Almacén</th>'
+    +LINEAS.map(function(l){return'<th>'+l+'</th>';}).join('')
+    +'<th>Total</th></tr></thead><tbody>'
+    +Object.values(tabByCe).sort(function(a,b){return a.ce<b.ce?-1:1;}).map(function(ceData){
+      var ceRows=ceData.rows.sort(function(a,b){return String(a.alm)<String(b.alm)?-1:1;});
+      var rowspan=ceRows.length+1;
+      var html='';
+      // Fila de subtotal del centro
+      html+='<tr style="background:#e8f0fe;font-weight:700">'
+        +'<td rowspan="'+rowspan+'" style="vertical-align:top;font-weight:700;color:#1a73e8;border-right:2px solid #e8eaed">'+(CENTROS[ceData.ce]||ceData.ce)+'</td>'
+        +'<td style="font-style:italic;color:#5f6368">Subtotal</td>'
+        +LINEAS.map(function(l){return'<td style="text-align:right">'+(ceData.totals[l]||'')+'</td>';}).join('')
+        +'<td style="text-align:right;font-weight:700;color:#1a73e8">'+(ceData.totals.total||0)+'</td>'
+        +'</tr>';
+      // Filas por almacén
+      ceRows.forEach(function(r){
+        html+='<tr>'
+          +'<td style="font-family:monospace;font-size:10px;color:#9aa0a6">'+r.alm+'</td>'
+          +LINEAS.map(function(l){return'<td style="text-align:right;color:#5f6368">'+(r[l]||'')+'</td>';}).join('')
+          +'<td style="text-align:right;font-weight:600">'+(r.total||0)+'</td>'
+          +'</tr>';
+      });
+      return html;
+    }).join('')
+    +'<tr style="background:#1c1e21;color:#fff;font-weight:700"><td colspan="2">TOTAL GENERAL</td>'
+    +LINEAS.map(function(l){return'<td style="text-align:right">'+(totalGeneral[l]||0)+'</td>';}).join('')
+    +'<td style="text-align:right">'+totalGeneral.total+'</td></tr>'
+    +'</tbody></table></div></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;padding:16px">'
     +'<div style="background:#f7f9ff;border:1px solid #e8eaed;border-radius:12px;padding:16px"><div style="font-size:28px;margin-bottom:8px">📋</div><div style="font-weight:600;margin-bottom:4px">Órdenes de Servicio</div><div style="font-size:12px;color:#9aa0a6;margin-bottom:12px">Detalle completo de órdenes, costos y técnicos</div><button class="btn btn-blue" style="width:100%;justify-content:center" onclick="exportExcelOrdenes()">⬇ Descargar</button></div>'
     +'<div style="background:#f7f9ff;border:1px solid #e8eaed;border-radius:12px;padding:16px"><div style="font-size:28px;margin-bottom:8px">☕</div><div style="font-weight:600;margin-bottom:4px">Equipos por Centro</div><div style="font-size:12px;color:#9aa0a6;margin-bottom:12px">Clientes con equipo asignado</div><button class="btn btn-blue" style="width:100%;justify-content:center" onclick="exportExcelEquipos()">⬇ Descargar</button></div>'
@@ -1196,6 +1265,33 @@ function renderReportes(){
 }
 
 function exportExcel(){exportExcelOrdenes();}
+
+function exportExcelPlazas(){
+  var LINEAS=['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'];
+  var wb=XLSX.utils.book_new();
+  var rows=[['CAFIVER — Clientes con Equipos por Plazas','Generado:',new Date().toLocaleDateString('es-MX')],[]];
+  rows.push(['Plaza','Centro','Almacén'].concat(LINEAS).concat(['Total']));
+  var tabCentro2={};
+  clientes.forEach(function(c){
+    var ce=c.centro||'—';
+    var alm=String(c.almacen||'—');
+    var key=ce+'|'+alm;
+    if(!tabCentro2[key])tabCentro2[key]={ce:ce,alm:alm,total:0};
+    LINEAS.forEach(function(l){tabCentro2[key][l]=tabCentro2[key][l]||0;});
+    var lin=c.linea||'—';
+    if(lin.startsWith('Caf')&&lin.includes('soluble'))lin='Cafe soluble';
+    if(tabCentro2[key][lin]!==undefined)tabCentro2[key][lin]++;
+    tabCentro2[key].total++;
+  });
+  Object.values(tabCentro2).sort(function(a,b){return a.ce<b.ce?-1:1;}).forEach(function(r){
+    rows.push([CENTROS[r.ce]||r.ce,r.ce,r.alm].concat(LINEAS.map(function(l){return r[l]||0;})).concat([r.total]));
+  });
+  var ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:20},{wch:8},{wch:12}].concat(LINEAS.map(function(){return{wch:14};})).concat([{wch:10}]);
+  XLSX.utils.book_append_sheet(wb,ws,'Por Plazas');
+  XLSX.writeFile(wb,'CAFIVER_Equipos_Por_Plazas_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('✅ Excel por plazas descargado');
+}
 function exportExcelOrdenes(){
   var wb=XLSX.utils.book_new();
   var rows=[['CAFIVER — Órdenes de Servicio','Generado:',new Date().toLocaleDateString('es-MX')],[]];
