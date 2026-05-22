@@ -1445,10 +1445,23 @@ function printOrden(ordId){
   el.style.display='block';
   document.getElementById('ficha-print').innerHTML='';
   var st=document.createElement('style');st.id='sto';
-  st.textContent='@media print{body *{display:none!important;}.formato-orden{display:block!important;font-family:Inter,sans-serif;padding:16px;max-width:700px;margin:0 auto;}.formato-orden *{display:block!important;}@page{size:letter;margin:1.5cm;}}';
+  // CSS de impresion - NO sobreescribir display en hijos para respetar grid/flex
+  st.textContent=[
+    '@media print{',
+    'body>*:not(#formato-orden-print){display:none!important;}',
+    '#formato-orden-print{display:block!important;position:fixed;top:0;left:0;width:100%;font-family:Inter,sans-serif;padding:20px;background:#fff;z-index:99999;}',
+    '@page{size:letter;margin:1.5cm;}',
+    '}'
+  ].join('');
   document.head.appendChild(st);
-  window.print();
-  setTimeout(function(){var s=document.getElementById('sto');if(s)document.head.removeChild(s);el.style.display='none';el.innerHTML='';},800);
+  // Dar tiempo al navegador para renderizar antes de imprimir
+  setTimeout(function(){
+    window.print();
+    setTimeout(function(){
+      var s=document.getElementById('sto');if(s)document.head.removeChild(s);
+      el.style.display='none';el.innerHTML='';
+    },1000);
+  },300);
 }
 
 function printFicha(){
