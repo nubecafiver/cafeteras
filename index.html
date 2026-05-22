@@ -822,7 +822,7 @@ function renderEquiposTabla(data){
   if(!tbody){renderEquipos();return;}
   tbody.innerHTML=data.length?data.map(function(e){
     var sv=e.serie||'—';
-    return'<tr style="cursor:pointer" ondblclick="openPanel(''+e.id+'','cl')">'
+    return'<tr style="cursor:pointer" ondblclick="openPanel(\''+e.id+'\',\'cl\')">'
       +'<td style="color:#9aa0a6;font-size:11px">'+(e.no||'—')+'</td>'
       +'<td><span style="font-family:monospace;font-weight:700;color:#1a73e8">'+e.activoFijo+'</span></td>'
       +'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+(e.modelo||'—')+'</td>'
@@ -830,9 +830,9 @@ function renderEquiposTabla(data){
       +'<td>'+lbl(e.linea)+'</td>'
       +'<td>'+bCe(e.centro)+'</td>'
       +'<td><div style="display:flex;gap:3px">'
-      +'<button class="icon-btn" onclick="event.stopPropagation();openPanel(''+e.id+'','cl')" title="Ver ficha">👁</button>'
-      +'<button class="icon-btn" onclick="event.stopPropagation();abrirOrdenDesde('+e.activoFijo+',''+esc(e.modelo)+'',''+e.centro+'','')" title="Nueva orden">📋</button>'
-      +'<button class="icon-btn" onclick="event.stopPropagation();printEtiquetaAF('+e.activoFijo+',''+esc(e.modelo)+'',''+e.centro+'')" title="Etiqueta">🏷</button>'
+      +'<button class="icon-btn" onclick="event.stopPropagation();openPanel(\''+e.id+'\',\'cl\')" title="Ver ficha">👁</button>'
+      +'<button class="icon-btn" onclick="event.stopPropagation();abrirOrdenDesde('+e.activoFijo+',\''+esc(e.modelo)+'\',\''+e.centro+'\',\'\')" title="Nueva orden">📋</button>'
+      +'<button class="icon-btn" onclick="event.stopPropagation();printEtiquetaAF('+e.activoFijo+',\''+esc(e.modelo)+'\',\''+e.centro+'\')" title="Etiqueta">🏷</button>'
       +'</div></td></tr>';
   }).join(''):'<tr><td colspan="7" style="text-align:center;padding:20px;color:#9aa0a6">Sin resultados</td></tr>';
   if(footer)footer.textContent=data.length>0?data.length+' equipo(s) encontrado(s)'+(data.length>=200?' — refina la búsqueda para más':''):'Sin resultados para estos filtros';
