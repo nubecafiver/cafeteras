@@ -662,12 +662,25 @@ function enterApp(){
 function loadData(){
   setSyncUI('saving','Cargando...');
   // Equipos (clientesEquipo)
-  db.collection('clientesEquipo').limit(500).get().then(function(s){
-    clientes=s.docs.map(function(d){return{id:d.id,...d.data()};});
-    setSyncUI('ok','En línea ✓');
-    if(curView==='dashboard')renderDashboard();
-    if(curView==='clientes')renderClientes();
-  }).catch(function(e){setSyncUI('error','Error');console.warn(e);});
+  // Cargar todos los clientes paginando de 500 en 500
+  function cargarClientes(ultimo){
+    var q=db.collection('clientesEquipo').orderBy('activoFijo').limit(500);
+    if(ultimo)q=q.startAfter(ultimo);
+    q.get().then(function(s){
+      var nuevos=s.docs.map(function(d){return{id:d.id,...d.data()};});
+      clientes=clientes.concat(nuevos);
+      document.getElementById('sync-txt').textContent='Cargando... '+clientes.length.toLocaleString();
+      if(s.docs.length===500){
+        cargarClientes(s.docs[s.docs.length-1]);
+      }else{
+        setSyncUI('ok','En línea ✓ ('+clientes.length.toLocaleString()+' eq.)');
+        if(curView==='dashboard')renderDashboard();
+        if(curView==='clientes')renderClientes();
+        if(curView==='reportes')renderReportes();
+      }
+    }).catch(function(e){setSyncUI('error','Error');console.warn(e);});
+  }
+  cargarClientes(null);
 
   db.collection('equipos').limit(300).get().then(function(s){
     equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
@@ -1225,38 +1238,73 @@ function renderReportes(){
     +'</tbody></table></div></div>'
     +'</div>'
     +'<div class="tbl-box"><div class="tbl-hdr"><span class="tbl-hdr-title">Exportar a Excel</span></div>'
-    // Tabla clientes con equipos por plazas
-    +'<div class="tbl-box" style="margin-bottom:16px"><div class="tbl-hdr"><span class="tbl-hdr-title">Clientes con Equipos por Plazas</span>'
-    +'<button class="btn btn-sm btn-blue" onclick="exportExcelPlazas()">⬇ Excel</button></div>'
+    // ── TABLA CONCENTRADO POR CENTRO ──
+    +'<div class="tbl-box" style="margin-bottom:16px">'
+    +'<div class="tbl-hdr"><span class="tbl-hdr-title">Clientes con Equipos — Concentrado por Centro</span>'
+    +'<button class="btn btn-sm btn-blue" onclick="exportExcelConcentrado()">⬇ Excel</button></div>'
     +'<div style="overflow-x:auto"><table style="font-size:11px"><thead><tr>'
-    +'<th>Plaza</th><th>Almacén</th>'
-    +LINEAS.map(function(l){return'<th>'+l+'</th>';}).join('')
-    +'<th>Total</th></tr></thead><tbody>'
-    +Object.values(tabByCe).sort(function(a,b){return a.ce<b.ce?-1:1;}).map(function(ceData){
-      var ceRows=ceData.rows.sort(function(a,b){return String(a.alm)<String(b.alm)?-1:1;});
-      var rowspan=ceRows.length+1;
-      var html='';
-      // Fila de subtotal del centro
-      html+='<tr style="background:#e8f0fe;font-weight:700">'
-        +'<td rowspan="'+rowspan+'" style="vertical-align:top;font-weight:700;color:#1a73e8;border-right:2px solid #e8eaed">'+(CENTROS[ceData.ce]||ceData.ce)+'</td>'
-        +'<td style="font-style:italic;color:#5f6368">Subtotal</td>'
+    +'<th>No.</th><th>Centro</th><th>Clientes</th>'
+    +LINEAS.map(function(l){return'<th style="text-align:right">'+l+'</th>';}).join('')
+    +'<th style="text-align:right">Total</th></tr></thead><tbody>'
+    +Object.values(tabByCe).sort(function(a,b){return(CENTROS[a.ce]||a.ce)<(CENTROS[b.ce]||b.ce)?-1:1;}).map(function(ceData,i){
+      return'<tr>'
+        +'<td style="color:#9aa0a6;font-size:11px">'+(i+1)+'</td>'
+        +'<td style="font-weight:600;color:#1a73e8">'+(CENTROS[ceData.ce]||ceData.ce)+'</td>'
+        +'<td style="text-align:right">'+ceData.rows.length+'</td>'
         +LINEAS.map(function(l){return'<td style="text-align:right">'+(ceData.totals[l]||'')+'</td>';}).join('')
         +'<td style="text-align:right;font-weight:700;color:#1a73e8">'+(ceData.totals.total||0)+'</td>'
         +'</tr>';
-      // Filas por almacén
-      ceRows.forEach(function(r){
-        html+='<tr>'
-          +'<td style="font-family:monospace;font-size:10px;color:#9aa0a6">'+r.alm+'</td>'
-          +LINEAS.map(function(l){return'<td style="text-align:right;color:#5f6368">'+(r[l]||'')+'</td>';}).join('')
-          +'<td style="text-align:right;font-weight:600">'+(r.total||0)+'</td>'
-          +'</tr>';
-      });
-      return html;
     }).join('')
-    +'<tr style="background:#1c1e21;color:#fff;font-weight:700"><td colspan="2">TOTAL GENERAL</td>'
+    +'<tr style="background:#1c1e21;color:#fff;font-weight:700">'
+    +'<td></td><td>TOTAL GENERAL</td>'
+    +'<td style="text-align:right">'+Object.values(tabByCe).reduce(function(a,c){return a+c.rows.length;},0)+'</td>'
     +LINEAS.map(function(l){return'<td style="text-align:right">'+(totalGeneral[l]||0)+'</td>';}).join('')
     +'<td style="text-align:right">'+totalGeneral.total+'</td></tr>'
     +'</tbody></table></div></div>'
+
+    // ── TABLA DETALLE POR PLAZA (desplegable) ──
+    +'<div class="tbl-box" style="margin-bottom:16px">'
+    +'<div class="tbl-hdr"><span class="tbl-hdr-title">Detalle por Plaza y Almacén</span>'
+    +'<div style="display:flex;gap:8px;align-items:center">'
+    +'<select class="fi-sm" id="rep-ce-filter" onchange="renderReportes()" style="width:180px">'
+    +'<option value="">Todos los centros</option>'
+    +Object.values(tabByCe).sort(function(a,b){return(CENTROS[a.ce]||a.ce)<(CENTROS[b.ce]||b.ce)?-1:1;}).map(function(ceData){
+      return'<option value="'+ceData.ce+'">'+(CENTROS[ceData.ce]||ceData.ce)+'</option>';
+    }).join("")
+    +"</select>"
+    +'<button class="btn btn-sm btn-blue" onclick="exportExcelPlazas()">⬇ Excel</button>'
+    +'</div></div>'
+    +(function(){
+      var filtCe=document.getElementById('rep-ce-filter')?document.getElementById('rep-ce-filter').value:'';
+      var ceList=Object.values(tabByCe).sort(function(a,b){return(CENTROS[a.ce]||a.ce)<(CENTROS[b.ce]||b.ce)?-1:1;});
+      if(filtCe)ceList=ceList.filter(function(x){return x.ce===filtCe;});
+      return'<div style="overflow-x:auto"><table style="font-size:11px"><thead><tr>'
+        +'<th>Plaza</th><th>Almacén</th>'
+        +LINEAS.map(function(l){return'<th style="text-align:right">'+l+'</th>';}).join('')
+        +'<th style="text-align:right">Total</th></tr></thead><tbody>'
+        +ceList.map(function(ceData){
+          var ceRows=ceData.rows.sort(function(a,b){return String(a.alm)<String(b.alm)?-1:1;});
+          var html='';
+          html+='<tr style="background:#e8f0fe"><td style="font-weight:700;color:#1a73e8;font-size:12px" colspan="2">'+(CENTROS[ceData.ce]||ceData.ce)+' — Subtotal</td>'
+            +LINEAS.map(function(l){return'<td style="text-align:right;font-weight:700">'+(ceData.totals[l]||'')+'</td>';}).join('')
+            +'<td style="text-align:right;font-weight:700;color:#1a73e8">'+(ceData.totals.total||0)+'</td></tr>';
+          ceRows.forEach(function(r){
+            html+='<tr><td style="color:#9aa0a6;font-size:10px"></td>'
+              +'<td style="font-family:monospace;font-size:10px;color:#5f6368">'+r.alm+'</td>'
+              +LINEAS.map(function(l){return'<td style="text-align:right;color:#5f6368">'+(r[l]||'')+'</td>';}).join('')
+              +'<td style="text-align:right;font-weight:600">'+(r.total||0)+'</td></tr>';
+          });
+          return html;
+        }).join('')
+        +'<tr style="background:#1c1e21;color:#fff;font-weight:700"><td colspan="2">TOTAL</td>'
+        +LINEAS.map(function(l){
+          var tot=ceList.reduce(function(a,x){return a+(x.totals[l]||0);},0);
+          return'<td style="text-align:right">'+(tot||'')+'</td>';
+        }).join('')
+        +'<td style="text-align:right">'+(ceList.reduce(function(a,x){return a+(x.totals.total||0);},0))+'</td></tr>'
+        +'</tbody></table></div>';
+    })()
+    +'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;padding:16px">'
     +'<div style="background:#f7f9ff;border:1px solid #e8eaed;border-radius:12px;padding:16px"><div style="font-size:28px;margin-bottom:8px">📋</div><div style="font-weight:600;margin-bottom:4px">Órdenes de Servicio</div><div style="font-size:12px;color:#9aa0a6;margin-bottom:12px">Detalle completo de órdenes, costos y técnicos</div><button class="btn btn-blue" style="width:100%;justify-content:center" onclick="exportExcelOrdenes()">⬇ Descargar</button></div>'
     +'<div style="background:#f7f9ff;border:1px solid #e8eaed;border-radius:12px;padding:16px"><div style="font-size:28px;margin-bottom:8px">☕</div><div style="font-weight:600;margin-bottom:4px">Equipos por Centro</div><div style="font-size:12px;color:#9aa0a6;margin-bottom:12px">Clientes con equipo asignado</div><button class="btn btn-blue" style="width:100%;justify-content:center" onclick="exportExcelEquipos()">⬇ Descargar</button></div>'
@@ -1265,6 +1313,35 @@ function renderReportes(){
 }
 
 function exportExcel(){exportExcelOrdenes();}
+
+function exportExcelConcentrado(){
+  var LINEAS=['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'];
+  var wb=XLSX.utils.book_new();
+  var rows=[['','','','CLIENTES CON EQUIPOS'],['No.','Plaza','Clientes'].concat(LINEAS).concat(['Total general'])];
+  var tabC={};
+  clientes.forEach(function(cl){
+    var ce=cl.centro||'—';
+    if(!tabC[ce]){tabC[ce]={ce:ce,alms:new Set(),total:0}; LINEAS.forEach(function(l){tabC[ce][l]=0;});}
+    tabC[ce].alms.add(String(cl.almacen||''));
+    var lin=cl.linea||'—';
+    if(lin.startsWith('Caf')&&lin.includes('soluble'))lin='Cafe soluble';
+    if(tabC[ce][lin]!==undefined)tabC[ce][lin]++;
+    tabC[ce].total++;
+  });
+  var sorted=Object.values(tabC).sort(function(a,b){return(CENTROS[a.ce]||a.ce)<(CENTROS[b.ce]||b.ce)?-1:1;});
+  sorted.forEach(function(r,i){
+    rows.push([i+1,CENTROS[r.ce]||r.ce,r.alms.size].concat(LINEAS.map(function(l){return r[l]||0;})).concat([r.total]));
+  });
+  var totRow=['','TOTAL',sorted.reduce(function(a,r){return a+r.alms.size;},0)];
+  LINEAS.forEach(function(l){totRow.push(sorted.reduce(function(a,r){return a+(r[l]||0);},0));});
+  totRow.push(sorted.reduce(function(a,r){return a+r.total;},0));
+  rows.push(totRow);
+  var ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:6},{wch:18},{wch:10}].concat(LINEAS.map(function(){return{wch:14};})).concat([{wch:14}]);
+  XLSX.utils.book_append_sheet(wb,ws,'Concentrado');
+  XLSX.writeFile(wb,'CAFIVER_Concentrado_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('✅ Excel concentrado descargado');
+}
 
 function exportExcelPlazas(){
   var LINEAS=['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'];
