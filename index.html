@@ -751,7 +751,7 @@ function renderEquipos(){
   w.innerHTML=
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
     +'<button class="btn btn-sm'+(eqFiltros.linea===''?' btn-blue':'')+'" onclick="eqFiltros.linea=\'\';eqFiltros.q=\'\';buscarEquiposFirestore()">Todos</button>'
-    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" onclick="eqFiltros.linea=\''+l+'\';buscarEquiposFirestore()">'+l+'</button>';}).join('')
+    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Café soluble'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" onclick="eqFiltros.linea=\''+l+'\';buscarEquiposFirestore()">'+l+'</button>';}).join('')
     +'</div>'
     +'<div class="tbl-box">'
     +'<div class="tbl-hdr"><span class="tbl-hdr-title">Universo de Equipos</span>'
@@ -766,7 +766,7 @@ function renderEquipos(){
     +'</table></div>'
     +'<div id="eq-footer" style="padding:10px 16px;font-size:12px;color:#9aa0a6;text-align:center;border-top:1px solid #e8eaed"></div>'
     +'</div>';
-  if(eqFiltros.linea||eqFiltros.q||eqFiltros.centro)buscarEquiposFirestore();
+  buscarEquiposFirestore(); // cargar siempre al entrar
 }
 // ══ CLIENTES ══
 function buscarEquiposFirestore(){
@@ -785,12 +785,12 @@ function buscarEquiposFirestore(){
     if(!isNaN(af))queries.push(col.where('activoFijo','==',af).limit(20).get());
     else queries.push(col.where('serie','==',q).limit(20).get());
   }
-  if(!eqFiltros.linea&&!q&&eqFiltros.centro){
+  if(eqFiltros.centro&&!eqFiltros.linea&&!q){
     queries.push(col.where('centro','==',eqFiltros.centro).limit(100).get());
   }
+  // Sin ningún filtro — mostrar primeros 100 de clientesEquipo
   if(!queries.length){
-    if(tbody)tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Selecciona una linea o escribe un activo fijo para buscar</td></tr>';
-    return;
+    queries.push(col.limit(100).get());
   }
   Promise.all(queries).then(function(snaps){
     var seen=new Set(),items=[];
@@ -1073,7 +1073,7 @@ function renderQR(){
     +'</select>'
     +'<select class="fi-sm" id="qr-lin" onchange="renderQR()">'
     +'<option value="">Todas las líneas</option>'
-    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios'].map(function(l){return'<option value="'+l+'"'+(lin===l?' selected':'')+'>'+l+'</option>';}).join('')
+    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Café soluble'].map(function(l){return'<option value="'+l+'"'+(lin===l?' selected':'')+'>'+l+'</option>';}).join('')
     +'</select>'
     +'<span style="font-size:12px;color:#9aa0a6">'+data.length+' equipo(s)</span>'
     +'<button class="btn btn-sm" onclick="switchView(\'etiquetas\')">🏷 Imprimir etiquetas</button>'
@@ -1120,7 +1120,7 @@ function renderEtiquetas(){
   w.innerHTML=
     '<div style="background:#fff;border-bottom:1px solid #e8eaed;padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(0,0,0,.07)">'
     +'<select class="fi-sm" onchange="etiqFilt.ce=this.value;renderEtiquetas()"><option value="">Todos los centros</option>'+Object.entries(CENTROS).map(function(c){return'<option value="'+c[0]+'"'+(etiqFilt.ce===c[0]?' selected':'')+'>'+c[1]+'</option>';}).join('')+'</select>'
-    +'<select class="fi-sm" onchange="etiqFilt.lin=this.value;renderEtiquetas()"><option value="">Todas las líneas</option>'+['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios'].map(function(l){return'<option value="'+l+'"'+(etiqFilt.lin===l?' selected':'')+'>'+l+'</option>';}).join('')+'</select>'
+    +'<select class="fi-sm" onchange="etiqFilt.lin=this.value;renderEtiquetas()"><option value="">Todas las líneas</option>'+['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Café soluble'].map(function(l){return'<option value="'+l+'"'+(etiqFilt.lin===l?' selected':'')+'>'+l+'</option>';}).join('')+'</select>'
     +'<input class="fi-sm" type="text" placeholder="🔍 Buscar..." style="width:180px" value="'+etiqFilt.q+'" oninput="etiqFilt.q=this.value;renderEtiquetas()">'
     +'<span style="font-size:12px;color:#9aa0a6">'+data.length+' etiqueta(s) · '+Math.ceil(data.length/ETIQ_POR_HOJA)+' hoja(s)</span>'
     +'<button class="btn btn-blue btn-sm" style="margin-left:auto" onclick="printTodasEtiquetas()">🖨 Imprimir todas</button>'
