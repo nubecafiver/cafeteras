@@ -301,6 +301,7 @@ tr:hover td{background:#f7f9ff}
     <button class="tnav"    id="tnav-preventivos" onclick="switchView('preventivos')"><span>🔄</span><span class="tnav-txt"> PM</span></button>
     <button class="tnav"    id="tnav-qr"          onclick="switchView('qr')">         <span>⬡</span><span class="tnav-txt"> QR</span></button>
     <button class="tnav"    id="tnav-reportes"    onclick="switchView('reportes')">   <span>📈</span><span class="tnav-txt"> Reportes</span></button>
+    <button class="tnav"    id="tnav-movimientos" onclick="switchView('movimientos')"><span>🔄</span><span class="tnav-txt"> Movimientos</span></button>
     <div class="topbar-right">
       <div class="sync-pill ok" id="topbar-sync">
         <span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span>
@@ -324,6 +325,7 @@ tr:hover td{background:#f7f9ff}
   <div id="view-preventivos" class="view-wrap hidden"></div>
   <div id="view-qr"          class="hidden" style="flex:1;overflow:auto;background:#eef2f7"></div>
   <div id="view-reportes"    class="view-wrap hidden"></div>
+  <div id="view-movimientos" class="view-wrap hidden"></div>
   <div id="view-etiquetas"   class="hidden" style="flex:1;overflow:auto;background:#e8eaed"></div>
 </div>
 
@@ -344,9 +346,10 @@ tr:hover td{background:#f7f9ff}
     </div>
   </div>
   <div class="dp-tabs">
-    <button class="dp-tab on" id="dpt-info"      onclick="dpTab('info')">Ficha</button>
-    <button class="dp-tab"    id="dpt-historial"  onclick="dpTab('historial')">Historial</button>
-    <button class="dp-tab"    id="dpt-pm"         onclick="dpTab('pm')">Plan PM</button>
+    <button class="dp-tab on" id="dpt-info"       onclick="dpTab('info')">Ficha</button>
+    <button class="dp-tab"    id="dpt-historial"   onclick="dpTab('historial')">Servicios</button>
+    <button class="dp-tab"    id="dpt-pm"          onclick="dpTab('pm')">Plan PM</button>
+    <button class="dp-tab"    id="dpt-estado"      onclick="dpTab('estado')">Estado</button>
   </div>
   <div class="dp-body" id="dp-body"></div>
 </div>
@@ -603,6 +606,13 @@ var ordFiltros={tipo:'',estado:''};
 var lastScanned=null, zxingReader=null;
 var geoLat=null, geoLng=null;
 var BASE_QR_URL='https://nubecafiver.github.io/cafeteras/?af=';
+var movimientos=[];
+var ESTADOS={
+  con_cliente: {label:'Con cliente',   color:'#34a853', bg:'#e6f4ea', icon:'🟢'},
+  retiro:      {label:'En retiro',     color:'#f9ab00', bg:'#fff8e1', icon:'🟡'},
+  disponible:  {label:'Disponible',    color:'#1a73e8', bg:'#e8f0fe', icon:'🔵'},
+  reparacion:  {label:'En reparación', color:'#ea4335', bg:'#fce8e6', icon:'🔴'}
+};
 
 // Componentes por línea de cafetera (del formato de evaluación oficial)
 var CHECKLIST_LINEA = {
@@ -665,6 +675,10 @@ function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.c
 function setSyncUI(s,m){var p=document.getElementById('topbar-sync'),t=document.getElementById('sync-txt');if(p)p.className='sync-pill '+s;if(t)t.textContent=m;}
 function setStatus(msg,cls){var el=document.getElementById('scanner-status');if(!el)return;el.textContent=msg;el.className='scanner-status '+(cls||'');}
 
+function bEstad(estado){
+  var e=ESTADOS[estado]||{label:estado||'—',color:'#9aa0a6',bg:'#f0f2f5',icon:'⚪'};
+  return'<span class="pill" style="background:'+e.bg+';color:'+e.color+';font-size:11px">'+e.icon+' '+e.label+'</span>';
+}
 function lbl(l){var m={Habitacion:'pill-hab',Superautomatica:'pill-sup',Filtrado:'pill-fil',Semiautomatica:'pill-sem',Molino:'pill-mol',Accesorios:'pill-acc','Caf soluble':'pill-acc','Café soluble':'pill-acc','Cafe soluble':'pill-acc'};return'<span class="pill '+(m[l]||'pill-acc')+'">'+l+'</span>';}
 function bCe(ce){return'<span class="pill" style="background:#f0f2f5;color:#5f6368;font-size:10px;padding:2px 8px;font-weight:700">'+(ce||'—')+'</span>';}
 function bTipo(t){return t==='correctivo'?'<span class="pill pill-proc">🔧 Correctivo</span>':'<span class="pill pill-ok">🔄 Preventivo</span>';}
@@ -736,25 +750,27 @@ function enterApp(){
 function loadData(){
   setSyncUI('saving','Cargando...');
   // Equipos (clientesEquipo)
-  // Cargar todos los clientes paginando de 500 en 500
-  function cargarClientes(ultimo){
-    var q=db.collection('clientesEquipo').orderBy('activoFijo').limit(500);
-    if(ultimo)q=q.startAfter(ultimo);
-    q.get().then(function(s){
-      var nuevos=s.docs.map(function(d){return{id:d.id,...d.data()};});
-      clientes=clientes.concat(nuevos);
-      document.getElementById('sync-txt').textContent='Cargando... '+clientes.length.toLocaleString();
-      if(s.docs.length===500){
-        cargarClientes(s.docs[s.docs.length-1]);
-      }else{
-        setSyncUI('ok','En línea ✓ ('+clientes.length.toLocaleString()+' eq.)');
-        if(curView==='dashboard')renderDashboard();
-        if(curView==='clientes')renderClientes();
-        if(curView==='reportes')renderReportes();
-      }
-    }).catch(function(e){setSyncUI('error','Error');console.warn(e);});
+  // Cargar clientes una sola vez paginando
+  if(clientes.length===0){
+    function cargarClientes(ultimo){
+      var q=db.collection('clientesEquipo').orderBy('activoFijo').limit(500);
+      if(ultimo)q=q.startAfter(ultimo);
+      q.get().then(function(s){
+        var nuevos=s.docs.map(function(d){return{id:d.id,...d.data()};});
+        clientes=clientes.concat(nuevos);
+        setSyncUI('saving','Cargando... '+clientes.length.toLocaleString());
+        if(s.docs.length===500){
+          cargarClientes(s.docs[s.docs.length-1]);
+        }else{
+          setSyncUI('ok','En línea ✓');
+          if(curView==='dashboard')renderDashboard();
+          if(curView==='clientes')renderClientes();
+          if(curView==='reportes')renderReportes();
+        }
+      }).catch(function(e){setSyncUI('error','Error');console.warn(e);});
+    }
+    cargarClientes(null);
   }
-  cargarClientes(null);
 
   db.collection('equipos').limit(300).get().then(function(s){
     equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
@@ -782,6 +798,7 @@ function switchView(v){
   if(v==='preventivos')renderPreventivos();
   if(v==='qr')renderQR();
   if(v==='reportes')renderReportes();
+  if(v==='movimientos')renderMovimientos();
   if(v==='etiquetas')renderEtiquetas();
 }
 
@@ -986,7 +1003,7 @@ function closePanel(){document.getElementById('dp').classList.remove('open');doc
 
 function dpTab(tab, eObj, col){
   dpCurTab=tab;
-  ['info','historial','pm'].forEach(function(x){var el=document.getElementById('dpt-'+x);if(el)el.classList.toggle('on',x===tab);});
+  ['info','historial','pm','estado'].forEach(function(x){var el=document.getElementById('dpt-'+x);if(el)el.classList.toggle('on',x===tab);});
   // Si no se pasa el equipo, buscarlo
   var e = eObj;
   if(!e){
@@ -1062,6 +1079,47 @@ function dpTab(tab, eObj, col){
       +(hist.filter(function(h){return h.tipo==='preventivo';}).length?
         hist.filter(function(h){return h.tipo==='preventivo';}).map(function(h){return'<div style="padding:8px 0;border-bottom:1px solid #f0f2f5"><div style="font-size:12px;font-weight:600">'+fmtF(h.creadoEn)+'</div><div style="font-size:11px;color:#9aa0a6">'+h.tecnicoNombre+' · '+fmt$(h.costoTotal)+'</div></div>';}).join('')
         :'<div style="font-size:12px;color:#9aa0a6;padding:8px 0">Sin PM registrados aún</div>');
+  }else if(tab==='estado'){
+    var movEq=movimientos.filter(function(m){return String(m.activoFijo)===String(e.activoFijo);}).sort(function(a,b){return(b.ts&&b.ts.seconds||0)-(a.ts&&a.ts.seconds||0);});
+    var estadoActual=e.estado||'con_cliente';
+    var estInfo=ESTADOS[estadoActual]||{label:estadoActual,color:'#9aa0a6',bg:'#f0f2f5',icon:'⚪'};
+    var movHtml='<div style="font-size:12px;color:#9aa0a6;padding:8px 0">Sin movimientos registrados.</div>';
+    if(movEq.length){
+      movHtml='<div>';
+      movEq.forEach(function(m,i){
+        var est2=ESTADOS[m.estadoNuevo]||{label:m.estadoNuevo||'—',color:'#9aa0a6',icon:'⚪'};
+        var eant2=ESTADOS[m.estadoAnterior]||{label:m.estadoAnterior||'—',icon:'⚪'};
+        movHtml+='<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f0f2f5">'
+          +'<div style="width:32px;height:32px;border-radius:50%;background:'+est2.bg+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+est2.icon+'</div>'
+          +'<div style="flex:1"><div style="font-size:12px;font-weight:700;color:'+est2.color+'">'+est2.label+'</div>'
+          +'<div style="font-size:11px;color:#5f6368">'+eant2.icon+' '+eant2.label+' → '+est2.icon+' '+est2.label+'</div>'
+          +(m.almacenDestino?'<div style="font-size:11px;color:#9aa0a6">Almacén: <b>'+m.almacenDestino+'</b></div>':'')
+          +(m.motivo?'<div style="font-size:11px;color:#9aa0a6;font-style:italic">'+m.motivo+'</div>':'')
+          +'<div style="font-size:10px;color:#c8cad0;margin-top:2px">'+fmtF(m.ts)+' — '+(m.usuario||'—')+'</div>'
+          +'</div></div>';
+      });
+      movHtml+='</div>';
+    }
+    body.innerHTML=
+      '<div class="dp-sec-t">Estado actual</div>'
+      +'<div style="display:flex;align-items:center;gap:12px;padding:14px;background:'+estInfo.bg+';border:1px solid '+estInfo.color+'44;border-radius:12px;margin-bottom:16px">'
+      +'<span style="font-size:32px">'+estInfo.icon+'</span>'
+      +'<div><div style="font-size:16px;font-weight:700;color:'+estInfo.color+'">'+estInfo.label+'</div>'
+      +'<div style="font-size:11px;color:#9aa0a6">AF: '+e.activoFijo+' · '+(movEq.length?'Último cambio: '+fmtF(movEq[0].ts):'Sin historial')+'</div>'
+      +'</div></div>'
+      +'<div class="dp-sec-t">Cambiar estado</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">'
+      +Object.entries(ESTADOS).map(function(entry){
+        var key=entry[0],est3=entry[1];
+        var isActive=estadoActual===key;
+        return'<button onclick="abrirCambioEstado(\''+e.id+'\',\''+String(e.activoFijo)+'\',\''+esc(e.modelo||'')+'\',\''+key+'\')" '
+          +'style="padding:12px;border:2px solid '+(isActive?est3.color:'#e0e2e6')+';border-radius:10px;background:'+(isActive?est3.bg:'#fff')+';cursor:pointer;font-family:Inter,sans-serif;font-size:12px;font-weight:600;color:'+(isActive?est3.color:'#5f6368')+';text-align:left">'
+          +'<div style="font-size:20px;margin-bottom:4px">'+est3.icon+'</div>'
+          +est3.label+(isActive?' ✓':'')+'</button>';
+      }).join('')
+      +'</div>'
+      +'<div class="dp-sec-t">Historial ('+movEq.length+')</div>'
+      +movHtml;
   }
 }
 
@@ -1550,7 +1608,6 @@ function autocompletarAF(){
       }else{toast('⚠️ Activo fijo no encontrado');}
     });
   }
-}
 
 function cargarChecklistLinea(linea){
   var cont=document.getElementById('ck-linea-container');
@@ -1581,6 +1638,155 @@ function cargarChecklistLinea(linea){
   }).join('');
   cont.style.display='block';
   if(msg)msg.style.display='none';
+}
+
+// ══ MODAL CAMBIO DE ESTADO ══
+function abrirCambioEstado(docId, af, modelo, nuevoEstado){
+  var e=clientes.find(function(x){return x.id===docId;})||equipos.find(function(x){return x.id===docId;});
+  if(!e)return;
+  var estadoActual=e.estado||'con_cliente';
+  // Crear modal dinámico
+  var existing=document.getElementById('modal-estado');
+  if(existing)existing.remove();
+  var div=document.createElement('div');
+  div.id='modal-estado';
+  div.style.cssText='position:fixed;inset:0;background:rgba(15,20,35,.5);display:flex;align-items:center;justify-content:center;z-index:600;backdrop-filter:blur(2px)';
+  div.innerHTML='<div style="background:#fff;border-radius:16px;width:min(480px,94vw);box-shadow:0 16px 48px rgba(0,0,0,.22);overflow:hidden">'
+    +'<div style="padding:16px 20px;background:#1c1e21;display:flex;align-items:center;justify-content:space-between">'
+    +'<div style="font-size:15px;font-weight:700;color:#fff">Cambiar estado del equipo</div>'
+    +'<button onclick="document.getElementById(&quot;modal-estado&quot;).remove()" style="background:rgba(255,255,255,.1);border:none;color:#fff;cursor:pointer;border-radius:6px;padding:4px 8px;font-size:14px">&#10005;</button>'
+    +'</div>'
+    +'<div style="padding:16px 20px">'
+    +'<div style="background:#f7f9ff;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px">'
+    +'<b>AF: '+af+'</b> — '+modelo+'<br>'
+    +'<span style="color:#9aa0a6">Estado actual: </span>'+bEstad(estadoActual)
+    +'</div>'
+    +'<div style="margin-bottom:14px">'
+    +'<label style="font-size:10px;font-weight:700;color:#9aa0a6;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">Nuevo estado *</label>'
+    +'<select id="ms-estado" style="width:100%;font-size:13px;padding:9px 12px;border:1.5px solid #e0e2e6;border-radius:8px;outline:none;font-family:Inter,sans-serif">'
+    +Object.entries(ESTADOS).map(function(entry){
+      var k=entry[0], v=entry[1];
+      return'<option value="'+k+'"'+(nuevoEstado===k?' selected':'')+'>'+(k===estadoActual?'✓ ':'')+v.icon+' '+v.label+'</option>';
+    }).join('')
+    +'</select></div>'
+    +'<div id="ms-almacen-wrap" style="margin-bottom:14px">'
+    +'<label style="font-size:10px;font-weight:700;color:#9aa0a6;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">Almacén destino</label>'
+    +'<input type="text" id="ms-almacen" placeholder="Ej. EUBA-01, Taller central..." style="width:100%;font-size:13px;padding:9px 12px;border:1.5px solid #e0e2e6;border-radius:8px;outline:none;font-family:Inter,sans-serif" value="'+(e.almacen||'')+'">'
+    +'</div>'
+    +'<div style="margin-bottom:14px">'
+    +'<label style="font-size:10px;font-weight:700;color:#9aa0a6;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px">Motivo / Observaciones</label>'
+    +'<textarea id="ms-motivo" placeholder="Describe el motivo del movimiento..." style="width:100%;font-size:13px;padding:9px 12px;border:1.5px solid #e0e2e6;border-radius:8px;outline:none;font-family:Inter,sans-serif;resize:vertical;min-height:70px"></textarea>'
+    +'</div>'
+    +'</div>'
+    +'<div style="padding:12px 20px;border-top:1px solid #e8eaed;display:flex;gap:8px;justify-content:flex-end;background:#fafbfc">'
+    +'<button onclick="document.getElementById(&quot;modal-estado&quot;).remove()" style="padding:8px 16px;border:1px solid #dde1e7;border-radius:8px;background:#fff;cursor:pointer;font-family:Inter,sans-serif;font-size:12px">Cancelar</button>'
+    +'<button onclick="guardarCambioEstado(\''+docId+'\',\''+af+'\',\''+esc(modelo)+'\',\''+estadoActual+'\')" style="padding:8px 16px;background:linear-gradient(135deg,#1a73e8,#1557b0);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:Inter,sans-serif;font-size:12px;font-weight:600">Guardar movimiento</button>'
+    +'</div>'
+    +'</div>';
+  document.body.appendChild(div);
+}
+
+function guardarCambioEstado(docId, af, modelo, estadoAnterior){
+  var nuevoEstado=document.getElementById('ms-estado').value;
+  var almacen=document.getElementById('ms-almacen').value.trim();
+  var motivo=document.getElementById('ms-motivo').value.trim();
+  if(!nuevoEstado){toast('Selecciona el nuevo estado');return;}
+  if(nuevoEstado===estadoAnterior){toast('El estado es el mismo');return;}
+  var mov={
+    activoFijo:parseInt(af)||af,
+    modelo:modelo,
+    estadoAnterior:estadoAnterior,
+    estadoNuevo:nuevoEstado,
+    almacenDestino:almacen,
+    motivo:motivo,
+    usuario:curUser?curUser.name:'',
+    usuarioEmail:curUser?curUser.email:'',
+    ts:firebase.firestore.FieldValue.serverTimestamp(),
+    fecha:new Date().toISOString().slice(0,10)
+  };
+  // Guardar movimiento
+  db.collection('movimientos').add(mov).then(function(){
+    // Actualizar estado en el documento del equipo
+    var col=clientes.find(function(x){return x.id===docId;})?'clientesEquipo':'equipos';
+    db.collection(col).doc(docId).update({estado:nuevoEstado,almacen:almacen||firebase.firestore.FieldValue.delete()})
+      .then(function(){
+        // Actualizar en memoria
+        var eq=clientes.find(function(x){return x.id===docId;})||equipos.find(function(x){return x.id===docId;});
+        if(eq){eq.estado=nuevoEstado;if(almacen)eq.almacen=almacen;}
+        document.getElementById('modal-estado').remove();
+        toast('✅ Estado actualizado: '+ESTADOS[nuevoEstado].label);
+        if(openEqId===docId)dpTab('estado');
+      });
+  }).catch(function(err){toast('Error: '+err.message);});
+}
+
+function renderMovimientos(){
+  var w=document.getElementById('view-movimientos');if(!w)return;
+  var qFilt=document.getElementById('mov-q')?document.getElementById('mov-q').value.toLowerCase():'';
+  var estFilt=document.getElementById('mov-est')?document.getElementById('mov-est').value:'';
+  var data=movimientos.filter(function(m){
+    if(estFilt&&m.estadoNuevo!==estFilt)return false;
+    if(qFilt&&!(String(m.activoFijo).includes(qFilt)||(m.modelo||'').toLowerCase().includes(qFilt)||(m.usuario||'').toLowerCase().includes(qFilt)))return false;
+    return true;
+  });
+  w.innerHTML=
+    '<div style="font-size:18px;font-weight:700;color:#1c1e21;margin-bottom:18px">Historial de Movimientos</div>'
+    +'<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">'
+    +Object.entries(ESTADOS).map(function(entry){
+      var k=entry[0], v=entry[1];
+      var cnt=movimientos.filter(function(m){return m.estadoNuevo===k;}).length;
+      return'<div class="stat-card" style="border-top:3px solid '+v.color+'">'
+        +'<div class="lbl">'+v.label+'</div>'
+        +'<div class="val" style="color:'+v.color+'">'+cnt+'</div>'
+        +'<div class="trend">movimientos</div>'
+        +'</div>';
+    }).join('')
+    +'</div>'
+    +'<div class="tbl-box">'
+    +'<div class="tbl-hdr"><span class="tbl-hdr-title">'+data.length+' movimiento(s)</span>'
+    +'<div class="tbl-tools">'
+    +'<input class="fi-sm" type="text" id="mov-q" placeholder="🔍 Activo, modelo, usuario..." style="width:210px" oninput="renderMovimientos()" value="'+(qFilt||'')+'">'
+    +'<select class="fi-sm" id="mov-est" onchange="renderMovimientos()">'
+    +'<option value="">Todos los estados</option>'
+    +Object.entries(ESTADOS).map(function(e){return'<option value="'+e[0]+'"'+(estFilt===e[0]?' selected':'')+'>'+e[1].icon+' '+e[1].label+'</option>';}).join('')
+    +'</select>'
+    +'<button class="btn btn-blue btn-sm" onclick="exportExcelMovimientos()">⬇ Excel</button>'
+    +'</div></div>'
+    +'<div style="overflow-x:auto"><table><thead><tr>'
+    +'<th>Fecha</th><th>Activo Fijo</th><th>Modelo</th><th>Estado anterior</th><th>Estado nuevo</th><th>Almacén destino</th><th>Motivo</th><th>Usuario</th>'
+    +'</tr></thead><tbody>'
+    +(data.length?data.map(function(m){
+      return'<tr>'
+        +'<td style="font-size:11px;white-space:nowrap">'+fmtF(m.ts)+'</td>'
+        +'<td><span style="font-family:monospace;font-weight:700;color:#1a73e8">'+m.activoFijo+'</span></td>'
+        +'<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+(m.modelo||'—')+'</td>'
+        +'<td>'+bEstad(m.estadoAnterior)+'</td>'
+        +'<td>'+bEstad(m.estadoNuevo)+'</td>'
+        +'<td style="font-size:11px;font-family:monospace">'+(m.almacenDestino||'—')+'</td>'
+        +'<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#5f6368">'+(m.motivo||'—')+'</td>'
+        +'<td style="font-size:11px">'+(m.usuario||'—')+'</td>'
+        +'</tr>';
+    }).join(''):'<tr><td colspan="8" style="text-align:center;padding:24px;color:#9aa0a6">Sin movimientos registrados</td></tr>')
+    +'</tbody></table></div></div>';
+}
+
+}
+
+function exportExcelMovimientos(){
+  var wb=XLSX.utils.book_new();
+  var rows=[['CAFIVER — Historial de Movimientos','Generado:',new Date().toLocaleDateString('es-MX')],[]];
+  rows.push(['Fecha','Activo Fijo','Modelo','Estado Anterior','Estado Nuevo','Almacén Destino','Motivo','Usuario']);
+  movimientos.forEach(function(m){
+    rows.push([fmtF(m.ts),m.activoFijo,m.modelo,
+      ESTADOS[m.estadoAnterior]?ESTADOS[m.estadoAnterior].label:m.estadoAnterior,
+      ESTADOS[m.estadoNuevo]?ESTADOS[m.estadoNuevo].label:m.estadoNuevo,
+      m.almacenDestino||'',m.motivo||'',m.usuario||'']);
+  });
+  var ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:14},{wch:12},{wch:28},{wch:16},{wch:16},{wch:14},{wch:30},{wch:18}];
+  XLSX.utils.book_append_sheet(wb,ws,'Movimientos');
+  XLSX.writeFile(wb,'CAFIVER_Movimientos_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('✅ Excel de movimientos descargado');
 }
 
 function getChecklistLinea(){
