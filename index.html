@@ -752,16 +752,22 @@ function loadData(){
   // Equipos (clientesEquipo)
   // Cargar clientes una sola vez paginando
   if(clientes.length===0){
+    // Mostrar spinner en dashboard mientras carga
+    var ww=document.getElementById('view-dashboard');
+    if(ww)ww.innerHTML='<div style="text-align:center;padding:60px;color:#9aa0a6"><div style="font-size:32px;margin-bottom:16px">☕</div><div style="font-size:14px;font-weight:600">Cargando equipos...</div><div id="carga-progreso" style="font-size:12px;margin-top:8px;color:#1a73e8">Iniciando...</div></div>';
     function cargarClientes(ultimo){
       var q=db.collection('clientesEquipo').orderBy('activoFijo').limit(500);
       if(ultimo)q=q.startAfter(ultimo);
       q.get().then(function(s){
         var nuevos=s.docs.map(function(d){return{id:d.id,...d.data()};});
         clientes=clientes.concat(nuevos);
-        setSyncUI('saving','Cargando... '+clientes.length.toLocaleString());
+        // Solo actualizar progreso, NO renderizar dashboard todavía
+        var prog=document.getElementById('carga-progreso');
+        if(prog)prog.textContent=clientes.length.toLocaleString()+' equipos cargados...';
         if(s.docs.length===500){
           cargarClientes(s.docs[s.docs.length-1]);
         }else{
+          // Carga completa — ahora sí renderizar
           setSyncUI('ok','En línea ✓');
           if(curView==='dashboard')renderDashboard();
           if(curView==='clientes')renderClientes();
@@ -787,7 +793,7 @@ function loadData(){
 // ══ NAVEGACIÓN ══
 function switchView(v){
   curView=v;
-  ['dashboard','equipos','clientes','ordenes','preventivos','qr','reportes','etiquetas'].forEach(function(x){
+  ['dashboard','equipos','clientes','ordenes','preventivos','qr','reportes','etiquetas','movimientos'].forEach(function(x){
     var w=document.getElementById('view-'+x);if(w)w.classList.toggle('hidden',x!==v);
     var b=document.getElementById('tnav-'+x);if(b)b.classList.toggle('on',x===v);
   });
