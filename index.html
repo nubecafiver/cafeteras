@@ -699,6 +699,30 @@ var USERS = {
 };
 var TECNICOS = Object.values(USERS).filter(function(u){return u.rol==='tecnico';}).map(function(u){return u.name;});
 
+var GRUPO_NOMBRES = {
+  '300010001':'Accesorios Cafeteras',
+  '300010002':'Cafeteras Automática',
+  '300010003':'Cafeteras Hoteleras',
+  '300010004':'Cafeteras percolador',
+  '300010005':'Cafet. Semiautomática',
+  '300010006':'Cafet. Superautomática',
+  '300010007':'Equipo bebidas frías',
+  '300010008':'Generador de Vapor',
+  '300010009':'Molinos',
+  '300010010':'Equ. Food service',
+  '300010011':'Thermos',
+  '300010012':'Cafeteras Vending',
+  '300020002':'Jura',
+  '300020003':'Bunn',
+  '300020007':'Astoria',
+  '300020011':'La Pavoni',
+  '300020013':'Simonelli',
+  '300020019':'Misceláneos Refacc.',
+  '300020024':'Everpure',
+  '300020025':'Necta',
+  '300050031':'Capsulas monodosis',
+};
+
 var CENTROS = {
   'EUBA':'Equipo Usado Baja California',
   'EUCA':'Equipo Usado Cancún',
@@ -818,6 +842,10 @@ function getCentroNombre(codigo){
   if(!codigo||codigo==='null'||codigo==='undefined')return '—';
   return (catalogoCentros[codigo]&&catalogoCentros[codigo].nombre)||CENTROS[codigo]||codigo||'—';
 }
+function getGrupoNombre(grupoArt){
+  return GRUPO_NOMBRES[grupoArt]||grupoArt||'—';
+}
+
 function getAlmacenNombre(centro,almacen){
   var key=centro+'_'+almacen;
   return (catalogoAlmacenes[key]&&catalogoAlmacenes[key].nombre)||almacen||'—';
@@ -840,7 +868,18 @@ function bEstad(estado){
   if(ESTADOS[est]){var eq=ESTADOS[est];return'<span class="pill" style="background:'+eq.bg+';color:'+eq.color+';font-size:11px">'+eq.icon+' '+eq.label+'</span>';}
   return'<span class="pill" style="background:#f1f5f9;color:#64748b;font-size:11px">'+(est||'—')+'</span>';
 }
-function lbl(l){var m={Habitacion:'pill-hab',Superautomatica:'pill-sup',Filtrado:'pill-fil',Semiautomatica:'pill-sem',Molino:'pill-mol',Accesorios:'pill-acc','Caf soluble':'pill-acc','Café soluble':'pill-acc','Cafe soluble':'pill-acc'};return'<span class="pill '+(m[l]||'pill-acc')+'">'+l+'</span>';}
+function lbl(l,grupoArt){
+  var nombre=grupoArt?getGrupoNombre(grupoArt):(l||'—');
+  var m={
+    'Cafeteras Hoteleras':'pill-hab','Habitacion':'pill-hab','Cafeteras Automática':'pill-hab',
+    'Cafet. Superautomática':'pill-sup','Superautomatica':'pill-sup','Jura':'pill-sup',
+    'Cafeteras percolador':'pill-fil','Filtrado':'pill-fil','Bunn':'pill-fil',
+    'Cafet. Semiautomática':'pill-sem','Semiautomatica':'pill-sem','Astoria':'pill-sem','Simonelli':'pill-sem',
+    'Molinos':'pill-mol','Molino':'pill-mol',
+    'Capsulas monodosis':'pill-acc','Cafe soluble':'pill-acc','Cafeteras Vending':'pill-acc',
+  };
+  return'<span class="pill '+(m[nombre]||'pill-acc')+'" style="font-size:10px">'+nombre+'</span>';
+}
 function bCe(ce){return'<span class="pill" style="background:#f0f2f5;color:#5f6368;font-size:10px;padding:2px 8px;font-weight:700">'+(ce||'—')+'</span>';}
 function bTipo(t){return t==='correctivo'?'<span class="pill pill-proc">🔧 Correctivo</span>':'<span class="pill pill-ok">🔄 Preventivo</span>';}
 function bEst(e){var m={'terminado':'pill-ok','en proceso':'pill-pend','pendiente':'pill-acc','urgente':'pill-venc'};return'<span class="pill '+(m[e]||'pill-acc')+'">'+(e||'pendiente')+'</span>';}
@@ -1324,7 +1363,7 @@ function renderEquiposTabla(data){
       +'<td><span style="font-family:monospace;font-weight:700;color:#1a73e8">'+e.activoFijo+'</span></td>'
       +'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+(e.modelo||'—')+'</td>'
       +'<td style="font-family:monospace;font-size:11px">'+sv+'</td>'
-      +'<td>'+lbl(e.linea)+'</td>'
+      +'<td>'+lbl(e.linea,e.grupoArt)+'</td>'
       +'<td>'+bCe(e.centro)+'</td>'
       +'<td><div style="display:flex;gap:3px">'
       +'<button class="icon-btn" onclick="event.stopPropagation();openPanel(\''+e.id+'\',\'cl\')" title="Ver ficha">👁</button>'
@@ -1419,7 +1458,7 @@ function dpTab(tab, eObj, col){
       +dpRow('Activo Fijo','<strong style="color:#1a73e8;font-family:monospace">'+e.activoFijo+'</strong>')
       +dpRow('No. de Serie','<span style="font-family:monospace">'+e.serie+'</span>')
       +dpRow('Modelo',e.modelo)
-      +dpRow('Línea',lbl(e.linea))
+      +dpRow('Línea',lbl(e.linea,e.grupoArt)+' <span style="font-size:10px;color:#9aa0a6;font-family:monospace">'+(e.grupoArt||'')+'</span>')
       +dpRow('Centro',bCe(e.centro)+' — '+getCentroNombre(e.centro))
       +dpRow('Material',e.material||'—')
       +'<div class="dp-sec-t">Cliente asignado</div>'
