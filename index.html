@@ -1134,7 +1134,7 @@ async function cargarStatsDashboard(){
     // Por línea — ancho completo de su columna
     +'<div class="db-card"><div class="db-card-hd">Equipos por línea</div>'
     +(Object.keys(porLinea).length?
-      Object.entries(porLinea).sort(function(a,b){return b[1]-a[1];}).slice(0,10).map(function(e,i){
+      Object.entries(porLinea).filter(function(e){return e[0]!=='Sin linea'&&e[0]!=='null'&&e[0]!=='Sin línea';}).sort(function(a,b){return b[1]-a[1];}).slice(0,12).map(function(e,i){
         var mx=Math.max.apply(null,Object.values(porLinea));
         var cols=['#2a4a1e','#3d6b2c','#8b6914','#5a8f42','#6b4423','#4a7a6b','#2d5a3d','#7a6b2a','#5a4a3e','#3d6b4a'];
         return'<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;margin-bottom:3px">'
@@ -1245,7 +1245,7 @@ function actualizarTotalesConfig(){
   var porLinea={},porClase={},porCentro={};
   clientes.forEach(function(e){
     if(tots[e.estado]!==undefined)tots[e.estado]++;
-    var lin=e.linea||'Sin linea'; porLinea[lin]=(porLinea[lin]||0)+1;
+    var lin=e.grupoArt?getGrupoNombre(e.grupoArt):(e.linea||'Sin linea'); porLinea[lin]=(porLinea[lin]||0)+1;
     var cl=e.claseActivo||'Otro';  porClase[cl]=(porClase[cl]||0)+1;
     var ce=e.centro||'—';          porCentro[ce]=(porCentro[ce]||0)+1;
   });
