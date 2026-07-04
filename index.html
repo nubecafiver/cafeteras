@@ -710,6 +710,7 @@ function setStatus(msg,cls){var el=document.getElementById('scanner-status');if(
 
 // Helpers de catálogos
 function getCentroNombre(codigo){
+  if(!codigo||codigo==='null'||codigo==='undefined')return '—';
   return (catalogoCentros[codigo]&&catalogoCentros[codigo].nombre)||CENTROS[codigo]||codigo||'—';
 }
 function getAlmacenNombre(centro,almacen){
@@ -721,8 +722,18 @@ function getClienteNombre(numero){
 }
 
 function bEstad(estado){
-  var e=ESTADOS[estado]||{label:estado||'—',color:'#9aa0a6',bg:'#f0f2f5',icon:'⚪'};
-  return'<span class="pill" style="background:'+e.bg+';color:'+e.color+';font-size:11px">'+e.icon+' '+e.label+'</span>';
+  var est='';
+  if(!estado)est='';
+  else if(typeof estado==='string')est=estado;
+  else if(typeof estado==='object')est=estado.label||estado.estadoNuevo||'';
+  else est=String(estado);
+  est=est.trim();
+  var EQ={'con_cliente':['#dcfce7','#16a34a','🟢','Con cliente'],'disponible':['#dbeafe','#1d4ed8','🔵','Disponible'],'reparacion':['#fee2e2','#dc2626','🔴','En reparación'],'retiro':['#fef9c3','#ca8a04','🟡','En retiro'],'baja':['#f1f5f9','#64748b','⚫','Baja']};
+  var ORD={'terminado':['#dcfce7','#16a34a','✅','terminado'],'en proceso':['#dbeafe','#1d4ed8','🔄','en proceso'],'pendiente':['#f1f5f9','#64748b','⏳','pendiente'],'urgente':['#fee2e2','#dc2626','🚨','urgente']};
+  var m=EQ[est]||ORD[est];
+  if(m)return'<span class="pill" style="background:'+m[0]+';color:'+m[1]+';font-size:11px;font-weight:600">'+m[2]+' '+m[3]+'</span>';
+  if(ESTADOS[est]){var eq=ESTADOS[est];return'<span class="pill" style="background:'+eq.bg+';color:'+eq.color+';font-size:11px">'+eq.icon+' '+eq.label+'</span>';}
+  return'<span class="pill" style="background:#f1f5f9;color:#64748b;font-size:11px">'+(est||'—')+'</span>';
 }
 function lbl(l){var m={Habitacion:'pill-hab',Superautomatica:'pill-sup',Filtrado:'pill-fil',Semiautomatica:'pill-sem',Molino:'pill-mol',Accesorios:'pill-acc','Caf soluble':'pill-acc','Café soluble':'pill-acc','Cafe soluble':'pill-acc'};return'<span class="pill '+(m[l]||'pill-acc')+'">'+l+'</span>';}
 function bCe(ce){return'<span class="pill" style="background:#f0f2f5;color:#5f6368;font-size:10px;padding:2px 8px;font-weight:700">'+(ce||'—')+'</span>';}
@@ -820,7 +831,7 @@ function loadData(){
 
   // NO cargar todos los equipos al inicio — se cargan bajo demanda
   setSyncUI('ok','En línea ✓');
-  if(curView==='dashboard')renderDashboard();
+  switchView('dashboard');
 
   db.collection('equipos').limit(300).get().then(function(s){
     equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
@@ -916,19 +927,19 @@ async function cargarStatsDashboard(){
     // KPI FILA 1 — PARQUE
     +'<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px">Parque de equipos</div>'
     +'<div class="db-kpi-grid">'
-    +dbKpi('Total universo',totalEq.toLocaleString(),'equipos en SAP','#60a5fa','☕')
-    +dbKpi('Con cliente',conCliente?conCliente.toLocaleString():'—','equipos asignados','#34d399','🟢')
-    +dbKpi('En reparación',enRep?enRep.toLocaleString():'—','requieren atención','#f87171','🔴')
-    +dbKpi('Disponibles',disponibles?disponibles.toLocaleString():'—','en almacén','#a78bfa','🔵')
+    +dbKpi('Total universo',totalEq.toLocaleString(),'equipos en SAP','#60a5fa','☕','')
+    +dbKpi('Con cliente',conCliente?conCliente.toLocaleString():'—','equipos asignados','#34d399','🟢','estado:con_cliente')
+    +dbKpi('En reparación',enRep?enRep.toLocaleString():'—','requieren atención','#f87171','🔴','estado:reparacion')
+    +dbKpi('Disponibles',disponibles?disponibles.toLocaleString():'—','en almacén','#a78bfa','🔵','estado:disponible')
     +'</div>'
 
     // KPI FILA 2 — CLASIFICACIÓN
     +'<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.12em;margin:4px 0 8px">Clasificación del parque</div>'
     +'<div class="db-kpi-grid">'
-    +dbKpi('Equipo nuevo',(porClase.CSNUEVO||0).toLocaleString(),'CSNUEVO','#fbbf24','✨')
-    +dbKpi('Equipo usado',(porClase.CSUSADO||0).toLocaleString(),'CSUSADO','#60a5fa','♻️')
-    +dbKpi('Cafetera',(porClase.CAFETERA||0).toLocaleString(),'CAFETERA','#34d399','☕')
-    +dbKpi('Hotelera',(porClase.HOTELERA||0).toLocaleString(),'HOTELERA','#f87171','🏨')
+    +dbKpi('Equipo nuevo',(porClase.CSNUEVO||0).toLocaleString(),'CSNUEVO','#fbbf24','✨','claseActivo:CSNUEVO')
+    +dbKpi('Equipo usado',(porClase.CSUSADO||0).toLocaleString(),'CSUSADO','#60a5fa','♻️','claseActivo:CSUSADO')
+    +dbKpi('Cafetera',(porClase.CAFETERA||0).toLocaleString(),'CAFETERA','#34d399','☕','claseActivo:CAFETERA')
+    +dbKpi('Hotelera',(porClase.HOTELERA||0).toLocaleString(),'HOTELERA','#f87171','🏨','claseActivo:HOTELERA')
     +'</div>'
 
     // KPI FILA 3 — OPERACIÓN
@@ -1012,17 +1023,32 @@ async function cargarStatsDashboard(){
   setTimeout(asignarEventosDashboard, 100);
 }
 
-function dbKpi(label,val,sub,color,icon){
-  return'<div class="db-kpi">'
+function dbKpi(label,val,sub,color,icon,filtro){
+  var onclick=filtro?'onclick="dbKpiClick(this)" data-filtro="'+filtro+'" style="cursor:pointer"':'';
+  return'<div class="db-kpi" '+onclick+'>'
     +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">'
     +'<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em">'+label+'</div>'
     +'<div style="font-size:18px;opacity:.7">'+icon+'</div>'
     +'</div>'
     +'<div style="font-size:28px;font-weight:700;color:'+color+';line-height:1;margin-bottom:4px;font-variant-numeric:tabular-nums">'+val+'</div>'
-    +'<div style="font-size:11px;color:rgba(255,255,255,.35)">'+sub+'</div>'
+    +'<div style="font-size:11px;color:rgba(255,255,255,.35)">'+sub+(filtro?'  <span style="font-size:10px;opacity:.5">→ Ver</span>':'')+'</div>'
     +'<div style="height:2px;background:rgba(255,255,255,.06);border-radius:1px;margin-top:12px;overflow:hidden">'
     +'<div style="height:100%;width:60%;background:'+color+';opacity:.4;border-radius:1px"></div>'
     +'</div></div>';
+}
+
+function dbKpiClick(el){
+  var filtro=el.getAttribute('data-filtro')||'';
+  // Parsear filtro: "estado:con_cliente" o "claseActivo:CSNUEVO" o "linea:Habitacion"
+  var parts=filtro.split(':');
+  var campo=parts[0], valor=parts.slice(1).join(':');
+  // Ir a equipos con filtro aplicado
+  eqFiltros={q:'',linea:'',centro:'',estado:'',claseActivo:''};
+  if(campo==='estado')eqFiltros.estado=valor;
+  else if(campo==='linea')eqFiltros.linea=valor;
+  else if(campo==='claseActivo')eqFiltros.claseActivo=valor;
+  else if(campo==='centro')eqFiltros.centro=valor;
+  switchView('equipos');
 }
 
 function actualizarTotalesConfig(){
