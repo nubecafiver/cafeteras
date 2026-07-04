@@ -162,6 +162,31 @@ tr:hover td{background:#f7f9ff}
 #scanner-video{width:100%;height:100%;object-fit:cover}
 .scanner-line{position:absolute;left:10px;right:10px;height:2px;background:linear-gradient(90deg,transparent,#1a73e8,transparent);animation:scanLine 2s linear infinite}
 @keyframes scanLine{0%{top:10px}100%{top:calc(100% - 12px)}}
+
+/* ══ DASHBOARD OSCURO ══ */
+#view-dashboard{background:#060d1a!important;padding:16px 20px}
+.db-wrap{max-width:1400px;margin:0 auto}
+.db-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;padding:24px 28px;background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);border-radius:16px;border:1px solid rgba(255,255,255,.08)}
+.db-title{font-size:24px;font-weight:700;color:#fff;letter-spacing:-.02em;margin-bottom:4px}
+.db-fecha{font-size:12px;color:rgba(255,255,255,.4)}
+.db-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.db-kpi{background:linear-gradient(135deg,#0f172a,#1a2744);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px;transition:transform .15s,border-color .15s;position:relative;overflow:hidden}
+.db-kpi:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.15)}
+.db-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent)}
+.db-kpi-skeleton{background:linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 100%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:14px;min-height:120px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.db-grid-2{display:grid;grid-template-columns:1.4fr 1fr;gap:12px;margin-bottom:12px}
+.db-card{background:linear-gradient(135deg,#0f172a,#1a2744);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px}
+.db-tr:hover{background:rgba(255,255,255,.04)!important}
+.db-acc{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px;text-align:left;cursor:pointer;transition:all .15s;font-family:Inter,sans-serif;display:block}
+.db-acc:hover{background:rgba(255,255,255,.1);transform:translateY(-1px)}
+.db-card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;font-size:13px;font-weight:600;color:rgba(255,255,255,.8)}
+@media(max-width:768px){
+  .db-kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .db-grid-2{grid-template-columns:1fr}
+  .db-header{flex-direction:column;gap:12px}
+  #view-dashboard{padding:12px}
+}
 .scanner-guide{position:absolute;inset:0}
 .scanner-guide::before,.scanner-guide::after{content:'';position:absolute;width:24px;height:24px;border-color:#fff;border-style:solid}
 .scanner-guide::before{top:8px;left:8px;border-width:3px 0 0 3px;border-radius:4px 0 0 0}
@@ -866,54 +891,199 @@ function switchView(v){
 // ══ DASHBOARD ══
 function renderDashboard(){
   var w=document.getElementById('view-dashboard');if(!w)return;
-  var total=ordenes.length;
-  var pend=ordenes.filter(function(o){return o.estado!=='terminado';}).length;
-  var term=ordenes.filter(function(o){return o.estado==='terminado';}).length;
-  var ingr=ordenes.reduce(function(a,o){return a+(o.costoTotal||0);},0);
-  var recientes=ordenes.slice(0,8);
-  var byLinea={};clientes.forEach(function(c){var lin=c.linea||'Sin línea';byLinea[lin]=(byLinea[lin]||0)+1;});
-  var byCentro={};clientes.forEach(function(c){byCentro[c.centro]=(byCentro[c.centro]||0)+1;});
-  var topCentros=Object.entries(byCentro).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
-  var maxC=topCentros.length?topCentros[0][1]:1;
-  w.innerHTML=
-    '<div style="font-size:18px;font-weight:700;color:#1c1e21;margin-bottom:3px">Dashboard — CAFIVER</div>'
-    +'<div style="font-size:12px;color:#9aa0a6;margin-bottom:18px">'+new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'</div>'
-    +'<div class="stats-grid">'
-    +'<div class="stat-card"><div class="lbl">Total Equipos</div><div class="val blue">'+clientes.length.toLocaleString()+'</div><div class="trend">universo completo</div></div>'
-    +'<div class="stat-card"><div class="lbl">Con Cliente</div><div class="val green">'+clientes.filter(function(e){return e.estado==="con_cliente";}).length.toLocaleString()+'</div><div class="trend">equipos asignados</div></div>'
-    +'<div class="stat-card"><div class="lbl">Órdenes activas</div><div class="val amber">'+pend+'</div></div>'
-    +'<div class="stat-card"><div class="lbl">Completadas</div><div class="val green">'+term+'</div></div>'
-    +'<div class="stat-card"><div class="lbl">Total órdenes</div><div class="val blue">'+total+'</div></div>'
-    +'<div class="stat-card"><div class="lbl">Ingresos</div><div class="val green" style="font-size:17px">'+fmt$(ingr)+'</div></div>'
-    +'<div class="stat-card" style="border-top-color:#ea4335"><div class="lbl">En reparación</div><div class="val red">'+clientes.filter(function(e){return e.estado==="reparacion";}).length.toLocaleString()+'</div></div>'
-    +'<div class="stat-card" style="border-top-color:#f9ab00"><div class="lbl">En retiro</div><div class="val amber">'+clientes.filter(function(e){return e.estado==="retiro";}).length.toLocaleString()+'</div></div>'
-    +'<div class="stat-card" style="border-top-color:#9aa0a6"><div class="lbl">Baja / Obsoleto</div><div class="val" style="color:#9aa0a6">'+clientes.filter(function(e){return e.estado==="baja";}).length.toLocaleString()+'</div></div>'
-    +'<div class="stat-card"><div class="lbl">Centros</div><div class="val">'+Object.keys(CENTROS).length+'</div></div>'
-    +'<div class="stat-card"><div class="lbl">Técnicos</div><div class="val">'+TECNICOS.length+'</div></div>'
-    +'</div>'
-    +'<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:16px">'
-    +'<div class="tbl-box"><div class="tbl-hdr"><span class="tbl-hdr-title">Órdenes recientes</span><button class="btn btn-sm" onclick="switchView(\'ordenes\')">Ver todas →</button></div>'
-    +'<div style="overflow-x:auto"><table><thead><tr><th>Folio</th><th>Tipo</th><th>Modelo</th><th>Centro</th><th>Estado</th><th>Costo</th></tr></thead><tbody>'
-    +(recientes.length?recientes.map(function(o){return'<tr style="cursor:pointer" ondblclick="abrirFicha(\''+o.id+'\')">'
-      +'<td style="font-family:monospace;font-size:10px;color:#9aa0a6">'+o.folio+'</td>'
-      +'<td>'+bTipo(o.tipo)+'</td>'
-      +'<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+o.modelo+'</td>'
-      +'<td>'+bCe(o.centro)+'</td>'
-      +'<td>'+bEstad(o.estado)+'</td>'
-      +'<td style="font-weight:600;color:#34a853">'+fmt$(o.costoTotal)+'</td>'
-      +'</tr>';}).join(''):'<tr><td colspan="6" class="empty-state">Sin órdenes registradas</td></tr>')
-    +'</tbody></table></div></div>'
-    +'<div class="tbl-box"><div class="tbl-hdr"><span class="tbl-hdr-title">Equipos por línea</span></div>'
-    +'<div style="padding:10px 16px">'
-    +Object.entries(byLinea).filter(function(e){return e[0]!=='Sin línea'&&e[0]!=='null';}).map(function(e){var pct=Math.round(e[1]/Math.max(clientes.length,1)*100);return'<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:12px">'+e[0]+'</span><span style="font-size:12px;font-weight:600">'+e[1].toLocaleString()+'</span></div><div style="height:6px;background:#f0f2f5;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#1a73e8;border-radius:3px"></div></div></div>';}).join('')
-    +'</div></div></div>'
-    +'<div class="tbl-box"><div class="tbl-hdr"><span class="tbl-hdr-title">Top centros — Equipos asignados</span></div>'
-    +'<div style="padding:10px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
-    +topCentros.map(function(c){var pct=Math.round(c[1]/maxC*100);return'<div style="padding:10px;background:#f7f9ff;border-radius:10px;border:1px solid #e8eaed"><div style="font-size:11px;font-weight:600;margin-bottom:4px">'+getCentroNombre(c[0])+'</div><div style="font-size:18px;font-weight:700;color:#1a73e8">'+c[1].toLocaleString()+'</div><div style="height:4px;background:#e8eaed;border-radius:2px;margin-top:6px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#1a73e8"></div></div></div>';}).join('')
-    +'</div></div>';
+  // Mostrar skeleton mientras cargan los datos
+  w.innerHTML=buildDashboardShell();
+  // Cargar stats desde config + órdenes (ya en memoria)
+  cargarStatsDashboard();
 }
 
-// ══ EQUIPOS ══
+function buildDashboardShell(){
+  var hoy=new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  return '<div class="db-wrap">'
+    // Header
+    +'<div class="db-header">'
+    +'<div><div class="db-title">Panel de Control</div><div class="db-fecha">'+hoy+'</div></div>'
+    +'<div class="db-header-right">'
+    +'<div id="db-ultima-act" style="font-size:11px;color:rgba(255,255,255,.4)">Cargando...</div>'
+    +'</div></div>'
+    // KPIs fila 1
+    +'<div class="db-kpi-grid" id="db-kpi-equipos">'
+    +['','','',''].map(function(){return'<div class="db-kpi db-kpi-skeleton"></div>';}).join('')
+    +'</div>'
+    // KPIs fila 2 — operación
+    +'<div class="db-kpi-grid" id="db-kpi-ordenes">'
+    +['','','',''].map(function(){return'<div class="db-kpi db-kpi-skeleton"></div>';}).join('')
+    +'</div>'
+    // Fila 3 — tablas
+    +'<div class="db-grid-2" id="db-grid-bottom">'
+    +'<div class="db-card db-kpi-skeleton" style="min-height:280px"></div>'
+    +'<div class="db-card db-kpi-skeleton" style="min-height:280px"></div>'
+    +'</div>'
+    // Alertas
+    +'<div class="db-card db-kpi-skeleton" id="db-alertas" style="min-height:120px;margin-top:0"></div>'
+    +'</div>';
+}
+
+async function cargarStatsDashboard(){
+  // 1. Leer config/general para totales
+  var config={};
+  try{
+    var snap=await db.collection('config').doc('general').get();
+    if(snap.exists)config=snap.data();
+  }catch(e){console.warn('config:',e.message);}
+
+  var totalEq   = config.totalEquipos||0;
+  var ords       = ordenes;
+  var ordMes     = ords.filter(function(o){
+    if(!o.creadoEn)return false;
+    var d=o.creadoEn.toDate?o.creadoEn.toDate():new Date(o.creadoEn);
+    return d.getMonth()===new Date().getMonth()&&d.getFullYear()===new Date().getFullYear();
+  });
+  var ordAbiertas   = ords.filter(function(o){return o.estado!=='terminado';}).length;
+  var ordCompletadas= ordMes.filter(function(o){return o.estado==='terminado';}).length;
+  var ingresosMes   = ordMes.reduce(function(a,o){return a+(o.costoTotal||0);},0);
+  var ingresosTotal = ords.reduce(function(a,o){return a+(o.costoTotal||0);},0);
+
+  // Stats por estado desde config (se guardaron en la importación)
+  var conCliente  = config.totalConCliente  || 0;
+  var enRep       = config.totalReparacion  || 0;
+  var disponibles = config.totalDisponible  || 0;
+  var bajas       = config.totalBaja        || 0;
+
+  // Órdenes por técnico este mes
+  var porTec={};
+  ordMes.forEach(function(o){
+    var t=o.tecnicoNombre||'Sin asignar';
+    porTec[t]=(porTec[t]||0)+1;
+  });
+  var topTec=Object.entries(porTec).sort(function(a,b){return b[1]-a[1];}).slice(0,5);
+
+  // Órdenes recientes
+  var recientes=ords.slice(0,8);
+
+  // Construir HTML
+  var w=document.getElementById('view-dashboard');if(!w)return;
+  w.innerHTML=
+    '<div class="db-wrap">'
+
+    // ── HEADER ──
+    +'<div class="db-header">'
+    +'<div>'
+    +'<div class="db-title">Panel de Control</div>'
+    +'<div class="db-fecha">'+new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'</div>'
+    +'</div>'
+    +'<div class="db-header-right">'
+    +(config.ultimaImportacion?'<div style="font-size:11px;color:rgba(255,255,255,.45)">Última actualización SAP:<br><b style="color:rgba(255,255,255,.7)">'+fmtF(config.ultimaImportacion)+'</b></div>':'')
+    +'</div></div>'
+
+    // ── KPIs PARQUE ──
+    +'<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px">Parque de equipos</div>'
+    +'<div class="db-kpi-grid">'
+    +dbKpi('Total equipos',totalEq.toLocaleString(),'universo SAP','#60a5fa','☕')
+    +dbKpi('Con cliente',conCliente?conCliente.toLocaleString():'—','equipos asignados','#34d399','🟢')
+    +dbKpi('En reparación',enRep?enRep.toLocaleString():'—','requieren atención','#f87171','🔴')
+    +dbKpi('Disponibles',disponibles?disponibles.toLocaleString():'—','en almacén CAFIVER','#a78bfa','🔵')
+    +'</div>'
+
+    // ── KPIs OPERACIÓN ──
+    +'<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.12em;margin:20px 0 10px">Operación del mes</div>'
+    +'<div class="db-kpi-grid">'
+    +dbKpi('Órdenes abiertas',ordAbiertas,'pendientes de cierre','#fbbf24','📋')
+    +dbKpi('Completadas',ordCompletadas,'este mes','#34d399','✅')
+    +dbKpi('Ingresos del mes',fmt$(ingresosMes),'facturación','#60a5fa','💰')
+    +dbKpi('Total histórico',fmt$(ingresosTotal),'acumulado','#a78bfa','📈')
+    +'</div>'
+
+    // ── TABLAS ──
+    +'<div class="db-grid-2">'
+
+    // Órdenes recientes
+    +'<div class="db-card">'
+    +'<div class="db-card-hd"><span>Órdenes recientes</span><button class="btn btn-sm" id="btn-ver-ordenes" style="font-size:11px">Ver todas &rarr;</button></div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
+    +'<thead><tr><th style="text-align:left;padding:7px 10px;font-size:10px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.08)">Folio</th>'
+    +'<th style="text-align:left;padding:7px 10px;font-size:10px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.08)">Modelo</th>'
+    +'<th style="text-align:left;padding:7px 10px;font-size:10px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.08)">Estado</th>'
+    +'<th style="text-align:right;padding:7px 10px;font-size:10px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.08)">Costo</th>'
+    +'</tr></thead><tbody>'
+    +(recientes.length?recientes.map(function(o){
+      return'<tr style="cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05)" class="db-tr">'
+        +'<td style="padding:8px 10px;font-family:monospace;font-size:10px;color:rgba(255,255,255,.4)">'+o.folio+'</td>'
+        +'<td style="padding:8px 10px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,.85);font-size:12px">'+(o.modelo||'—')+'</td>'
+        +'<td style="padding:8px 10px">'+bEstad(o.estado)+'</td>'
+        +'<td style="padding:8px 10px;text-align:right;font-weight:600;color:#34d399;font-size:12px">'+fmt$(o.costoTotal)+'</td>'
+        +'</tr>';
+    }).join(''):'<tr><td colspan="4" style="padding:20px;text-align:center;color:rgba(255,255,255,.3);font-size:12px">Sin órdenes registradas</td></tr>')
+    +'</tbody></table></div></div>'
+
+    // Top técnicos
+    +'<div class="db-card">'
+    +'<div class="db-card-hd"><span>Técnicos — este mes</span></div>'
+    +(topTec.length?topTec.map(function(t,i){
+      var max=topTec[0][1];
+      var pct=Math.round(t[1]/max*100);
+      var colors=['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa'];
+      return'<div style="margin-bottom:14px">'
+        +'<div style="display:flex;justify-content:space-between;margin-bottom:5px">'
+        +'<span style="font-size:12px;color:rgba(255,255,255,.8);font-weight:500">'+t[0]+'</span>'
+        +'<span style="font-size:12px;font-weight:700;color:'+colors[i%5]+'">'+(t[1])+' órdenes</span>'
+        +'</div>'
+        +'<div style="height:5px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden">'
+        +'<div style="height:100%;width:'+pct+'%;background:'+colors[i%5]+';border-radius:3px;transition:width .6s ease"></div>'
+        +'</div></div>';
+    }).join(''):'<div style="padding:20px;text-align:center;color:rgba(255,255,255,.3);font-size:12px">Sin órdenes este mes</div>')
+    +'</div>'
+
+    +'</div>' // db-grid-2
+
+    // ── ALERTAS ──
+    +'<div class="db-card" style="margin-top:0">'
+    +'<div class="db-card-hd"><span>⚡ Accesos rápidos</span></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">'
+    +'<button id="db-acc-scan" class="db-acc">'
+    +'<div style="font-size:22px;margin-bottom:6px">📷</div>'
+    +'<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">Escanear QR</div>'
+    +'<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Identificar equipo</div></button>'
+    +'<button id="db-acc-orden" class="db-acc">'
+    +'<div style="font-size:22px;margin-bottom:6px">📋</div>'
+    +'<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">Nueva orden</div>'
+    +'<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Registrar servicio</div></button>'
+    +'<button id="db-acc-qr" class="db-acc">'
+    +'<div style="font-size:22px;margin-bottom:6px">⬡</div>'
+    +'<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">QR en masa</div>'
+    +'<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Imprimir etiquetas</div></button>'
+    +'<button id="db-acc-rep" class="db-acc">'
+    +'<div style="font-size:22px;margin-bottom:6px">📊</div>'
+    +'<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">Reportes</div>'
+    +'<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Excel y estadísticas</div></button>'
+    +'<button id="db-acc-mov" class="db-acc">'
+    +'<div style="font-size:22px;margin-bottom:6px">🔄</div>'
+    +'<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">Movimientos</div>'
+    +'<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Historial de equipos</div></button>'
+    +'<button id="db-acc-etiq" class="db-acc">'
+    +'<div style="font-size:22px;margin-bottom:6px">🏷</div>'
+    +'<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">Etiquetas</div>'
+    +'<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Imprimir etiquetas</div></button>'
+    +'</div></div>'
+
+    +'</div>'; // db-wrap
+}
+
+function dbKpi(label,val,sub,color,icon){
+  return'<div class="db-kpi">'
+    +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">'
+    +'<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em">'+label+'</div>'
+    +'<div style="font-size:18px;opacity:.7">'+icon+'</div>'
+    +'</div>'
+    +'<div style="font-size:30px;font-weight:700;color:'+color+';line-height:1;margin-bottom:6px;font-variant-numeric:tabular-nums">'+val+'</div>'
+    +'<div style="font-size:11px;color:rgba(255,255,255,.35)">'+sub+'</div>'
+    +'<div style="height:2px;background:rgba(255,255,255,.06);border-radius:1px;margin-top:14px;overflow:hidden">'
+    +'<div style="height:100%;width:60%;background:'+color+';opacity:.4;border-radius:1px"></div>'
+    +'</div>'
+    +'</div>';
+}
+
+
 function renderEquipos(){
   var w=document.getElementById('view-equipos');if(!w)return;
   w.innerHTML=
@@ -2262,6 +2432,19 @@ function checkHash(){
 }
 
 // ══ AUTH OBSERVER ══
+// Botón "ver todas" del dashboard
+document.addEventListener('click',function(e){
+  var t=e.target.closest('button');if(!t)return;
+  var id=t.id;
+  if(id==='btn-ver-ordenes')switchView('ordenes');
+  if(id==='db-acc-scan')openScanner();
+  if(id==='db-acc-orden')openFormOrden();
+  if(id==='db-acc-qr')switchView('qr');
+  if(id==='db-acc-rep')switchView('reportes');
+  if(id==='db-acc-mov')switchView('movimientos');
+  if(id==='db-acc-etiq')switchView('etiquetas');
+});
+
 auth.onAuthStateChanged(function(user){
   if(user){
     var email=user.email.toLowerCase();
