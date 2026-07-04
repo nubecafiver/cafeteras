@@ -2411,6 +2411,8 @@ function checkHash(){
 // ══ AUTH OBSERVER ══
 document.addEventListener('click',function(e){
   var t=e.target.closest('button');if(!t)return;
+  // No interceptar botones del login
+  if(t.id==='login-btn')return;
   if(t.id==='btn-ver-ordenes')switchView('ordenes');
   if(t.id==='db-acc-scan')openScanner();
   if(t.id==='db-acc-orden')openFormOrden();
