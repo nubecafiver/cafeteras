@@ -818,35 +818,9 @@ function loadData(){
     }).catch(function(e){console.warn('clientes:',e.message);});
   }
 
-  if(!_clientesCargados){
-    _clientesCargados=true;
-    var ww=document.getElementById('view-dashboard');
-    if(ww)ww.innerHTML='<div style="text-align:center;padding:60px;color:#9aa0a6"><div style="font-size:32px;margin-bottom:16px">☕</div><div style="font-size:14px;font-weight:600">Cargando equipos...</div><div id="carga-progreso" style="font-size:12px;margin-top:8px;color:#1a73e8">Iniciando...</div></div>';
-    function cargarEquipos(ultimo){
-      // Nueva estructura: todo en colección 'equipos'
-      var q=db.collection('equipos').orderBy('activoFijo').limit(500);
-      if(ultimo)q=q.startAfter(ultimo);
-      q.get().then(function(s){
-        var nuevos=s.docs.map(function(d){return{id:d.id,...d.data()};});
-        // Llenar ambos arrays para compatibilidad con la app
-        clientes=clientes.concat(nuevos);
-        equipos=clientes; // misma referencia — todos los equipos
-        var prog=document.getElementById('carga-progreso');
-        if(prog)prog.textContent=clientes.length.toLocaleString()+' equipos cargados...';
-        if(s.docs.length===500){
-          cargarEquipos(s.docs[s.docs.length-1]);
-        }else{
-          setSyncUI('ok','En línea ✓');
-          actualizarTotalesConfig();
-          if(curView==='dashboard')renderDashboard();
-          if(curView==='clientes')renderClientes();
-          if(curView==='equipos')renderEquipos();
-          if(curView==='reportes')renderReportes();
-        }
-      }).catch(function(e){setSyncUI('error','Error');console.warn(e);});
-    }
-    cargarEquipos(null);
-  }
+  // NO cargar todos los equipos al inicio — se cargan bajo demanda
+  setSyncUI('ok','En línea ✓');
+  if(curView==='dashboard')renderDashboard();
 
   db.collection('equipos').limit(300).get().then(function(s){
     equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
@@ -1091,6 +1065,29 @@ function renderEquipos(){
   buscarEquiposFirestore(); // cargar siempre al entrar
 }
 // ══ CLIENTES ══
+function cargarEquiposBajoDemanda(callback){
+  if(_clientesCargados){ if(callback)callback(); return; }
+  _clientesCargados=true;
+  setSyncUI('saving','Cargando equipos...');
+  function cargarPagina(ultimo){
+    var q=db.collection('equipos').orderBy('activoFijo').limit(500);
+    if(ultimo)q=q.startAfter(ultimo);
+    q.get().then(function(s){
+      var nuevos=s.docs.map(function(d){return{id:d.id,...d.data()};});
+      clientes=clientes.concat(nuevos);
+      equipos=clientes;
+      if(s.docs.length===500){
+        cargarPagina(s.docs[s.docs.length-1]);
+      }else{
+        setSyncUI('ok','En línea ✓');
+        actualizarTotalesConfig();
+        if(callback)callback();
+      }
+    }).catch(function(e){setSyncUI('error','Error');console.warn(e);});
+  }
+  cargarPagina(null);
+}
+
 function buscarEquiposFirestore(){
   var tbody=document.getElementById('eq-tbody');
   if(tbody)tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px;color:#9aa0a6">Buscando...</td></tr>';
@@ -1170,6 +1167,7 @@ function renderEquiposTabla(data){
 // ══ CLIENTES ══
 function renderClientes(){
   var w=document.getElementById('view-clientes');if(!w)return;
+  if(!_clientesCargados){cargarEquiposBajoDemanda(function(){renderClientes();});return;}
   var q=document.getElementById('cl-q')?document.getElementById('cl-q').value.toLowerCase():'';
   var ce=document.getElementById('cl-ce')?document.getElementById('cl-ce').value:'';
   var data=clientes.filter(function(c){
@@ -1535,6 +1533,7 @@ function printTodasEtiquetas(){
 // ══ REPORTES ══
 function renderReportes(){
   var w=document.getElementById('view-reportes');if(!w)return;
+  if(!_clientesCargados){cargarEquiposBajoDemanda(function(){renderReportes();});return;}
   var total=ordenes.length;
   var ingr=ordenes.reduce(function(a,o){return a+(o.costoTotal||0);},0);
   var corr=ordenes.filter(function(o){return o.tipo==='correctivo';}).length;
