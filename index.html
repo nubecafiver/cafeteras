@@ -1106,22 +1106,28 @@ async function cargarStatsDashboard(){
       :'<div style="color:rgba(255,255,255,.3);font-size:12px;padding:8px 0">Cargando...</div>')
     +'</div>'
 
-    // Centros — todos los 27 del catálogo
+    // Centros — todos ordenados mayor a menor con código + nombre
     +'<div class="db-card" style="grid-column:span 2"><div class="db-card-hd">Equipos por centro logístico</div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 20px">'
-    +Object.entries(CENTROS).map(function(e,i){
-        var num=porCentro[e[0]]||0;
-        var mx=Math.max.apply(null,Object.values(porCentro).concat([1]));
-        var pct=num?Math.max(3,Math.round(num/mx*100)):0;
-        var cols=['#2a4a1e','#3d6b2c','#5a8f42','#8b6914','#6b4423','#4a7a6b','#2d5a3d','#7a6b2a','#5a4a3e','#3d6b4a'];
-        var col=num?cols[i%10]:'rgba(255,255,255,.2)';
-        return'<div style="cursor:pointer;padding:6px 0;border-bottom:1px solid rgba(42,74,30,.08)" onclick="dbKpiClick(this)" data-filtro="centro:'+e[0]+'">'
-          +'<div style="display:flex;justify-content:space-between;margin-bottom:3px">'
-          +'<span style="font-size:11px;color:#2a4a1e;font-weight:500">'+e[1]+'</span>'
-          +'<span style="font-size:11px;font-weight:700;color:'+col+'">'+num.toLocaleString()+'</span></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px">'
+    +(function(){
+      var entries=Object.entries(CENTROS).map(function(e){
+        return{codigo:e[0],nombre:e[1],num:porCentro[e[0]]||0};
+      }).sort(function(a,b){return b.num-a.num;});
+      var mx=entries.length&&entries[0].num?entries[0].num:1;
+      var cols=['#2a4a1e','#3d6b2c','#8b6914','#5a8f42','#6b4423','#4a7a6b','#2d5a3d','#7a6b2a','#5a4a3e','#3d6b4a'];
+      return entries.map(function(e,i){
+        var pct=e.num?Math.max(3,Math.round(e.num/mx*100)):0;
+        var col=e.num?cols[i%10]:'rgba(42,74,30,.15)';
+        return'<div style="cursor:pointer;padding:5px 0;border-bottom:1px solid rgba(42,74,30,.08)" onclick="dbKpiClick(this)" data-filtro="centro:'+e.codigo+'">'
+          +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">'
+          +'<span style="font-size:11px;color:#2a4a1e;font-weight:500">'
+          +'<span style="font-family:monospace;font-size:10px;color:#8b6914;font-weight:700;margin-right:5px">'+e.codigo+'</span>'
+          +e.nombre+'</span>'
+          +'<span style="font-size:11px;font-weight:700;color:'+col+';margin-left:8px;white-space:nowrap">'+e.num.toLocaleString()+'</span></div>'
           +'<div style="height:3px;background:rgba(42,74,30,.06);border-radius:2px;overflow:hidden">'
           +'<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:2px;transition:width .6s ease"></div></div></div>';
-      }).join('')
+      }).join('');
+    })()
     +'</div></div>'
 
     // Técnicos + órdenes recientes
