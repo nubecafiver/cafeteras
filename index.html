@@ -702,13 +702,23 @@ function getClienteNombre(numero){
 }
 
 function bEstad(estado){
-  var e=ESTADOS[estado]||{label:estado||'—',color:'#9aa0a6',bg:'#f0f2f5',icon:'⚪'};
-  return'<span class="pill" style="background:'+e.bg+';color:'+e.color+';font-size:11px">'+e.icon+' '+e.label+'</span>';
+  // Puede ser string (estado de orden o equipo) o undefined
+  var est = typeof estado==='string'?estado:(typeof estado==='object'&&estado?estado.label||'':String(estado||''));
+  // Estados de equipos (del ESTADOS var)
+  if(ESTADOS[est]){
+    var eq=ESTADOS[est];
+    return'<span class="pill" style="background:'+eq.bg+';color:'+eq.color+';font-size:11px">'+eq.icon+' '+eq.label+'</span>';
+  }
+  // Estados de órdenes
+  var ORD_EST={'terminado':['#e6f4ea','#2e7d32','✅'],'en proceso':['#e8f0fe','#1557b0','🔄'],'pendiente':['#f0f2f5','#5f6368','⏳'],'urgente':['#fce8e6','#c62828','🚨']};
+  var oe=ORD_EST[est];
+  if(oe)return'<span class="pill" style="background:'+oe[0]+';color:'+oe[1]+';font-size:11px">'+oe[2]+' '+est+'</span>';
+  return'<span class="pill" style="background:#f0f2f5;color:#5f6368;font-size:11px">'+(est||'—')+'</span>';
 }
 function lbl(l){var m={Habitacion:'pill-hab',Superautomatica:'pill-sup',Filtrado:'pill-fil',Semiautomatica:'pill-sem',Molino:'pill-mol',Accesorios:'pill-acc','Caf soluble':'pill-acc','Café soluble':'pill-acc','Cafe soluble':'pill-acc'};return'<span class="pill '+(m[l]||'pill-acc')+'">'+l+'</span>';}
 function bCe(ce){return'<span class="pill" style="background:#f0f2f5;color:#5f6368;font-size:10px;padding:2px 8px;font-weight:700">'+(ce||'—')+'</span>';}
 function bTipo(t){return t==='correctivo'?'<span class="pill pill-proc">🔧 Correctivo</span>':'<span class="pill pill-ok">🔄 Preventivo</span>';}
-function bEst(e){var m={'terminado':'pill-ok','en proceso':'pill-pend','pendiente':'pill-acc','urgente':'pill-venc'};return'<span class="pill '+(m[e]||'pill-acc')+'">'+(e||'pendiente')+'</span>';}
+function bEstad(e){var m={'terminado':'pill-ok','en proceso':'pill-pend','pendiente':'pill-acc','urgente':'pill-venc'};return'<span class="pill '+(m[e]||'pill-acc')+'">'+(e||'pendiente')+'</span>';}
 function fmtF(ts){if(!ts)return'—';if(ts.toDate)return ts.toDate().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});return String(ts).slice(0,10);}
 function esc(s){return String(s||'').replace(/'/g,'\u2019').replace(/"/g,'\u201d').replace(/\n/g,' ').slice(0,80);}
 function dpRow(k,v){return'<div class="dp-row"><div class="dp-key">'+k+'</div><div class="dp-val">'+(v||'—')+'</div></div>';}
@@ -861,7 +871,7 @@ function renderDashboard(){
   var term=ordenes.filter(function(o){return o.estado==='terminado';}).length;
   var ingr=ordenes.reduce(function(a,o){return a+(o.costoTotal||0);},0);
   var recientes=ordenes.slice(0,8);
-  var byLinea={};clientes.forEach(function(c){byLinea[c.linea]=(byLinea[c.linea]||0)+1;});
+  var byLinea={};clientes.forEach(function(c){var lin=c.linea||'Sin línea';byLinea[lin]=(byLinea[lin]||0)+1;});
   var byCentro={};clientes.forEach(function(c){byCentro[c.centro]=(byCentro[c.centro]||0)+1;});
   var topCentros=Object.entries(byCentro).sort(function(a,b){return b[1]-a[1];}).slice(0,6);
   var maxC=topCentros.length?topCentros[0][1]:1;
@@ -889,13 +899,13 @@ function renderDashboard(){
       +'<td>'+bTipo(o.tipo)+'</td>'
       +'<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+o.modelo+'</td>'
       +'<td>'+bCe(o.centro)+'</td>'
-      +'<td>'+bEst(o.estado)+'</td>'
+      +'<td>'+bEstad(o.estado)+'</td>'
       +'<td style="font-weight:600;color:#34a853">'+fmt$(o.costoTotal)+'</td>'
       +'</tr>';}).join(''):'<tr><td colspan="6" class="empty-state">Sin órdenes registradas</td></tr>')
     +'</tbody></table></div></div>'
     +'<div class="tbl-box"><div class="tbl-hdr"><span class="tbl-hdr-title">Equipos por línea</span></div>'
     +'<div style="padding:10px 16px">'
-    +Object.entries(byLinea).map(function(e){var pct=Math.round(e[1]/Math.max(clientes.length,1)*100);return'<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:12px">'+e[0]+'</span><span style="font-size:12px;font-weight:600">'+e[1].toLocaleString()+'</span></div><div style="height:6px;background:#f0f2f5;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#1a73e8;border-radius:3px"></div></div></div>';}).join('')
+    +Object.entries(byLinea).filter(function(e){return e[0]!=='Sin línea'&&e[0]!=='null';}).map(function(e){var pct=Math.round(e[1]/Math.max(clientes.length,1)*100);return'<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:12px">'+e[0]+'</span><span style="font-size:12px;font-weight:600">'+e[1].toLocaleString()+'</span></div><div style="height:6px;background:#f0f2f5;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#1a73e8;border-radius:3px"></div></div></div>';}).join('')
     +'</div></div></div>'
     +'<div class="tbl-box"><div class="tbl-hdr"><span class="tbl-hdr-title">Top centros — Equipos asignados</span></div>'
     +'<div style="padding:10px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'
@@ -1110,7 +1120,7 @@ function dpTab(tab, eObj, col){
         +'<div class="ord-meta">'+fmtF(h.creadoEn)+' · '+h.tecnicoNombre+'</div>'
         +'</div><div style="text-align:right">'
         +(h.costoTotal?'<div style="font-weight:700;color:#34a853">'+fmt$(h.costoTotal)+'</div>':'')
-        +bEst(h.estado)
+        +bEstad(h.estado)
         +'</div></div>'
         +(h.descripcion?'<div style="font-size:12px;color:#5f6368;margin-top:6px">'+h.descripcion+'</div>':'')
         +'<div style="display:flex;gap:6px;margin-top:8px">'+(h.estado!=='terminado'?'<button class="btn btn-sm btn-green" onclick="abrirFirma(\''+h.id+'\')">✍️ Firma</button>':'')+'<button class="btn btn-sm" onclick="printOrden(\''+h.id+'\')" >&#128424; Imprimir</button></div>'
@@ -1213,7 +1223,7 @@ function renderOrdenes(){
       +'<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+o.modelo+'</td>'
       +'<td>'+bCe(o.centro)+'</td>'
       +'<td style="font-size:11px">'+o.tecnicoNombre+'</td>'
-      +'<td>'+bEst(o.estado)+'</td>'
+      +'<td>'+bEstad(o.estado)+'</td>'
       +'<td style="font-weight:600;color:#34a853">'+fmt$(o.costoTotal)+'</td>'
       +'<td><div style="display:flex;gap:3px">'+(o.estado!=='terminado'?'<button class="icon-btn" onclick="event.stopPropagation();editOrden(\''+o.id+'\')" title="Editar">✏️</button>':'')+(o.estado!=='terminado'?'<button class="icon-btn" onclick="event.stopPropagation();abrirFirma(\''+o.id+'\')" title="Firma">✍️</button>':'')+'<button class="icon-btn" onclick="event.stopPropagation();printOrden(\''+o.id+'\')" title="Imprimir">&#128424;</button></div></td>'
       +'</tr>';}).join('')
