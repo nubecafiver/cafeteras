@@ -1081,7 +1081,7 @@ function renderEquipos(){
     +'<input class="fi-sm" type="text" id="eq-q" placeholder="&#128269; No. Activo, Serie, Modelo..." style="width:230px" value="'+eqFiltros.q+'" oninput="eqFiltros.q=this.value;buscarEquiposFirestore()">'
     +'<select class="fi-sm" onchange="eqFiltros.centro=this.value;buscarEquiposFirestore()">'
     +'<option value="">Todos los centros</option>'
-    +Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce){return'<option value="'+ce[0]+'"'+(eqFiltros.centro===ce[0]?' selected':'')+'>'+ce[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce){return'<option value="'+ce[0]+'"'+(eqFiltros.centro===ce[0]?' selected':'')+'>'+ce[1]+'</option>';}).join('')
+    +(Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce){return'<option value="'+ce[0]+'"'+(eqFiltros.centro===ce[0]?' selected':'')+'>'+ce[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce){return'<option value="'+ce[0]+'"'+(eqFiltros.centro===ce[0]?' selected':'')+'>'+ce[1]+'</option>';}).join(''))
     +'</select></div></div>'
     +'<div style="overflow-x:auto"><table><thead><tr><th>No.</th><th>Activo Fijo</th><th>Modelo</th><th>No. Serie</th><th>Linea</th><th>Centro</th><th>Acciones</th></tr></thead>'
     +'<tbody id="eq-tbody"><tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Selecciona una linea o escribe un activo fijo para buscar</td></tr></tbody>'
@@ -1208,7 +1208,7 @@ function renderClientes(){
     +'<input class="fi-sm" type="text" id="cl-q" placeholder="🔍 Activo, serie, modelo, cliente..." style="width:240px" oninput="renderClientes()" value="'+(q||'')+'">'
     +'<select class="fi-sm" id="cl-ce" onchange="renderClientes()">'
     +'<option value="">Todos los centros</option>'
-    +Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1]+'</option>';}).join('')
+    +(Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1]+'</option>';}).join(''))
     +'</select></div></div>'
     +'<div style="overflow-x:auto"><table><thead><tr><th>No.</th><th>Activo Fijo</th><th>Modelo</th><th>No. Serie</th><th>Línea</th><th>Centro</th><th>Estado</th><th>Cliente / Alm.</th><th>Acciones</th></tr></thead><tbody>'
     +(data.length?data.slice(0,50).map(function(c){return'<tr style="cursor:pointer" ondblclick="openPanel(\''+c.id+'\',\'cl\')">'
@@ -1465,7 +1465,7 @@ function renderQR(){
     +'<input class="fi-sm" type="text" id="qr-q" placeholder="🔍 Buscar activo, modelo..." style="width:200px" oninput="renderQR()" value="'+(q||'')+'">'
     +'<select class="fi-sm" id="qr-ce" onchange="renderQR()">'
     +'<option value="">Todos los centros</option>'
-    +Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1]+'</option>';}).join('')
+    +(Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1]+'</option>';}).join(''))
     +'</select>'
     +'<select class="fi-sm" id="qr-lin" onchange="renderQR()">'
     +'<option value="">Todas las líneas</option>'
@@ -1515,7 +1515,7 @@ function renderEtiquetas(){
   if(!hojas.length)hojas.push([]);
   w.innerHTML=
     '<div style="background:#fff;border-bottom:1px solid #e8eaed;padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(0,0,0,.07)">'
-    +'<select class="fi-sm" onchange="etiqFilt.ce=this.value;renderEtiquetas()"><option value="">Todos los centros</option>'+Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce2){return'<option value="'+ce2[0]+'"'+(etiqFilt.ce===ce2[0]?' selected':'')+'>'+ce2[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce2){return'<option value="'+ce2[0]+'"'+(etiqFilt.ce===ce2[0]?' selected':'')+'>'+ce2[1]+'</option>';}).join('')+'</select>'
+    +'<select class="fi-sm" onchange="etiqFilt.ce=this.value;renderEtiquetas()"><option value="">Todos los centros</option>'+(Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce2){return'<option value="'+ce2[0]+'"'+(etiqFilt.ce===ce2[0]?' selected':'')+'>'+ce2[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce2){return'<option value="'+ce2[0]+'"'+(etiqFilt.ce===ce2[0]?' selected':'')+'>'+ce2[1]+'</option>';}).join(''))+'</select>'
     +'<select class="fi-sm" onchange="etiqFilt.lin=this.value;renderEtiquetas()"><option value="">Todas las líneas</option>'+['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'].map(function(l){return'<option value="'+l+'"'+(etiqFilt.lin===l?' selected':'')+'>'+l+'</option>';}).join('')+'</select>'
     +'<input class="fi-sm" type="text" placeholder="🔍 Buscar..." style="width:180px" value="'+etiqFilt.q+'" oninput="etiqFilt.q=this.value;renderEtiquetas()">'
     +'<span style="font-size:12px;color:#9aa0a6">'+data.length+' etiqueta(s) · '+Math.ceil(data.length/ETIQ_POR_HOJA)+' hoja(s)</span>'
