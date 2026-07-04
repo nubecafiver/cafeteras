@@ -1029,6 +1029,8 @@ async function cargarStatsDashboard(){
     +'</div></div>'
 
     +'</div>'; // db-wrap
+  // Asignar eventos a botones del dashboard
+  setTimeout(asignarEventosDashboard, 100);
 }
 
 function dbKpi(label,val,sub,color,icon){
@@ -2409,18 +2411,22 @@ function checkHash(){
 }
 
 // ══ AUTH OBSERVER ══
-document.addEventListener('click',function(e){
-  var t=e.target.closest('button');if(!t)return;
-  // No interceptar botones del login
-  if(t.id==='login-btn')return;
-  if(t.id==='btn-ver-ordenes')switchView('ordenes');
-  if(t.id==='db-acc-scan')openScanner();
-  if(t.id==='db-acc-orden')openFormOrden();
-  if(t.id==='db-acc-qr')switchView('qr');
-  if(t.id==='db-acc-rep')switchView('reportes');
-  if(t.id==='db-acc-mov')switchView('movimientos');
-  if(t.id==='db-acc-etiq')switchView('etiquetas');
-});
+// Event listeners dashboard — se asignan cuando renderiza
+function asignarEventosDashboard(){
+  var ids={
+    'btn-ver-ordenes':function(){switchView('ordenes');},
+    'db-acc-scan':function(){openScanner();},
+    'db-acc-orden':function(){openFormOrden();},
+    'db-acc-qr':function(){switchView('qr');},
+    'db-acc-rep':function(){switchView('reportes');},
+    'db-acc-mov':function(){switchView('movimientos');},
+    'db-acc-etiq':function(){switchView('etiquetas');}
+  };
+  Object.entries(ids).forEach(function(e){
+    var el=document.getElementById(e[0]);
+    if(el)el.addEventListener('click',e[1]);
+  });
+}
 
 auth.onAuthStateChanged(function(user){
   if(user){
