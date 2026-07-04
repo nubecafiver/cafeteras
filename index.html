@@ -875,7 +875,7 @@ function renderDashboard(){
     +'<div class="db-kpi db-kpi-skeleton"></div><div class="db-kpi db-kpi-skeleton"></div>'
     +'<div class="db-kpi db-kpi-skeleton"></div><div class="db-kpi db-kpi-skeleton"></div>'
     +'</div>'
-    +'<div class="db-grid-3">'
+    +'<div class="db-grid-2" style="grid-template-columns:1fr 2fr">'
     +'<div class="db-card db-kpi-skeleton" style="min-height:220px"></div>'
     +'<div class="db-card db-kpi-skeleton" style="min-height:220px"></div>'
     +'<div class="db-card db-kpi-skeleton" style="min-height:220px"></div>'
@@ -952,7 +952,7 @@ async function cargarStatsDashboard(){
     +'</div>'
 
     // FILA INFERIOR 3 columnas
-    +'<div class="db-grid-3">'
+    +'<div class="db-grid-2" style="grid-template-columns:1fr 2fr">'
 
     // Por línea
     +'<div class="db-card"><div class="db-card-hd">Equipos por línea</div>'
@@ -969,17 +969,23 @@ async function cargarStatsDashboard(){
       :'<div style="color:rgba(255,255,255,.3);font-size:12px;padding:8px 0">Cargando...</div>')
     +'</div>'
 
-    // Por centro
-    +'<div class="db-card"><div class="db-card-hd">Top centros logísticos</div>'
+    // Centros — lista completa
+    +'<div class="db-card" style="grid-column:span 2"><div class="db-card-hd">Equipos por centro logístico</div>'
     +(Object.keys(porCentro).length?
-      Object.entries(porCentro).sort(function(a,b){return b[1]-a[1];}).slice(0,6).map(function(e,i){
-        var mx=Math.max.apply(null,Object.values(porCentro).slice(0,6));
-        return'<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px">'
-          +'<span style="font-size:11px;color:rgba(255,255,255,.7)">'+getCentroNombre(e[0])+'</span>'
-          +'<span style="font-size:11px;font-weight:700;color:#60a5fa">'+e[1].toLocaleString()+'</span></div>'
-          +'<div style="height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden">'
-          +'<div style="height:100%;width:'+Math.round(e[1]/mx*100)+'%;background:#60a5fa;border-radius:2px"></div></div></div>';
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 20px">'
+      +Object.entries(porCentro).sort(function(a,b){return b[1]-a[1];}).map(function(e,i){
+        var mx=Math.max.apply(null,Object.values(porCentro));
+        var pct=Math.round(e[1]/mx*100);
+        var cols=['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa','#fb923c','#38bdf8','#4ade80','#f472b6','#a3e635'];
+        var col=cols[i%10];
+        return'<div style="cursor:pointer;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)" onclick="dbKpiClick(this)" data-filtro="centro:'+e[0]+'">'
+          +'<div style="display:flex;justify-content:space-between;margin-bottom:3px">'
+          +'<span style="font-size:11px;color:rgba(255,255,255,.75);font-weight:500">'+getCentroNombre(e[0])+'</span>'
+          +'<span style="font-size:11px;font-weight:700;color:'+col+'">'+e[1].toLocaleString()+'</span></div>'
+          +'<div style="height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden">'
+          +'<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:2px"></div></div></div>';
       }).join('')
+      +'</div>'
       :'<div style="color:rgba(255,255,255,.3);font-size:12px;padding:8px 0">Cargando...</div>')
     +'</div>'
 
@@ -1039,15 +1045,13 @@ function dbKpi(label,val,sub,color,icon,filtro){
 
 function dbKpiClick(el){
   var filtro=el.getAttribute('data-filtro')||'';
-  // Parsear filtro: "estado:con_cliente" o "claseActivo:CSNUEVO" o "linea:Habitacion"
   var parts=filtro.split(':');
   var campo=parts[0], valor=parts.slice(1).join(':');
-  // Ir a equipos con filtro aplicado
   eqFiltros={q:'',linea:'',centro:'',estado:'',claseActivo:''};
   if(campo==='estado')eqFiltros.estado=valor;
   else if(campo==='linea')eqFiltros.linea=valor;
   else if(campo==='claseActivo')eqFiltros.claseActivo=valor;
-  else if(campo==='centro')eqFiltros.centro=valor;
+  else if(campo==='centro'){eqFiltros.centro=valor;}
   switchView('equipos');
 }
 
@@ -1172,10 +1176,10 @@ function renderEquiposTabla(data){
   var tbody=document.getElementById('eq-tbody');
   var footer=document.getElementById('eq-footer');
   if(!tbody){renderEquipos();return;}
-  tbody.innerHTML=data.length?data.map(function(e){
+  tbody.innerHTML=data.length?data.map(function(e,i){
     var sv=e.serie||'—';
     return'<tr style="cursor:pointer" ondblclick="openPanel(\''+e.id+'\',\'cl\')">'
-      +'<td style="color:#9aa0a6;font-size:11px">'+(e.no||'—')+'</td>'
+      +'<td style="color:#9aa0a6;font-size:11px">'+(i+1)+'</td>'
       +'<td><span style="font-family:monospace;font-weight:700;color:#1a73e8">'+e.activoFijo+'</span></td>'
       +'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+(e.modelo||'—')+'</td>'
       +'<td style="font-family:monospace;font-size:11px">'+sv+'</td>'
