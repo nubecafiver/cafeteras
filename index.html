@@ -734,9 +734,14 @@ function dpRow(k,v){return'<div class="dp-row"><div class="dp-key">'+k+'</div><d
 function fichaRow(k,v){return'<div class="ficha-row"><div class="ficha-k">'+k+'</div><div class="ficha-v">'+(v||'—')+'</div></div>';}
 
 // ══ LOGIN ══
-document.getElementById('login-btn').addEventListener('click', doLogin);
-document.getElementById('login-pass').addEventListener('keydown', function(e){if(e.key==='Enter')doLogin();});
-document.getElementById('login-email').addEventListener('keydown', function(e){if(e.key==='Enter')doLogin();});
+document.addEventListener('DOMContentLoaded', function(){
+  var btnLogin = document.getElementById('login-btn');
+  if(btnLogin) btnLogin.addEventListener('click', doLogin);
+  var passEl = document.getElementById('login-pass');
+  if(passEl) passEl.addEventListener('keydown', function(e){if(e.key==='Enter')doLogin();});
+  var emailEl = document.getElementById('login-email');
+  if(emailEl) emailEl.addEventListener('keydown', function(e){if(e.key==='Enter')doLogin();});
+});
 document.getElementById('toggle-pass').addEventListener('click', function(){
   var i=document.getElementById('login-pass');
   i.type=i.type==='password'?'text':'password';
