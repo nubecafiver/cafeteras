@@ -1601,43 +1601,67 @@ function renderOrdenes(){
 // ══ PREVENTIVOS ══
 function renderPreventivos(){
   var w=document.getElementById('view-preventivos');if(!w)return;
-  var venc=[], prox=[], ok=0;
-  var PM_MESES={'Habitacion':6,'Superautomatica':3,'Filtrado':6,'Semiautomatica':4,'Molino':3,'Accesorios':12};
-  // Para demo usamos datos estáticos con equipos reales si hay
-  var demo=[
-    {modelo:'Cafetera Bunn ICB Twin',af:'848539',ce:'EUBA',ult:'2025-01-10',linea:'Filtrado',est:'vencido'},
-    {modelo:'Gaggia Brillante Z4000',af:'843264',ce:'EUMX',ult:'2025-02-15',linea:'Superautomatica',est:'proximo'},
-    {modelo:'Necta Krea Prime',af:'826247',ce:'EUQE',ult:'2025-02-20',linea:'Superautomatica',est:'proximo'},
-    {modelo:'Cafetera Doci-CM-306',af:'826248',ce:'EUGU',ult:'2025-03-01',linea:'Habitacion',est:'ok'},
-    {modelo:'LodgingStar 4 tazas',af:'826249',ce:'EUGU',ult:'2025-03-10',linea:'Habitacion',est:'ok'},
-    {modelo:'Bunn O Matic Single',af:'826250',ce:'EUBA',ult:'2025-01-05',linea:'Filtrado',est:'vencido'}
-  ];
-  venc=demo.filter(function(d){return d.est==='vencido';}).length;
-  prox=demo.filter(function(d){return d.est==='proximo';}).length;
-  ok=demo.filter(function(d){return d.est==='ok';}).length;
-  w.innerHTML=
-    '<div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">'
-    +'<div class="stat-card"><div class="lbl">Vencidos</div><div class="val red">'+venc+'</div><div class="trend">Requieren atención inmediata</div></div>'
-    +'<div class="stat-card"><div class="lbl">Próximos 30 días</div><div class="val amber">'+prox+'</div><div class="trend">Programar esta semana</div></div>'
-    +'<div class="stat-card"><div class="lbl">Al corriente</div><div class="val green">'+ok+'</div></div>'
+  var PM_INTERVAL={'Cafeteras Hoteleras':6,'Habitacion':6,'Cafet. Superautomática':3,'Superautomatica':3,
+    'Cafeteras percolador':6,'Filtrado':6,'Cafet. Semiautomática':4,'Semiautomatica':4,
+    'Molinos':3,'Molino':3,'Accesorios Cafeteras':12,'Accesorios':12};
+  var hoy=new Date(), venc=[], prox=[], ok=0;
+  // Usar las órdenes preventivas como historial de PM
+  var pmPorAF={};
+  ordenes.filter(function(o){return o.tipo==='preventivo';}).forEach(function(o){
+    var af=String(o.activoFijo||o.af||'');
+    if(!af)return;
+    if(!pmPorAF[af]||o.fecha>pmPorAF[af].fecha)pmPorAF[af]=o;
+  });
+  Object.values(pmPorAF).forEach(function(o){
+    var interval=PM_INTERVAL[o.linea||'']||6;
+    var ultFecha=o.fecha||o.creadoEn;
+    if(!ultFecha)return;
+    var d=ultFecha.toDate?ultFecha.toDate():new Date(ultFecha);
+    var proxFecha=new Date(d);proxFecha.setMonth(proxFecha.getMonth()+interval);
+    var diasRestantes=Math.round((proxFecha-hoy)/(1000*60*60*24));
+    var est=diasRestantes<0?'vencido':diasRestantes<=30?'proximo':'ok';
+    if(est==='vencido')venc.push({...o,proxFecha,diasRestantes,est});
+    else if(est==='proximo')prox.push({...o,proxFecha,diasRestantes,est});
+    else ok++;
+  });
+  venc.sort(function(a,b){return a.diasRestantes-b.diasRestantes;});
+  prox.sort(function(a,b){return a.diasRestantes-b.diasRestantes;});
+  var todos=venc.concat(prox);
+  var html='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">'
+    +'<div class="tbl-box" style="padding:16px"><div style="font-size:10px;font-weight:700;color:#8b6914;text-transform:uppercase;letter-spacing:.08em">VENCIDOS</div>'
+    +'<div style="font-size:28px;font-weight:700;color:#c0392b;margin:4px 0">'+venc.length+'</div>'
+    +'<div style="font-size:11px;color:#6b7c63">Requieren atención inmediata</div></div>'
+    +'<div class="tbl-box" style="padding:16px"><div style="font-size:10px;font-weight:700;color:#8b6914;text-transform:uppercase;letter-spacing:.08em">PRÓXIMOS 30 DÍAS</div>'
+    +'<div style="font-size:28px;font-weight:700;color:#e67e22;margin:4px 0">'+prox.length+'</div>'
+    +'<div style="font-size:11px;color:#6b7c63">Programar esta semana</div></div>'
     +'</div>'
-    +'<div class="tbl-box"><div class="tbl-hdr"><span class="tbl-hdr-title">Plan de Mantenimiento Preventivo</span></div>'
-    +'<div style="overflow-x:auto"><table><thead><tr><th>Equipo</th><th>Activo Fijo</th><th>Centro</th><th>Último PM</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'
-    +demo.map(function(d){
-      var c=d.est==='vencido'?'pill-venc':d.est==='proximo'?'pill-pend':'pill-ok';
-      var t=d.est==='vencido'?'⚠️ Vencido':d.est==='proximo'?'🟡 Próximo':'✅ Al corriente';
-      return'<tr><td style="font-weight:500">'+d.modelo+'</td>'
-        +'<td><span style="font-family:monospace;font-weight:700;color:#1a73e8">'+d.af+'</span></td>'
-        +'<td>'+bCe(d.ce)+'</td>'
-        +'<td style="font-size:11px;color:#9aa0a6">'+d.ult+'</td>'
-        +'<td><span class="pill '+c+'">'+t+'</span></td>'
-        +'<td><button class="btn btn-blue btn-sm" onclick="abrirOrdenDesde('+d.af+',\''+esc(d.modelo)+'\',\''+d.ce+'\',\'\',\'preventivo\')">Programar PM</button></td>'
+    +'<div class="tbl-box"><div class="tbl-hdr" style="padding:12px 16px"><div class="tbl-hdr-title">Plan de Mantenimiento Preventivo</div></div>'
+    +'<table style="width:100%;border-collapse:collapse"><thead><tr>'
+    +'<th style="text-align:left;padding:8px 12px">Equipo</th>'
+    +'<th style="text-align:left;padding:8px 12px">Activo Fijo</th>'
+    +'<th style="text-align:left;padding:8px 12px">Centro</th>'
+    +'<th style="text-align:left;padding:8px 12px">Último PM</th>'
+    +'<th style="text-align:left;padding:8px 12px">Próximo PM</th>'
+    +'<th style="text-align:left;padding:8px 12px">Estado</th>'
+    +'</tr></thead><tbody>'
+    +(todos.length?todos.map(function(e){
+      var estBadge=e.est==='vencido'
+        ?'<span style="background:#fce8e6;color:#c0392b;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">⚠ Vencido</span>'
+        :'<span style="background:#fff8e1;color:#e67e22;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">● Próximo</span>';
+      return'<tr style="border-bottom:1px solid rgba(42,74,30,.07)">'
+        +'<td style="padding:6px 12px;font-size:12px">'+(e.modelo||'—')+'</td>'
+        +'<td style="padding:6px 12px;font-family:monospace;font-weight:700;color:#2a4a1e;font-size:12px">'+e.activoFijo+'</td>'
+        +'<td style="padding:6px 12px"><span style="background:var(--cf-cream2);padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600">'+e.centro+'</span></td>'
+        +'<td style="padding:6px 12px;font-size:11px;color:#8b6914">'+fmtF(e.fecha||e.creadoEn)+'</td>'
+        +'<td style="padding:6px 12px;font-size:11px;color:#4a5e42">'+e.proxFecha.toLocaleDateString('es-MX')+'</td>'
+        +'<td style="padding:6px 12px">'+estBadge+'</td>'
         +'</tr>';
-    }).join('')
-    +'</tbody></table></div></div>';
+    }).join(''):'<tr><td colspan="6" style="padding:40px;text-align:center;color:#6b7c63">Sin datos de PM. Registra órdenes preventivas para ver el plan.</td></tr>')
+    +'</tbody></table></div>';
+  w.innerHTML=html;
 }
 
-// ══ QR EN MASA ══
+
 function renderQR(){
   var w=document.getElementById('view-qr');if(!w)return;
   var q=document.getElementById('qr-q')?document.getElementById('qr-q').value.toLowerCase():'';
@@ -2042,6 +2066,7 @@ function autocompletarAF(){
       }else{toast('⚠️ Activo fijo no encontrado');}
     });
   }
+}
 
 function cargarChecklistLinea(linea){
   var cont=document.getElementById('ck-linea-container');
@@ -2156,55 +2181,59 @@ function guardarCambioEstado(docId, af, modelo, estadoAnterior){
 
 function renderMovimientos(){
   var w=document.getElementById('view-movimientos');if(!w)return;
+  // Cargar movimientos desde Firestore si no están en memoria
+  if(movimientos.length===0){
+    w.innerHTML='<div class="tbl-box" style="padding:40px;text-align:center;color:#6b7c63">Cargando movimientos...</div>';
+    db.collection('movimientos').orderBy('fecha','desc').limit(200).get().then(function(s){
+      movimientos=s.docs.map(function(d){return{id:d.id,...d.data()};});
+      renderMovimientos();
+    }).catch(function(e){w.innerHTML='<div style="padding:20px;color:red">Error: '+e.message+'</div>';});
+    return;
+  }
   var qFilt=document.getElementById('mov-q')?document.getElementById('mov-q').value.toLowerCase():'';
   var estFilt=document.getElementById('mov-est')?document.getElementById('mov-est').value:'';
   var data=movimientos.filter(function(m){
     if(estFilt&&m.estadoNuevo!==estFilt)return false;
-    if(qFilt&&!(String(m.activoFijo).includes(qFilt)||(m.modelo||'').toLowerCase().includes(qFilt)||(m.usuario||'').toLowerCase().includes(qFilt)))return false;
+    if(qFilt&&!(String(m.activoFijo||'').includes(qFilt)||(m.modelo||'').toLowerCase().includes(qFilt)||(m.usuario||'').toLowerCase().includes(qFilt)))return false;
     return true;
   });
-  w.innerHTML=
-    '<div style="font-size:18px;font-weight:700;color:#1c1e21;margin-bottom:18px">Historial de Movimientos</div>'
-    +'<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">'
-    +Object.entries(ESTADOS).map(function(entry){
-      var k=entry[0], v=entry[1];
-      var cnt=movimientos.filter(function(m){return m.estadoNuevo===k;}).length;
-      return'<div class="stat-card" style="border-top:3px solid '+v.color+'">'
-        +'<div class="lbl">'+v.label+'</div>'
-        +'<div class="val" style="color:'+v.color+'">'+cnt+'</div>'
-        +'<div class="trend">movimientos</div>'
-        +'</div>';
-    }).join('')
-    +'</div>'
-    +'<div class="tbl-box">'
-    +'<div class="tbl-hdr"><span class="tbl-hdr-title">'+data.length+' movimiento(s)</span>'
-    +'<div class="tbl-tools">'
-    +'<input class="fi-sm" type="text" id="mov-q" placeholder="🔍 Activo, modelo, usuario..." style="width:210px" oninput="renderMovimientos()" value="'+(qFilt||'')+'">'
-    +'<select class="fi-sm" id="mov-est" onchange="renderMovimientos()">'
+  var html='<div class="tbl-box">'
+    +'<div class="tbl-hdr" style="display:flex;align-items:center;gap:12px;padding:12px 16px;flex-wrap:wrap">'
+    +'<div class="tbl-hdr-title">Historial de movimientos</div>'
+    +'<input id="mov-q" type="text" placeholder="Buscar activo, modelo..." oninput="renderMovimientos()" style="flex:1;min-width:180px;padding:6px 10px;border:1px solid var(--cf-border);border-radius:8px;font-size:12px;background:var(--cf-cream)">'
+    +'<select id="mov-est" onchange="renderMovimientos()" style="padding:6px 10px;border:1px solid var(--cf-border);border-radius:8px;font-size:12px;background:var(--cf-cream)">'
     +'<option value="">Todos los estados</option>'
-    +Object.entries(ESTADOS).map(function(e){return'<option value="'+e[0]+'"'+(estFilt===e[0]?' selected':'')+'>'+e[1].icon+' '+e[1].label+'</option>';}).join('')
-    +'</select>'
-    +'<button class="btn btn-blue btn-sm" onclick="exportExcelMovimientos()">⬇ Excel</button>'
-    +'</div></div>'
-    +'<div style="overflow-x:auto"><table><thead><tr>'
-    +'<th>Fecha</th><th>Activo Fijo</th><th>Modelo</th><th>Estado anterior</th><th>Estado nuevo</th><th>Almacén destino</th><th>Motivo</th><th>Usuario</th>'
+    +'<option value="con_cliente">Con cliente</option>'
+    +'<option value="disponible">Disponible</option>'
+    +'<option value="reparacion">En reparación</option>'
+    +'<option value="retiro">En retiro</option>'
+    +'<option value="baja">Baja</option>'
+    +'</select></div>'
+    +'<table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr>'
+    +'<th style="text-align:left;padding:8px 12px">Fecha</th>'
+    +'<th style="text-align:left;padding:8px 12px">Activo Fijo</th>'
+    +'<th style="text-align:left;padding:8px 12px">Modelo</th>'
+    +'<th style="text-align:left;padding:8px 12px">Estado anterior</th>'
+    +'<th style="text-align:left;padding:8px 12px">Estado nuevo</th>'
+    +'<th style="text-align:left;padding:8px 12px">Usuario</th>'
+    +'<th style="text-align:left;padding:8px 12px">Motivo</th>'
     +'</tr></thead><tbody>'
     +(data.length?data.map(function(m){
-      return'<tr>'
-        +'<td style="font-size:11px;white-space:nowrap">'+fmtF(m.ts)+'</td>'
-        +'<td><span style="font-family:monospace;font-weight:700;color:#1a73e8">'+m.activoFijo+'</span></td>'
-        +'<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+(m.modelo||'—')+'</td>'
-        +'<td>'+bEstad(m.estadoAnterior)+'</td>'
-        +'<td>'+bEstad(m.estadoNuevo)+'</td>'
-        +'<td style="font-size:11px;font-family:monospace">'+(m.almacenDestino||'—')+'</td>'
-        +'<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#5f6368">'+(m.motivo||'—')+'</td>'
-        +'<td style="font-size:11px">'+(m.usuario||'—')+'</td>'
+      return'<tr style="border-bottom:1px solid rgba(42,74,30,.07)">'
+        +'<td style="padding:6px 12px;font-size:11px;color:#8b6914">'+fmtF(m.fecha)+'</td>'
+        +'<td style="padding:6px 12px;font-family:monospace;font-weight:700;color:#2a4a1e;font-size:12px">'+m.activoFijo+'</td>'
+        +'<td style="padding:6px 12px;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(m.modelo||'—')+'</td>'
+        +'<td style="padding:6px 12px">'+bEstad(m.estadoAnterior)+'</td>'
+        +'<td style="padding:6px 12px">'+bEstad(m.estadoNuevo)+'</td>'
+        +'<td style="padding:6px 12px;font-size:11px;color:#4a5e42">'+(m.usuario||'—')+'</td>'
+        +'<td style="padding:6px 12px;font-size:11px;color:#6b7c63;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(m.motivo||'—')+'</td>'
         +'</tr>';
-    }).join(''):'<tr><td colspan="8" style="text-align:center;padding:24px;color:#9aa0a6">Sin movimientos registrados</td></tr>')
-    +'</tbody></table></div></div>';
+    }).join(''):'<tr><td colspan="7" style="padding:40px;text-align:center;color:#6b7c63">Sin movimientos registrados</td></tr>')
+    +'</tbody></table></div>';
+  w.innerHTML=html;
 }
 
-}
 
 function exportExcelMovimientos(){
   var wb=XLSX.utils.book_new();
