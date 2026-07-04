@@ -609,19 +609,33 @@ var USERS = {
 var TECNICOS = Object.values(USERS).filter(function(u){return u.rol==='tecnico';}).map(function(u){return u.name;});
 
 var CENTROS = {
-  // Equipos usados CAFIVER
-  EUCA:'Cancún', EUMX:'Ciudad de México', EUGU:'Guadalajara', EUOZ:'Oaxaca',
-  EUBA:'Bajío (León)', EUQE:'Querétaro', EUVA:'Veracruz', EUMY:'Monterrey',
-  EUPU:'Puebla', EUST:'Saltillo', EUME:'Mérida', EUGR:'Guerrero',
-  EUCS:'Chiapas', EUMA:'Mazatlán',
-  // KF Coffee Service
-  KFCS:'Coffee Service Central', KFIV:'KF Ixtaczoquitlán (Orizaba)',
-  KFCA:'KF Cancún', KFMX:'KF Ciudad de México', KFBA:'KF Bajío',
-  KFMY:'KF Monterrey', KFQE:'KF Querétaro', KFPU:'KF Puebla',
-  KFGU:'KF Guadalajara', KFVA:'KF Veracruz', KFME:'KF Mérida',
-  KFST:'KF Saltillo', KFOZ:'KF Oaxaca', KFCS2:'KF Chiapas',
-  // Otros centros SAP
-  KF01:'CAFIVER S.A. de C.V.',
+  'EUBA':'Equipo Usado Baja California',
+  'EUCA':'Equipo Usado Cancún',
+  'EUCS':'Equipo Usado Coffee Service',
+  'EUGR':'Equipo Usado Guerrero',
+  'EUGU':'Equipo Usado Guadalajara',
+  'EUKI':'Equipo Usado Kiosko',
+  'EUMA':'Equipo Usado Mazatlan',
+  'EUME':'Equipo Usado Mérida',
+  'EUMX':'Equipo Usado México',
+  'EUMY':'Equipo Usado Monterrey',
+  'EUOZ':'Equipo Usado Oficina Orizaba',
+  'EUPA':'Equipo Usado Playa Del Carmen',
+  'EUPU':'Equipo Usado Puebla',
+  'EUQE':'Equipo Usado Querétaro',
+  'EUST':'Equipo Usado Servicio Tecnico',
+  'EUVA':'Equipo Usado Vallarta',
+  'KFAN':'ANAQUEL',
+  'KFBA':'Baja California',
+  'KFCA':'PLAZA CANCÚN',
+  'KFCS':'COFFEE SERVICE',
+  'KFGU':'PLAZA GUADALAJARA',
+  'KFIV':'CAFIVER',
+  'KFME':'PLAZA MÉRIDA',
+  'KFMX':'PLAZA MEXICO',
+  'KFMY':'PLAZA MONTERREY',
+  'KFPU':'PLAZA PUEBLA',
+  'KFQE':'Queretaro'
 };
 
 // ══ ESTADO ══
@@ -969,25 +983,23 @@ async function cargarStatsDashboard(){
       :'<div style="color:rgba(255,255,255,.3);font-size:12px;padding:8px 0">Cargando...</div>')
     +'</div>'
 
-    // Centros — lista completa
+    // Centros — todos los 27 del catálogo
     +'<div class="db-card" style="grid-column:span 2"><div class="db-card-hd">Equipos por centro logístico</div>'
-    +(Object.keys(porCentro).length?
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 20px">'
-      +Object.entries(porCentro).sort(function(a,b){return b[1]-a[1];}).map(function(e,i){
-        var mx=Math.max.apply(null,Object.values(porCentro));
-        var pct=Math.round(e[1]/mx*100);
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 20px">'
+    +Object.entries(CENTROS).map(function(e,i){
+        var num=porCentro[e[0]]||0;
+        var mx=Math.max.apply(null,Object.values(porCentro).concat([1]));
+        var pct=num?Math.max(3,Math.round(num/mx*100)):0;
         var cols=['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa','#fb923c','#38bdf8','#4ade80','#f472b6','#a3e635'];
-        var col=cols[i%10];
+        var col=num?cols[i%10]:'rgba(255,255,255,.2)';
         return'<div style="cursor:pointer;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)" onclick="dbKpiClick(this)" data-filtro="centro:'+e[0]+'">'
           +'<div style="display:flex;justify-content:space-between;margin-bottom:3px">'
-          +'<span style="font-size:11px;color:rgba(255,255,255,.75);font-weight:500">'+getCentroNombre(e[0])+'</span>'
-          +'<span style="font-size:11px;font-weight:700;color:'+col+'">'+e[1].toLocaleString()+'</span></div>'
+          +'<span style="font-size:11px;color:rgba(255,255,255,.75);font-weight:500">'+e[1]+'</span>'
+          +'<span style="font-size:11px;font-weight:700;color:'+col+'">'+num.toLocaleString()+'</span></div>'
           +'<div style="height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden">'
-          +'<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:2px"></div></div></div>';
+          +'<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:2px;transition:width .6s ease"></div></div></div>';
       }).join('')
-      +'</div>'
-      :'<div style="color:rgba(255,255,255,.3);font-size:12px;padding:8px 0">Cargando...</div>')
-    +'</div>'
+    +'</div></div>'
 
     // Técnicos + órdenes recientes
     +'<div class="db-card">'
