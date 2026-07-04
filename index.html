@@ -322,8 +322,9 @@ body.app-mode{background:var(--cf-cream)!important}
 .tbl-box{background:var(--cf-white)!important;border:1px solid var(--cf-border)!important;border-radius:12px!important;box-shadow:var(--cf-shadow)!important}
 .tbl-hdr{background:var(--cf-cream2)!important;border-bottom:1px solid var(--cf-border)!important}
 .tbl-hdr-title{color:var(--cf-green)!important;font-family:'Playfair Display',serif!important;font-weight:600!important}
-thead th{background:var(--cf-cream2)!important;color:var(--cf-text2)!important;border-bottom:2px solid var(--cf-border)!important;font-size:10px!important;letter-spacing:.08em!important}
+thead th{background:var(--cf-cream2)!important;color:var(--cf-text2)!important;border-bottom:2px solid var(--cf-border)!important;font-size:10px!important;letter-spacing:.08em!important;padding:7px 8px!important}
 tbody tr:hover{background:rgba(42,74,30,.04)!important}
+tbody td{padding:5px 8px!important;border-bottom:1px solid rgba(42,74,30,.06)!important;font-size:12px}
 /* MODAL */
 .modal-card{background:var(--cf-white)!important;border:1px solid var(--cf-border)!important}
 .modal-hd{background:var(--cf-green)!important;color:#fff!important}
@@ -1127,26 +1128,26 @@ async function cargarStatsDashboard(){
 
     /* operacion movida arriba */
 
-    // FILA INFERIOR 3 columnas
-    +'<div class="db-grid-2" style="grid-template-columns:1fr 2fr">'
+    // FILA INFERIOR — línea + centros en todo el ancho
+    +'<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:10px">'
 
-    // Por línea
+    // Por línea — ancho completo de su columna
     +'<div class="db-card"><div class="db-card-hd">Equipos por línea</div>'
     +(Object.keys(porLinea).length?
-      Object.entries(porLinea).sort(function(a,b){return b[1]-a[1];}).slice(0,7).map(function(e,i){
+      Object.entries(porLinea).sort(function(a,b){return b[1]-a[1];}).slice(0,10).map(function(e,i){
         var mx=Math.max.apply(null,Object.values(porLinea));
-        var cols=['#60a5fa','#34d399','#fbbf24','#f87171','#a78bfa','#fb923c','#38bdf8'];
-        return'<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px">'
+        var cols=['#2a4a1e','#3d6b2c','#8b6914','#5a8f42','#6b4423','#4a7a6b','#2d5a3d','#7a6b2a','#5a4a3e','#3d6b4a'];
+        return'<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;margin-bottom:3px">'
           +'<span style="font-size:11px;color:#2a4a1e">'+(e[0]||'Sin línea')+'</span>'
-          +'<span style="font-size:11px;font-weight:700;color:'+cols[i%7]+'">'+e[1].toLocaleString()+'</span></div>'
-          +'<div style="height:4px;background:rgba(42,74,30,.06);border-radius:2px;overflow:hidden">'
-          +'<div style="height:100%;width:'+Math.round(e[1]/mx*100)+'%;background:'+cols[i%7]+';border-radius:2px"></div></div></div>';
+          +'<span style="font-size:11px;font-weight:700;color:'+cols[i%10]+'">'+e[1].toLocaleString()+'</span></div>'
+          +'<div style="height:3px;background:rgba(42,74,30,.06);border-radius:2px;overflow:hidden">'
+          +'<div style="height:100%;width:'+Math.round(e[1]/mx*100)+'%;background:'+cols[i%10]+';border-radius:2px"></div></div></div>';
       }).join('')
-      :'<div style="color:rgba(255,255,255,.3);font-size:12px;padding:8px 0">Cargando...</div>')
+      :'<div style="color:#6b7c63;font-size:12px;padding:8px 0">Cargando...</div>')
     +'</div>'
 
     // Centros — todos ordenados mayor a menor con código + nombre
-    +'<div class="db-card" style="grid-column:span 2"><div class="db-card-hd">Equipos por centro logístico</div>'
+    +'<div class="db-card"><div class="db-card-hd">Equipos por centro logístico</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px">'
     +(function(){
       var entries=Object.entries(CENTROS).map(function(e){
@@ -1169,7 +1170,10 @@ async function cargarStatsDashboard(){
     })()
     +'</div></div>'
 
+    +'</div>' // grid linea+centros
+
     // Técnicos + órdenes recientes
+    +'<div class="db-grid-2">'
     +'<div class="db-card">'
     +'<div class="db-card-hd">Técnicos del mes</div>'
     +(topTec.length?topTec.map(function(t,i){
@@ -1179,29 +1183,30 @@ async function cargarStatsDashboard(){
         +'<span style="font-size:11px;font-weight:700;color:'+cols[i%5]+'">'+t[1]+' órd.</span></div>'
         +'<div style="height:4px;background:rgba(42,74,30,.06);border-radius:2px;overflow:hidden">'
         +'<div style="height:100%;width:'+Math.round(t[1]/topTec[0][1]*100)+'%;background:'+cols[i%5]+';border-radius:2px"></div></div></div>';
-    }).join(''):'<div style="color:rgba(255,255,255,.3);font-size:12px">Sin órdenes este mes</div>')
-    +'<div class="db-card-hd" style="margin-top:14px"><span>Órdenes recientes</span><button id="btn-ver-ordenes" style="background:rgba(42,74,30,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Inter,sans-serif">Ver todas</button></div>'
-    +ords.slice(0,4).map(function(o){
-      return'<div class="db-tr" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(42,74,30,.08)">'
-        +'<div style="font-family:monospace;font-size:10px;color:rgba(255,255,255,.3);min-width:80px">'+o.folio+'</div>'
-        +'<div style="flex:1;font-size:11px;color:rgba(255,255,255,.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(o.modelo||'—')+'</div>'
+    }).join(''):'<div style="color:#6b7c63;font-size:12px">Sin órdenes este mes</div>')
+    +'</div>'
+    +'<div class="db-card">'
+    +'<div class="db-card-hd"><span>Órdenes recientes</span><button id="btn-ver-ordenes" style="background:rgba(42,74,30,.06);border:1px solid var(--cf-border);color:#4a5e42;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;font-family:Inter,sans-serif">Ver todas</button></div>'
+    +ords.slice(0,6).map(function(o){
+      return'<div class="db-tr" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(42,74,30,.08)">'
+        +'<div style="font-family:monospace;font-size:10px;color:#8b6914;min-width:90px">'+o.folio+'</div>'
+        +'<div style="flex:1;font-size:11px;color:#2a4a1e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(o.modelo||'—')+'</div>'
         +bEstad(o.estado)
         +'</div>';
     }).join('')
     +'</div>'
-
-    +'</div>' // db-grid-3
+    +'</div>' // db-grid-2
 
     // ACCESOS RÁPIDOS
     +'<div class="db-card" style="margin-top:0">'
     +'<div class="db-card-hd">⚡ Accesos rápidos</div>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">'
-    +'<button id="db-acc-scan" class="db-acc"><div style="font-size:20px;margin-bottom:5px">📷</div><div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">Escanear QR</div><div style="font-size:10px;color:rgba(255,255,255,.4)">Identificar equipo</div></button>'
-    +'<button id="db-acc-orden" class="db-acc"><div style="font-size:20px;margin-bottom:5px">📋</div><div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">Nueva orden</div><div style="font-size:10px;color:rgba(255,255,255,.4)">Registrar servicio</div></button>'
-    +'<button id="db-acc-qr" class="db-acc"><div style="font-size:20px;margin-bottom:5px">⬡</div><div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">QR en masa</div><div style="font-size:10px;color:rgba(255,255,255,.4)">Imprimir etiquetas</div></button>'
-    +'<button id="db-acc-rep" class="db-acc"><div style="font-size:20px;margin-bottom:5px">📊</div><div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">Reportes</div><div style="font-size:10px;color:rgba(255,255,255,.4)">Excel y estadísticas</div></button>'
-    +'<button id="db-acc-mov" class="db-acc"><div style="font-size:20px;margin-bottom:5px">🔄</div><div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">Movimientos</div><div style="font-size:10px;color:rgba(255,255,255,.4)">Historial</div></button>'
-    +'<button id="db-acc-etiq" class="db-acc"><div style="font-size:20px;margin-bottom:5px">🏷</div><div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9)">Etiquetas</div><div style="font-size:10px;color:rgba(255,255,255,.4)">Imprimir</div></button>'
+    +'<button id="db-acc-scan" class="db-acc"><div style="font-size:20px;margin-bottom:5px">📷</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">Escanear QR</div><div style="font-size:10px;color:#6b7c63">Identificar equipo</div></button>'
+    +'<button id="db-acc-orden" class="db-acc"><div style="font-size:20px;margin-bottom:5px">📋</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">Nueva orden</div><div style="font-size:10px;color:#6b7c63">Registrar servicio</div></button>'
+    +'<button id="db-acc-qr" class="db-acc"><div style="font-size:20px;margin-bottom:5px">⬡</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">QR en masa</div><div style="font-size:10px;color:#6b7c63">Imprimir etiquetas</div></button>'
+    +'<button id="db-acc-rep" class="db-acc"><div style="font-size:20px;margin-bottom:5px">📊</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">Reportes</div><div style="font-size:10px;color:#6b7c63">Excel y estadísticas</div></button>'
+    +'<button id="db-acc-mov" class="db-acc"><div style="font-size:20px;margin-bottom:5px">🔄</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">Movimientos</div><div style="font-size:10px;color:#6b7c63">Historial</div></button>'
+    +'<button id="db-acc-etiq" class="db-acc"><div style="font-size:20px;margin-bottom:5px">🏷</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">Etiquetas</div><div style="font-size:10px;color:#6b7c63">Imprimir</div></button>'
     +'</div></div>'
 
     +'</div>'; // db-wrap
@@ -1358,9 +1363,9 @@ function renderEquiposTabla(data){
   if(!tbody){renderEquipos();return;}
   tbody.innerHTML=data.length?data.map(function(e,i){
     var sv=e.serie||'—';
-    return'<tr style="cursor:pointer" ondblclick="openPanel(\''+e.id+'\',\'cl\')">'
-      +'<td style="color:#9aa0a6;font-size:11px">'+(i+1)+'</td>'
-      +'<td><span style="font-family:monospace;font-weight:700;color:#1a73e8">'+e.activoFijo+'</span></td>'
+    return'<tr style="cursor:pointer;border-bottom:1px solid rgba(42,74,30,.07)" ondblclick="openPanel(\''+e.id+'\',\'cl\')" onmouseover="this.style.background=\'rgba(42,74,30,.04)\'" onmouseout="this.style.background=\'\'">'
+      +'<td style="color:#8b6914;font-size:10px;padding:5px 8px">'+(i+1)+'</td>'
+      +'<td style="padding:5px 8px"><span style="font-family:monospace;font-weight:700;color:#2a4a1e;font-size:12px">'+e.activoFijo+'</span></td>'
       +'<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+(e.modelo||'—')+'</td>'
       +'<td style="font-family:monospace;font-size:11px">'+sv+'</td>'
       +'<td>'+lbl(e.linea,e.grupoArt)+'</td>'
