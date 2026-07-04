@@ -1082,6 +1082,7 @@ async function cargarStatsDashboard(){
   var enRep      = config.totalReparacion||0;
   var disponibles= config.totalDisponible||0;
   var porLinea   = config.porLinea||{};
+  var valorNeto  = config.valorNeto||{};
   var porClase   = config.porClase||{};
   var porCentro  = config.porCentro||{};
 
@@ -1147,7 +1148,7 @@ async function cargarStatsDashboard(){
     +'</div>'
 
     // Centros — todos ordenados mayor a menor con código + nombre
-    +'<div class="db-card"><div class="db-card-hd">Equipos por centro logístico</div>'
+    +'<div class="db-card"><div class="db-card-hd"><span>Equipos por centro logístico</span><span style="font-size:11px;color:#8b6914;font-weight:500">Valor neto contable</span></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px">'
     +(function(){
       var entries=Object.entries(CENTROS).map(function(e){
@@ -1158,12 +1159,15 @@ async function cargarStatsDashboard(){
       return entries.map(function(e,i){
         var pct=e.num?Math.max(3,Math.round(e.num/mx*100)):0;
         var col=e.num?cols[i%10]:'rgba(42,74,30,.15)';
+        var val=valorNeto&&valorNeto[e.codigo]?fmt$(valorNeto[e.codigo]):'';
         return'<div style="cursor:pointer;padding:5px 0;border-bottom:1px solid rgba(42,74,30,.08)" onclick="dbKpiClick(this)" data-filtro="centro:'+e.codigo+'">'
           +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">'
           +'<span style="font-size:11px;color:#2a4a1e;font-weight:500">'
           +'<span style="font-family:monospace;font-size:10px;color:#8b6914;font-weight:700;margin-right:5px">'+e.codigo+'</span>'
           +e.nombre+'</span>'
-          +'<span style="font-size:11px;font-weight:700;color:'+col+';margin-left:8px;white-space:nowrap">'+e.num.toLocaleString()+'</span></div>'
+          +'<span style="display:flex;align-items:center;gap:8px">'
+          +(val?'<span style="font-size:10px;color:#8b6914;font-weight:600">'+val+'</span>':'')
+          +'<span style="font-size:11px;font-weight:700;color:'+col+'">'+e.num.toLocaleString()+'</span></span></div>'
           +'<div style="height:3px;background:rgba(42,74,30,.06);border-radius:2px;overflow:hidden">'
           +'<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:2px;transition:width .6s ease"></div></div></div>';
       }).join('');
@@ -1242,17 +1246,18 @@ function dbKpiClick(el){
 
 function actualizarTotalesConfig(){
   var tots={con_cliente:0,disponible:0,reparacion:0,retiro:0,baja:0};
-  var porLinea={},porClase={},porCentro={};
+  var porLinea={},porClase={},porCentro={},valorNeto={};
   clientes.forEach(function(e){
     if(tots[e.estado]!==undefined)tots[e.estado]++;
     var lin=e.grupoArt?getGrupoNombre(e.grupoArt):(e.linea||'Sin linea'); porLinea[lin]=(porLinea[lin]||0)+1;
     var cl=e.claseActivo||'Otro';  porClase[cl]=(porClase[cl]||0)+1;
     var ce=e.centro||'—';          porCentro[ce]=(porCentro[ce]||0)+1;
+    if(e.valorNeto&&e.centro){valorNeto[ce]=(valorNeto[ce]||0)+(parseFloat(e.valorNeto)||0);}
   });
   db.collection('config').doc('general').set({
     totalConCliente:tots.con_cliente, totalDisponible:tots.disponible,
     totalReparacion:tots.reparacion,  totalRetiro:tots.retiro, totalBaja:tots.baja,
-    porLinea:porLinea, porClase:porClase, porCentro:porCentro,
+    porLinea:porLinea, porClase:porClase, porCentro:porCentro, valorNeto:valorNeto,
   },{merge:true}).catch(function(){});
   if(curView==='dashboard')cargarStatsDashboard();
 }
@@ -1386,6 +1391,7 @@ function renderClientes(){
   var q=document.getElementById('cl-q')?document.getElementById('cl-q').value.toLowerCase():'';
   var ce=document.getElementById('cl-ce')?document.getElementById('cl-ce').value:'';
   var data=clientes.filter(function(c){
+    if(c.estado!=='con_cliente')return false;  // Solo equipos con cliente
     if(ce&&c.centro!==ce)return false;
     if(q&&!(String(c.activoFijo||'').includes(q)||String(c.serie||'').toLowerCase().includes(q)||(c.modelo||'').toLowerCase().includes(q)||(String(c.clienteClave||c.almacen||'')).toString().toLowerCase().includes(q)))return false;
     return true;
