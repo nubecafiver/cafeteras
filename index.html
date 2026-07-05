@@ -841,6 +841,23 @@ function setSyncUI(s,m){var p=document.getElementById('topbar-sync'),t=document.
 function setStatus(msg,cls){var el=document.getElementById('scanner-status');if(!el)return;el.textContent=msg;el.className='scanner-status '+(cls||'');}
 
 // Helpers de catálogos
+function actualizarSelectsCentros(){
+  // Poblar todos los selects de centros con el catálogo real
+  var opciones='<option value="">Todos los centros</option>'
+    +Object.entries(catalogoCentros)
+      .sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;})
+      .map(function(e){return'<option value="'+e[0]+'">'+e[0]+' — '+(e[1].nombre||e[0])+'</option>';})
+      .join('');
+  ['eq-centro','cl-ce','etiq-ce','rep-ce'].forEach(function(id){
+    var sel=document.getElementById(id);
+    if(sel){
+      var val=sel.value;
+      sel.innerHTML=opciones;
+      if(val)sel.value=val;
+    }
+  });
+}
+
 function getCentroNombre(codigo){
   if(!codigo||codigo==='null'||codigo==='undefined')return '—';
   return (catalogoCentros[codigo]&&catalogoCentros[codigo].nombre)||CENTROS[codigo]||codigo||'—';
@@ -1113,6 +1130,8 @@ function loadData(onReady){
     db.collection('centros').get().then(function(s){
       s.docs.forEach(function(d){catalogoCentros[d.id]=d.data();});
       console.log('Centros cargados:',Object.keys(catalogoCentros).length);
+      // Actualizar todos los selects de centros que ya estén en el DOM
+      actualizarSelectsCentros();
     }).catch(function(e){console.warn('centros:',e.message);});
     db.collection('almacenes').get().then(function(s){
       s.docs.forEach(function(d){catalogoAlmacenes[d.id]=d.data();});
