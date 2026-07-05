@@ -890,32 +890,46 @@ function buscarEspecsIA(modelo){
   var box=document.getElementById('dp-specs-content');
   if(!box)return;
   if(!modelo){box.innerHTML='<span style="color:#9aa0a6">Modelo no disponible</span>';return;}
-  box.innerHTML='<div style="color:#8b6914">⏳ Consultando especificaciones...</div>';
-  fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      model:'claude-sonnet-4-6',
-      max_tokens:600,
-      messages:[{role:'user',content:'Dame las especificaciones técnicas del equipo de café: "'+modelo+'". Incluye: capacidad, voltaje, watts, presión (bar), temperatura, dimensiones aproximadas, peso, y cualquier dato técnico relevante. Responde en español, formato conciso con bullet points usando •. Si no conoces el modelo exacto, indica las especificaciones típicas de ese tipo de equipo.'}]
-    })
-  }).then(function(r){return r.json();}).then(function(d){
-    var txt='';
-    if(d.content&&d.content[0])txt=d.content[0].text||'';
-    if(!txt&&d.error)txt='Error: '+d.error.message;
-    // Convertir bullet points a HTML
-    var html=txt.split('\n').map(function(l){
-      l=l.trim();
-      if(!l)return '';
-      if(l.startsWith('\u2022')||l.startsWith('-')){
-        return'<div style="display:flex;gap:6px;margin-bottom:3px"><span style="color:#8b6914;flex-shrink:0">\u2022</span><span>'+l.replace(/^[\u2022\-]\s*/,'')+'</span></div>';
+  box.innerHTML='<div style="color:#8b6914">Buscando especificaciones...</div>';
+  var modeloLower=modelo.toLowerCase();
+  db.collection('specs_equipos').get().then(function(snap){
+    var found=null;
+    snap.docs.forEach(function(d){
+      if(found)return;
+      var data=d.data();
+      var busqueda=data.busqueda||[];
+      for(var i=0;i<busqueda.length;i++){
+        var b=busqueda[i].toLowerCase();
+        if(modeloLower.includes(b.slice(0,12))||b.includes(modeloLower.slice(0,12))){found=data;break;}
       }
-      return'<div style="font-weight:600;color:#2a4a1e;margin-top:6px;margin-bottom:2px">'+l+'</div>';
-    }).filter(Boolean).join('');
-    box.innerHTML=html||'<span style="color:#9aa0a6">Sin información disponible</span>';
-  }).catch(function(err){
-    box.innerHTML='<span style="color:#9aa0a6">No se pudo conectar con IA: '+err.message+'</span>';
-  });
+    });
+    if(found){
+      // Mostrar foto si existe
+      var fotoEl=document.getElementById('dp-foto');
+      if(fotoEl&&found.fotoUrl){
+        fotoEl.src=found.fotoUrl;
+        fotoEl.style.display='block';
+      } else if(fotoEl){
+        // Buscar foto por modelo en DuckDuckGo images
+        fotoEl.src='https://loremflickr.com/200/150/coffee,'+encodeURIComponent((found.marca||'')+'+'+(found.modelo||''));
+        fotoEl.style.display='block';
+      }
+      var campos=[
+        ['Marca',found.marca],['Modelo',found.modelo],['Tipo',found.tipo],
+        ['Capacidad',found.capacidad],['Voltaje',found.voltaje],['Potencia',found.watts],
+        ['Presion',found.presion],['Dimensiones',found.dimensiones],['Peso',found.peso],
+        ['Uso',found.uso],['Caracteristicas',found.caracteristicas],
+        ['Garantia',found.garantia],['Certificaciones',found.certificaciones],
+      ].filter(function(f){return f[1];});
+      box.innerHTML=campos.map(function(f){
+        return'<div style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid rgba(42,74,30,.06)">'
+          +'<span style="font-size:11px;font-weight:700;color:#8b6914;min-width:110px;flex-shrink:0">'+f[0]+'</span>'
+          +'<span style="font-size:12px;color:#2a4a1e">'+f[1]+'</span></div>';
+      }).join('');
+    }else{
+      box.innerHTML='<span style="font-size:12px;color:#9aa0a6">No se encontraron especificaciones para este modelo.</span>';
+    }
+  }).catch(function(e){box.innerHTML='<span style="color:#ea4335">Error: '+e.message+'</span>';});
 }
 
 function dpRow(k,v){return'<div class="dp-row"><div class="dp-key">'+k+'</div><div class="dp-val">'+(v||'—')+'</div></div>';}
@@ -986,42 +1000,61 @@ function doLogout(){auth.signOut().then(function(){curUser=null;document.getElem
 function enterApp(){
   if(_yaEntro)return;
   _yaEntro=true;
+
   // 1. Ocultar login
   document.getElementById('login-screen').classList.add('hidden');
-  // 2. Mostrar splash
+
+  // 2. Mostrar splash INMEDIATAMENTE
   var sp=document.getElementById('splash-screen');
   if(sp){
     sp.style.display='flex';
+    sp.style.opacity='1';
     sp.classList.remove('fade-out');
     var bar=sp.querySelector('.splash-bar');
     if(bar){bar.style.animation='none';bar.offsetHeight;bar.style.animation='';}
+    var txt=document.getElementById('splash-txt');
+    if(txt)txt.textContent='Cargando datos...';
   }
-  // 3. Preparar app en fondo
-  document.getElementById('app').classList.remove('hidden');
-  document.getElementById('app').style.visibility='hidden';
+
+  // 3. Preparar app INVISIBLE en fondo
+  var appEl=document.getElementById('app');
+  appEl.classList.remove('hidden');
+  appEl.style.visibility='hidden';
   document.body.classList.add('app-mode');
+
+  // Configurar usuario
   var av=document.getElementById('cur-av');
   if(av){av.textContent=ini(curUser.name);av.style.background=curUser.color+'22';av.style.color=curUser.color;}
-  var nm=document.getElementById('cur-nm');
-  if(nm)nm.textContent=curUser.name;
+  var nm=document.getElementById('cur-nm');if(nm)nm.textContent=curUser.name;
   var btnL=document.getElementById('login-btn');
   if(btnL){btnL.textContent='Iniciar sesión';btnL.disabled=false;btnL.style.opacity='1';}
   var sel=document.getElementById('o-tecnico');
   if(sel)sel.innerHTML=TECNICOS.map(function(t){return'<option>'+t+'</option>';}).join('');
   var fEl=document.getElementById('o-fecha');if(fEl)fEl.value=new Date().toISOString().slice(0,10);
   var hEl=document.getElementById('o-hora');if(hEl)hEl.value=new Date().toTimeString().slice(0,5);
-  // 4. Cargar datos y cuando terminen ocultar splash
-  loadData(function(){
-    // Datos listos — ocultar splash y mostrar app
+
+  // 4. Función para mostrar app y ocultar splash
+  function mostrarApp(){
     if(sp){
       sp.classList.add('fade-out');
       setTimeout(function(){
         sp.style.display='none';
-        document.getElementById('app').style.visibility='visible';
+        appEl.style.visibility='visible';
       },400);
     } else {
-      document.getElementById('app').style.visibility='visible';
+      appEl.style.visibility='visible';
     }
+  }
+
+  // 5. Timeout de seguridad — máximo 8 segundos de splash
+  var safetyTimer=setTimeout(function(){
+    mostrarApp();
+  },8000);
+
+  // 6. Cargar datos
+  loadData(function(){
+    clearTimeout(safetyTimer);
+    mostrarApp();
   });
 }
 
@@ -1619,15 +1652,19 @@ function dpTab(tab, eObj, col){
       +dpRow('Preventivos',hist.filter(function(h){return h.tipo==='preventivo';}).length)
       +dpRow('Total invertido','<strong style="color:#34a853">'+fmt$(totalInv)+'</strong>')
       +dpRow('Último servicio',hist.length?fmtF(hist[0].creadoEn):'Sin servicios');
-    // Especificaciones técnicas con IA
+    // Foto + Especificaciones técnicas
     body.innerHTML+=
-      '<div id="dp-specs-box" style="margin-top:12px;padding:12px;background:var(--cf-cream);border-radius:10px;border:1px solid var(--cf-border)">'
+      '<div id="dp-foto-box" style="margin-top:12px;text-align:center;display:none">'
+      +'<img id="dp-foto" src="" style="max-width:180px;max-height:140px;border-radius:10px;border:1px solid var(--cf-border);object-fit:contain;background:#fff;padding:4px" onerror="document.getElementById(\'dp-foto-box\').style.display=\'none\'">'
+      +'</div>'
+      +'<div id="dp-specs-box" style="margin-top:12px;padding:12px;background:var(--cf-cream);border-radius:10px;border:1px solid var(--cf-border)">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
       +'<div style="font-size:11px;font-weight:700;color:#4a5e42;text-transform:uppercase;letter-spacing:.06em">✨ Especificaciones técnicas</div>'
-      +'<button onclick="buscarEspecsIA(\''+e.modelo+'\')" style="font-size:10px;padding:3px 10px;border:1px solid var(--cf-border);border-radius:6px;background:var(--cf-white);cursor:pointer;font-family:Inter,sans-serif;color:#2a4a1e;font-weight:600">Buscar con IA</button>'
+      +'<button onclick="buscarEspecsIA(\''+e.modelo+'\')" style="font-size:10px;padding:3px 10px;border:1px solid var(--cf-border);border-radius:6px;background:var(--cf-white);cursor:pointer;font-family:Inter,sans-serif;color:#2a4a1e;font-weight:600">Recargar</button>'
       +'</div>'
-      +'<div id="dp-specs-content" style="font-size:12px;color:#4a5e42;line-height:1.6">Haz clic en "Buscar con IA" para obtener las especificaciones de este modelo.</div>'
+      +'<div id="dp-specs-content" style="font-size:12px;color:#4a5e42;line-height:1.6">Buscando especificaciones...</div>'
       +'</div>';
+    setTimeout(function(){buscarEspecsIA(e.modelo);},200);
   }else if(tab==='historial'){
     body.innerHTML=
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
