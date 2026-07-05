@@ -772,6 +772,7 @@ var catalogoCentros={};   // cargado desde Firestore
 var catalogoAlmacenes={}; // cargado desde Firestore
 var catalogoClientes={};  // cargado desde Firestore
 var centrosEnUso=null;    // llaves de config/general.porCentro (centros con equipos); null = mostrar todos
+var _statsConfig=null;    // caché de config/general para el dashboard (evita skeleton en blanco)
 var _catalogosCargados=false;
 var ESTADOS={
   con_cliente: {label:'Con cliente',   color:'#34a853', bg:'#e6f4ea', icon:'🟢'},
@@ -1148,15 +1149,12 @@ function enterApp(){
 // ══ CARGA DE DATOS ══
 function loadData(onReady){
   setSyncUI('saving','Cargando...');
-  // Equipos (clientesEquipo)
-  // Cargar clientes una sola vez paginando
-  // Cargar catálogos (centros, almacenes, clientes) una sola vez
+  // Catálogos (centros, almacenes, clientes) una sola vez, en paralelo
   if(!_catalogosCargados){
     _catalogosCargados=true;
     db.collection('centros').get().then(function(s){
       s.docs.forEach(function(d){catalogoCentros[d.id]=d.data();});
       console.log('Centros cargados:',Object.keys(catalogoCentros).length);
-      // Actualizar todos los selects de centros que ya estén en el DOM
       actualizarSelectsCentros();
     }).catch(function(e){console.warn('centros:',e.message);});
     db.collection('almacenes').get().then(function(s){
@@ -1167,36 +1165,47 @@ function loadData(onReady){
       s.docs.forEach(function(d){catalogoClientes[d.id]=d.data();});
       console.log('Clientes cargados:',Object.keys(catalogoClientes).length);
     }).catch(function(e){console.warn('clientes:',e.message);});
-    // Centros que sí tienen equipos (llaves de porCentro) para filtrar los selects
+  }
+
+  // Guardar callback para ocultar el splash SOLO cuando el dashboard ya tenga datos
+  if(typeof onReady==='function')window._dashOnReady=onReady;
+
+  // Arranca el dashboard ya con config en caché → los cuadros nacen con datos,
+  // nunca se ve skeleton en blanco ni pantalla vacía.
+  function arrancarDashboard(){
+    setSyncUI('ok','En línea ✓');
+    switchView('dashboard');
+    // Equipos bajo demanda
+    db.collection('equipos').limit(300).get().then(function(s){
+      equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
+      if(curView==='equipos')renderEquipos();
+    }).catch(function(e){console.warn(e);});
+    // Órdenes en vivo (re-render del dashboard es seguro: usa la caché, sin skeleton)
+    db.collection('ordenes').orderBy('creadoEn','desc').limit(200).onSnapshot(function(s){
+      ordenes=s.docs.map(function(d){return{id:d.id,...d.data()};});
+      if(curView==='dashboard')renderDashboard();
+      if(curView==='ordenes')renderOrdenes();
+    },function(e){console.warn(e);});
+  }
+
+  if(_statsConfig){
+    arrancarDashboard();
+  }else{
     db.collection('config').doc('general').get().then(function(snap){
-      var pc=(snap.exists&&snap.data().porCentro)||{};
+      _statsConfig=(snap.exists?snap.data():{})||{};
+      var pc=_statsConfig.porCentro||{};
       var enUso={};
       Object.keys(pc).forEach(function(k){if(pc[k]>0)enUso[k]=pc[k];});
       centrosEnUso=enUso;
       console.log('Centros en uso:',Object.keys(centrosEnUso).length);
       actualizarSelectsCentros();
-      // Repoblar los selects en línea si la vista actual los contiene
-      if(curView==='equipos')renderEquipos();
-      else if(curView==='clientes')renderClientes();
-    }).catch(function(e){console.warn('config centros:',e.message);});
+    }).catch(function(e){
+      console.warn('config general:',e.message);
+      _statsConfig={};
+    }).then(function(){
+      arrancarDashboard();
+    });
   }
-
-  // NO cargar todos los equipos al inicio — se cargan bajo demanda
-  setSyncUI('ok','En línea ✓');
-  // Guardar callback para cuando el dashboard termine de cargar
-  if(typeof onReady==='function')window._dashOnReady=onReady;
-  switchView('dashboard');
-
-  db.collection('equipos').limit(300).get().then(function(s){
-    equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
-    if(curView==='equipos')renderEquipos();
-  }).catch(function(e){console.warn(e);});
-
-  db.collection('ordenes').orderBy('creadoEn','desc').limit(200).onSnapshot(function(s){
-    ordenes=s.docs.map(function(d){return{id:d.id,...d.data()};});
-    if(curView==='dashboard')renderDashboard();
-    if(curView==='ordenes')renderOrdenes();
-  },function(e){console.warn(e);});
 }
 
 // ══ NAVEGACIÓN ══
@@ -1220,30 +1229,36 @@ function switchView(v){
 // ══ DASHBOARD ══
 function renderDashboard(){
   var w=document.getElementById('view-dashboard');if(!w)return;
-  // Mostrar skeleton mientras carga
   var hoy=new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  w.innerHTML='<div class="db-wrap">'
-    +'<div class="db-header"><div><div class="db-title">Panel de Control — CAFIVER</div>'
-    +'<div class="db-fecha">'+hoy+'</div></div></div>'
-    +'<div class="db-kpi-grid">'
-    +'<div class="db-kpi db-kpi-skeleton"></div><div class="db-kpi db-kpi-skeleton"></div>'
-    +'<div class="db-kpi db-kpi-skeleton"></div><div class="db-kpi db-kpi-skeleton"></div>'
-    +'</div>'
-    +'<div class="db-grid-2" style="grid-template-columns:1fr 2fr">'
-    +'<div class="db-card db-kpi-skeleton" style="min-height:220px"></div>'
-    +'<div class="db-card db-kpi-skeleton" style="min-height:220px"></div>'
-    +'<div class="db-card db-kpi-skeleton" style="min-height:220px"></div>'
-    +'</div></div>';
+  // Skeleton solo en la primerísima carga (sin caché). En re-renders ya hay
+  // datos, así que cargarStatsDashboard pinta los cuadros llenos sin parpadeo.
+  if(!_statsConfig){
+    w.innerHTML='<div class="db-wrap">'
+      +'<div class="db-header"><div><div class="db-title">Panel de Control — CAFIVER</div>'
+      +'<div class="db-fecha">'+hoy+'</div></div></div>'
+      +'<div class="db-kpi-grid">'
+      +'<div class="db-kpi db-kpi-skeleton"></div><div class="db-kpi db-kpi-skeleton"></div>'
+      +'<div class="db-kpi db-kpi-skeleton"></div><div class="db-kpi db-kpi-skeleton"></div>'
+      +'</div>'
+      +'<div class="db-grid-2" style="grid-template-columns:1fr 2fr">'
+      +'<div class="db-card db-kpi-skeleton" style="min-height:220px"></div>'
+      +'<div class="db-card db-kpi-skeleton" style="min-height:220px"></div>'
+      +'<div class="db-card db-kpi-skeleton" style="min-height:220px"></div>'
+      +'</div></div>';
+  }
   cargarStatsDashboard();
 }
 
 
 async function cargarStatsDashboard(){
-  var config={};
-  try{
-    var snap=await db.collection('config').doc('general').get();
-    if(snap.exists)config=snap.data();
-  }catch(e){console.warn('config:',e.message);}
+  var config=_statsConfig;
+  if(!config){
+    try{
+      var snap=await db.collection('config').doc('general').get();
+      config=snap.exists?snap.data():{};
+    }catch(e){console.warn('config:',e.message);config={};}
+    _statsConfig=config;
+  }
 
   var totalEq    = config.totalEquipos||0;
   var conCliente = config.totalConCliente||0;
