@@ -1652,10 +1652,11 @@ function dpTab(tab, eObj, col){
       +dpRow('Preventivos',hist.filter(function(h){return h.tipo==='preventivo';}).length)
       +dpRow('Total invertido','<strong style="color:#34a853">'+fmt$(totalInv)+'</strong>')
       +dpRow('Último servicio',hist.length?fmtF(hist[0].creadoEn):'Sin servicios');
-    // Foto + Especificaciones técnicas
-    body.innerHTML+=
+    // Especificaciones técnicas — agregar como elemento DOM separado
+    var specsDiv=document.createElement('div');
+    specsDiv.innerHTML=
       '<div id="dp-foto-box" style="margin-top:12px;text-align:center;display:none">'
-      +'<img id="dp-foto" src="" style="max-width:180px;max-height:140px;border-radius:10px;border:1px solid var(--cf-border);object-fit:contain;background:#fff;padding:4px" onerror="document.getElementById(\'dp-foto-box\').style.display=\'none\'">'
+      +'<img id="dp-foto" src="" style="max-width:180px;max-height:140px;border-radius:10px;border:1px solid var(--cf-border);object-fit:contain;background:#fff;padding:4px">'
       +'</div>'
       +'<div id="dp-specs-box" style="margin-top:12px;padding:12px;background:var(--cf-cream);border-radius:10px;border:1px solid var(--cf-border)">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
@@ -1664,6 +1665,7 @@ function dpTab(tab, eObj, col){
       +'</div>'
       +'<div id="dp-specs-content" style="font-size:12px;color:#4a5e42;line-height:1.6">Buscando especificaciones...</div>'
       +'</div>';
+    body.appendChild(specsDiv);
     setTimeout(function(){buscarEspecsIA(e.modelo);},200);
   }else if(tab==='historial'){
     body.innerHTML=
