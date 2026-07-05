@@ -1387,44 +1387,84 @@ function renderEquiposTabla(data){
 // ══ CLIENTES ══
 function renderClientes(){
   var w=document.getElementById('view-clientes');if(!w)return;
-  if(!_clientesCargados){cargarEquiposBajoDemanda(function(){renderClientes();});return;}
-  var q=document.getElementById('cl-q')?document.getElementById('cl-q').value.toLowerCase():'';
+  if(!_clientesCargados){
+    w.innerHTML='<div style="text-align:center;padding:60px;color:#6b7c63">Cargando equipos...</div>';
+    cargarEquiposBajoDemanda(function(){renderClientes();});
+    return;
+  }
   var ce=document.getElementById('cl-ce')?document.getElementById('cl-ce').value:'';
-  var data=clientes.filter(function(c){
-    if(c.estado!=='con_cliente')return false;  // Solo equipos con cliente
-    if(ce&&c.centro!==ce)return false;
-    if(q&&!(String(c.activoFijo||'').includes(q)||String(c.serie||'').toLowerCase().includes(q)||(c.modelo||'').toLowerCase().includes(q)||(String(c.clienteClave||c.almacen||'')).toString().toLowerCase().includes(q)))return false;
-    return true;
-  });
-  w.innerHTML=
-    '<div class="tbl-box">'
-    +'<div class="tbl-hdr"><span class="tbl-hdr-title">Clientes con Equipo — '+data.length.toLocaleString()+' registros</span>'
-    +'<div class="tbl-tools">'
-    +'<input class="fi-sm" type="text" id="cl-q" placeholder="🔍 Activo, serie, modelo, cliente..." style="width:240px" oninput="renderClientes()" value="'+(q||'')+'">'
-    +'<select class="fi-sm" id="cl-ce" onchange="renderClientes()">'
-    +'<option value="">Todos los centros</option>'
-    +(Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1]+'</option>';}).join(''))
-    +'</select></div></div>'
-    +'<div style="overflow-x:auto"><table><thead><tr><th>No.</th><th>Activo Fijo</th><th>Modelo</th><th>No. Serie</th><th>Línea</th><th>Centro</th><th>Estado</th><th>Cliente / Alm.</th><th>Acciones</th></tr></thead><tbody>'
-    +(data.length?data.slice(0,50).map(function(c){return'<tr style="cursor:pointer" ondblclick="openPanel(\''+c.id+'\',\'cl\')">'
-      +'<td style="color:#9aa0a6;font-size:11px">'+c.no+'</td>'
-      +'<td><span style="font-family:monospace;font-weight:700;color:#1a73e8">'+c.activoFijo+'</span></td>'
-      +'<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+c.modelo+'</td>'
-      +'<td style="font-family:monospace;font-size:11px">'+c.serie+'</td>'
-      +'<td>'+lbl(c.linea)+'</td>'
-      +'<td>'+bCe(c.centro)+'</td>'
-      +'<td>'+bEstad(c.estado)+'</td>'+'<td style="font-size:12px;font-weight:500">'+(c.clienteNombre||getAlmacenNombre(c.centro,c.almacen)||String(c.almacen||'—'))+'</td>'
-      +'<td><div style="display:flex;gap:3px">'
-      +'<button class="icon-btn" onclick="event.stopPropagation();openPanel(\''+c.id+'\',\'cl\')" title="Ver ficha">👁</button>'
-      +'<button class="icon-btn" onclick="event.stopPropagation();abrirOrdenDesde('+c.activoFijo+',\''+esc(c.modelo)+'\',\''+c.centro+'\',\''+esc(String(c.clienteNombre||c.razonSocial||c.clienteClave||c.almacen||''))+'\')" title="Nueva orden">📋</button>'
-      +'<button class="icon-btn" onclick="event.stopPropagation();printEtiquetaAF('+c.activoFijo+',\''+esc(c.modelo)+'\',\''+c.centro+'\')" title="Etiqueta">🏷</button>'
-      +'</div></td></tr>';}).join(''):'<tr><td colspan="8" class="empty-state">Sin resultados</td></tr>')
-    +'</tbody></table></div>'
-    +(data.length>50?'<div style="padding:10px 16px;font-size:12px;color:#9aa0a6;text-align:center">Mostrando 50 de '+data.length+'</div>':'')
-    +'</div>';
+  // Solo construir el shell si no existe ya
+  if(!document.getElementById('cl-tbody')){
+    w.innerHTML=
+      '<div class="tbl-box">'
+      +'<div class="tbl-hdr" style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap">'
+      +'<span class="tbl-hdr-title" id="cl-count">Clientes con Equipo</span>'
+      +'<input class="fi-sm" id="cl-q" type="search" placeholder="Buscar cliente, hotel, activo, serie..." oninput="filtrarClientes()" style="flex:1;min-width:200px">'
+      +'<select class="fi-sm" id="cl-ce" onchange="filtrarClientes()">'
+      +'<option value="">Todos los centros</option>'
+      +(Object.keys(catalogoCentros).length
+        ?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce2){return'<option value="'+ce2[0]+'">'+ce2[1].nombre+'</option>';}).join('')
+        :Object.entries(CENTROS).map(function(ce2){return'<option value="'+ce2[0]+'">'+ce2[1]+'</option>';}).join(''))
+      +'</select>'
+      +'</div>'
+      +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+      +'<thead><tr>'
+      +'<th style="padding:7px 8px">No.</th>'
+      +'<th style="padding:7px 8px">Activo Fijo</th>'
+      +'<th style="padding:7px 8px">Modelo</th>'
+      +'<th style="padding:7px 8px">No. Serie</th>'
+      +'<th style="padding:7px 8px">Línea</th>'
+      +'<th style="padding:7px 8px">Centro</th>'
+      +'<th style="padding:7px 8px">Estado</th>'
+      +'<th style="padding:7px 8px">Cliente / Hotel</th>'
+      +'<th style="padding:7px 8px">Acciones</th>'
+      +'</tr></thead>'
+      +'<tbody id="cl-tbody"></tbody>'
+      +'</table></div></div>';
+  }
+  filtrarClientes();
 }
 
-// ══ PANEL LATERAL ══
+function filtrarClientes(){
+  var tbody=document.getElementById('cl-tbody');if(!tbody)return;
+  var q=(document.getElementById('cl-q')?document.getElementById('cl-q').value:'').toLowerCase().trim();
+  var ce=document.getElementById('cl-ce')?document.getElementById('cl-ce').value:'';
+  var data=clientes.filter(function(e){
+    if(e.estado!=='con_cliente')return false;
+    if(ce&&e.centro!==ce)return false;
+    if(q&&!(
+      String(e.activoFijo||'').includes(q)||
+      String(e.serie||'').toLowerCase().includes(q)||
+      (e.modelo||'').toLowerCase().includes(q)||
+      (e.clienteNombre||'').toLowerCase().includes(q)||
+      getAlmacenNombre(e.centro,e.almacen).toLowerCase().includes(q)||
+      String(e.almacen||'').toLowerCase().includes(q)
+    ))return false;
+    return true;
+  });
+  var cnt=document.getElementById('cl-count');
+  if(cnt)cnt.textContent='Clientes con Equipo — '+data.length.toLocaleString();
+  tbody.innerHTML=data.length?data.slice(0,100).map(function(e,i){
+    var rid=String(e.id);
+    return'<tr class="db-tr" style="border-bottom:1px solid rgba(42,74,30,.07);cursor:pointer">'
+      +'<td style="padding:5px 8px;color:#8b6914;font-size:10px">'+(i+1)+'</td>'
+      +'<td style="padding:5px 8px"><span style="font-family:monospace;font-weight:700;color:#2a4a1e;font-size:12px">'+e.activoFijo+'</span></td>'
+      +'<td style="padding:5px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500">'+(e.modelo||'—')+'</td>'
+      +'<td style="padding:5px 8px;font-family:monospace;font-size:11px;color:#4a5e42">'+(e.serie||'—')+'</td>'
+      +'<td style="padding:5px 8px">'+lbl(e.linea,e.grupoArt)+'</td>'
+      +'<td style="padding:5px 8px">'+bCe(e.centro)+'</td>'
+      +'<td style="padding:5px 8px">'+bEstad(e.estado)+'</td>'
+      +'<td style="padding:5px 8px;font-size:12px;font-weight:600;color:#2a4a1e;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.clienteNombre||getAlmacenNombre(e.centro,e.almacen)||'—')+'</td>'
+      +'<td style="padding:5px 8px"><div style="display:flex;gap:3px">'
+      +'<button class="icon-btn" title="Ver" data-rid="'+rid+'" onclick="openPanel(this.dataset.rid,\'cl\')">👁</button>'
+      +'<button class="icon-btn" title="Orden" data-rid="'+rid+'" onclick="abrirOrdenDesdeEquipo(this.dataset.rid)">📋</button>'
+      +'<button class="icon-btn" title="Estado" data-rid="'+rid+'" onclick="abrirCambioEstado(this.dataset.rid)">⇄</button>'
+      +'</div></td>'
+      +'</tr>';
+  }).join(''):'<tr><td colspan="9" style="padding:40px;text-align:center;color:#6b7c63">Sin equipos con cliente'+(q?' para "'+q+'"':'')+' — intenta otra búsqueda</td></tr>';
+}
+
+
 function openPanel(docId, col){
   // Nueva estructura: todo en una colección, buscar en ambos arrays
   var e = clientes.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);})
