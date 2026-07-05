@@ -1508,28 +1508,23 @@ function buscarEquiposFirestore(){
   var q=(eqFiltros.q||'').trim();
   var col=db.collection('equipos');
   var queries=[];
-  if(eqFiltros.linea){
-    // Para Cafe soluble el valor en Firestore puede tener caracteres especiales
-    // Usar rango >= <= para capturar todas las variantes
-    var qr;
-    if(eqFiltros.linea==='Cafe soluble'){
-      qr=col.where('linea','>=','Caf').where('linea','<=','Cag');
-    }else{
-      qr=col.where('linea','==',eqFiltros.linea);
-    }
-    if(eqFiltros.centro)qr=qr.where('centro','==',eqFiltros.centro);
-    queries.push(qr.limit(200).get());
-  }
+  var LIM=2000;
+  // Firestore exige índice compuesto al combinar dos campos (p.ej. linea + centro).
+  // Para evitarlo: consultamos por UN solo campo y el centro se filtra en el cliente.
   if(q){
     var af=parseInt(q);
-    if(!isNaN(af))queries.push(col.where('activoFijo','==',af).limit(20).get());
-    else queries.push(col.where('serie','==',q).limit(20).get());
-  }
-  if(eqFiltros.centro&&!eqFiltros.linea&&!q){
-    queries.push(col.where('centro','==',eqFiltros.centro).limit(100).get());
-  }
-  // Sin ningún filtro — mostrar primeros 100 de clientesEquipo
-  if(!queries.length){
+    if(!isNaN(af))queries.push(col.where('activoFijo','==',af).limit(50).get());
+    else queries.push(col.where('serie','==',q).limit(50).get());
+  }else if(eqFiltros.linea){
+    if(eqFiltros.linea==='Cafe soluble'){
+      // Valor con acento/variantes: rango sobre el mismo campo (sin índice compuesto)
+      queries.push(col.where('linea','>=','Caf').where('linea','<','Cag').limit(LIM).get());
+    }else{
+      queries.push(col.where('linea','==',eqFiltros.linea).limit(LIM).get());
+    }
+  }else if(eqFiltros.centro){
+    queries.push(col.where('centro','==',eqFiltros.centro).limit(LIM).get());
+  }else{
     queries.push(col.limit(100).get());
   }
   Promise.all(queries).then(function(snaps){
@@ -1539,10 +1534,12 @@ function buscarEquiposFirestore(){
         if(!seen.has(d.id)){
           seen.add(d.id);
           var e={id:d.id,...d.data()};
-          // Filtro adicional por modelo en cliente
+          // Filtros en cliente (se aplican siempre, sin importar por cuál campo se consultó)
+          if(eqFiltros.centro&&e.centro!==eqFiltros.centro)return;
           if(q&&isNaN(parseInt(q))&&e.serie!==q){
-            if(!(e.modelo||'').toLowerCase().includes(q.toLowerCase())&&
-               !(e.serie||'').toLowerCase().includes(q.toLowerCase()))return;
+            var ql=q.toLowerCase();
+            if(!(e.modelo||'').toLowerCase().includes(ql)&&
+               !(e.serie||'').toLowerCase().includes(ql))return;
           }
           items.push(e);
         }
