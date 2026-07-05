@@ -11,6 +11,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',sans-serif;background:linear-gradient(135deg,#1a73e8 0%,#0d47a1 100%);min-height:100vh;color:#1c1e21;font-size:13px}
@@ -687,6 +688,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 var auth = firebase.auth();
+var storage = firebase.storage();
 
 // ══ USUARIOS ══
 var USERS = {
@@ -886,6 +888,46 @@ function bTipo(t){return t==='correctivo'?'<span class="pill pill-proc">🔧 Cor
 function bEst(e){var m={'terminado':'pill-ok','en proceso':'pill-pend','pendiente':'pill-acc','urgente':'pill-venc'};return'<span class="pill '+(m[e]||'pill-acc')+'">'+(e||'pendiente')+'</span>';}
 function fmtF(ts){if(!ts)return'—';if(ts.toDate)return ts.toDate().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});return String(ts).slice(0,10);}
 function esc(s){return String(s||'').replace(/'/g,'\u2019').replace(/"/g,'\u201d').replace(/\n/g,' ').slice(0,80);}
+function subirFotoEquipo(inputEl, modelo){
+  var file = inputEl.files[0];
+  if(!file)return;
+  if(!file.type.startsWith('image/')){toast('Solo se permiten imágenes');return;}
+  var btn = document.getElementById('dp-foto-btn');
+  if(btn){btn.textContent='Subiendo...';btn.disabled=true;}
+  // Crear key del modelo
+  var key = modelo.toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,40);
+  var ref = storage.ref('equipos/fotos/'+key+'.jpg');
+  ref.put(file).then(function(snap){
+    return snap.ref.getDownloadURL();
+  }).then(function(url){
+    // Mostrar foto
+    var fotoBox=document.getElementById('dp-foto-box');
+    if(fotoBox){
+      fotoBox.style.display='block';
+      var img=fotoBox.querySelector('img');
+      if(img)img.src=url;
+    }
+    // Guardar URL en specs_equipos de Firestore
+    var modeloLower=modelo.toLowerCase();
+    db.collection('specs_equipos').get().then(function(snap2){
+      var batch=db.batch();
+      snap2.docs.forEach(function(d){
+        var busqueda=d.data().busqueda||[];
+        var match=busqueda.some(function(b){
+          return modeloLower.includes(b.toLowerCase().slice(0,12))||b.toLowerCase().includes(modeloLower.slice(0,12));
+        });
+        if(match)batch.update(d.ref,{fotoUrl:url});
+      });
+      batch.commit();
+    });
+    toast('✅ Foto subida correctamente');
+    if(btn){btn.textContent='📷 Cambiar foto';btn.disabled=false;}
+  }).catch(function(err){
+    toast('Error: '+err.message);
+    if(btn){btn.textContent='📷 Subir foto';btn.disabled=false;}
+  });
+}
+
 function buscarEspecsIA(modelo){
   var box=document.getElementById('dp-specs-content');
   if(!box)return;
@@ -1657,10 +1699,10 @@ function dpTab(tab, eObj, col){
     // Especificaciones técnicas — agregar como elemento DOM separado
     var specsDiv=document.createElement('div');
     specsDiv.innerHTML=
-      '<div id="dp-foto-box" style="margin-top:12px;text-align:center;display:none">'
-      +'<img id="dp-foto" src="" '
-      +'style="max-width:200px;max-height:160px;border-radius:10px;border:1px solid var(--cf-border);object-fit:contain;background:#fff;padding:6px;box-shadow:0 2px 8px rgba(42,74,30,.1)">'
+      '<div id="dp-foto-box" style="margin-top:12px;text-align:center">'
+      +'<img id="dp-foto" src="" style="max-width:200px;max-height:160px;border-radius:10px;border:1px solid var(--cf-border);object-fit:contain;background:#f5f0e8;padding:6px;box-shadow:0 2px 8px rgba(42,74,30,.1)">'
       +'<div style="font-size:10px;color:#8b6914;margin-top:4px" id="dp-foto-label"></div>'
+      +'<label id="dp-foto-btn" style="display:inline-block;margin-top:8px;font-size:11px;padding:4px 12px;border:1px solid var(--cf-border);border-radius:6px;background:var(--cf-white);cursor:pointer;color:#2a4a1e;font-weight:600">📷 Subir foto<input type="file" accept="image/*" style="display:none" id="dp-foto-input"></label>'
       +'</div>'
       +'<div id="dp-specs-box" style="margin-top:12px;padding:12px;background:var(--cf-cream);border-radius:10px;border:1px solid var(--cf-border)">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
@@ -1670,7 +1712,15 @@ function dpTab(tab, eObj, col){
       +'<div id="dp-specs-content" style="font-size:12px;color:#4a5e42;line-height:1.6">Buscando especificaciones...</div>'
       +'</div>';
     body.appendChild(specsDiv);
-    setTimeout(function(){buscarEspecsIA(e.modelo);},200);
+    setTimeout(function(){
+      buscarEspecsIA(e.modelo);
+      // Conectar input de foto al modelo
+      var inp=document.getElementById('dp-foto-input');
+      if(inp){
+        var modelo=e.modelo;
+        inp.onchange=function(){subirFotoEquipo(this,modelo);};
+      }
+    },200);
   }else if(tab==='historial'){
     body.innerHTML=
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
