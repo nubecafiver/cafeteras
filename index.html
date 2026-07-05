@@ -293,8 +293,8 @@ tr:hover td{background:#f7f9ff}
 .splash-brand{font-family:'Playfair Display',serif;font-size:36px;font-weight:700;letter-spacing:.25em;color:var(--cf-green);margin-bottom:6px}
 .splash-sub{font-family:'Inter',sans-serif;font-size:13px;color:var(--cf-text2);letter-spacing:.1em;margin-bottom:32px}
 .splash-bar-wrap{width:240px;height:3px;background:rgba(42,74,30,.15);border-radius:2px;overflow:hidden;margin:0 auto 16px}
-.splash-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--cf-green),var(--cf-green3));border-radius:2px;animation:load-bar 2.3s cubic-bezier(.4,0,.2,1) forwards}
-@keyframes load-bar{0%{width:0%}30%{width:35%}60%{width:65%}85%{width:88%}100%{width:100%}}
+.splash-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--cf-green),var(--cf-green3));border-radius:2px;animation:load-bar 8s cubic-bezier(.4,0,.6,1) forwards}
+@keyframes load-bar{0%{width:0%}20%{width:25%}50%{width:55%}80%{width:80%}95%{width:92%}100%{width:100%}}
 .splash-txt{font-family:'Inter',sans-serif;font-size:12px;color:var(--cf-text2);letter-spacing:.05em;opacity:.7}
 /* BODY */
 body{background:var(--cf-cream)!important;font-family:'Inter',sans-serif!important}
@@ -366,7 +366,7 @@ tbody td{padding:5px 8px!important;border-bottom:1px solid rgba(42,74,30,.06)!im
     <div class="splash-bar-wrap">
       <div class="splash-bar"></div>
     </div>
-    <div class="splash-txt">Cargando desde servidor...</div>
+    <div class="splash-txt" id="splash-txt">Cargando datos...</div>
   </div>
 </div>
 
@@ -886,6 +886,38 @@ function bTipo(t){return t==='correctivo'?'<span class="pill pill-proc">🔧 Cor
 function bEst(e){var m={'terminado':'pill-ok','en proceso':'pill-pend','pendiente':'pill-acc','urgente':'pill-venc'};return'<span class="pill '+(m[e]||'pill-acc')+'">'+(e||'pendiente')+'</span>';}
 function fmtF(ts){if(!ts)return'—';if(ts.toDate)return ts.toDate().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});return String(ts).slice(0,10);}
 function esc(s){return String(s||'').replace(/'/g,'\u2019').replace(/"/g,'\u201d').replace(/\n/g,' ').slice(0,80);}
+function buscarEspecsIA(modelo){
+  var box=document.getElementById('dp-specs-content');
+  if(!box)return;
+  if(!modelo){box.innerHTML='<span style="color:#9aa0a6">Modelo no disponible</span>';return;}
+  box.innerHTML='<div style="color:#8b6914">⏳ Consultando especificaciones...</div>';
+  fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-6',
+      max_tokens:600,
+      messages:[{role:'user',content:'Dame las especificaciones técnicas del equipo de café: "'+modelo+'". Incluye: capacidad, voltaje, watts, presión (bar), temperatura, dimensiones aproximadas, peso, y cualquier dato técnico relevante. Responde en español, formato conciso con bullet points usando •. Si no conoces el modelo exacto, indica las especificaciones típicas de ese tipo de equipo.'}]
+    })
+  }).then(function(r){return r.json();}).then(function(d){
+    var txt='';
+    if(d.content&&d.content[0])txt=d.content[0].text||'';
+    if(!txt&&d.error)txt='Error: '+d.error.message;
+    // Convertir bullet points a HTML
+    var html=txt.split('\n').map(function(l){
+      l=l.trim();
+      if(!l)return '';
+      if(l.startsWith('\u2022')||l.startsWith('-')){
+        return'<div style="display:flex;gap:6px;margin-bottom:3px"><span style="color:#8b6914;flex-shrink:0">\u2022</span><span>'+l.replace(/^[\u2022\-]\s*/,'')+'</span></div>';
+      }
+      return'<div style="font-weight:600;color:#2a4a1e;margin-top:6px;margin-bottom:2px">'+l+'</div>';
+    }).filter(Boolean).join('');
+    box.innerHTML=html||'<span style="color:#9aa0a6">Sin información disponible</span>';
+  }).catch(function(err){
+    box.innerHTML='<span style="color:#9aa0a6">No se pudo conectar con IA: '+err.message+'</span>';
+  });
+}
+
 function dpRow(k,v){return'<div class="dp-row"><div class="dp-key">'+k+'</div><div class="dp-val">'+(v||'—')+'</div></div>';}
 function fichaRow(k,v){return'<div class="ficha-row"><div class="ficha-k">'+k+'</div><div class="ficha-v">'+(v||'—')+'</div></div>';}
 
@@ -1017,8 +1049,9 @@ function loadData(onReady){
 
   // NO cargar todos los equipos al inicio — se cargan bajo demanda
   setSyncUI('ok','En línea ✓');
+  // Guardar callback para cuando el dashboard termine de cargar
+  if(typeof onReady==='function')window._dashOnReady=onReady;
   switchView('dashboard');
-  if(typeof onReady==='function')onReady();
 
   db.collection('equipos').limit(300).get().then(function(s){
     equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
@@ -1084,6 +1117,7 @@ async function cargarStatsDashboard(){
   var disponibles= config.totalDisponible||0;
   var porLinea   = config.porLinea||{};
   var valorNeto  = config.valorNeto||{};
+  var valorNetoTotal = Object.values(valorNeto).reduce(function(a,b){return a+(b||0);},0);
   var porClase   = config.porClase||{};
   var porCentro  = config.porCentro||{};
 
@@ -1149,7 +1183,12 @@ async function cargarStatsDashboard(){
     +'</div>'
 
     // Centros — todos ordenados mayor a menor con código + nombre
-    +'<div class="db-card"><div class="db-card-hd"><span>Equipos por centro logístico</span><span style="font-size:11px;color:#8b6914;font-weight:500">Valor neto contable</span></div>'
+    +'<div class="db-card">'
+    +'<div class="db-card-hd"><span>Equipos por centro logístico</span><span style="font-size:11px;color:#8b6914;font-weight:500">Valor neto contable</span></div>'
+    +'<div style="background:linear-gradient(135deg,var(--cf-green),var(--cf-green2));border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">'
+    +'<span style="font-size:11px;font-weight:600;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.08em">Valor neto total del parque</span>'
+    +'<span style="font-size:22px;font-weight:700;color:#fff;font-family:Playfair Display,serif">'+fmt$(valorNetoTotal)+'</span>'
+    +'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px">'
     +(function(){
       var entries=Object.entries(CENTROS).map(function(e){
@@ -1217,6 +1256,11 @@ async function cargarStatsDashboard(){
     +'</div>'; // db-wrap
   // Asignar eventos a botones del dashboard
   setTimeout(asignarEventosDashboard, 100);
+  // Notificar que el dashboard está listo
+  if(typeof window._dashOnReady==='function'){
+    window._dashOnReady();
+    window._dashOnReady=null;
+  }
 }
 
 function dbKpi(label,val,sub,color,icon,filtro){
@@ -1575,6 +1619,15 @@ function dpTab(tab, eObj, col){
       +dpRow('Preventivos',hist.filter(function(h){return h.tipo==='preventivo';}).length)
       +dpRow('Total invertido','<strong style="color:#34a853">'+fmt$(totalInv)+'</strong>')
       +dpRow('Último servicio',hist.length?fmtF(hist[0].creadoEn):'Sin servicios');
+    // Especificaciones técnicas con IA
+    body.innerHTML+=
+      '<div id="dp-specs-box" style="margin-top:12px;padding:12px;background:var(--cf-cream);border-radius:10px;border:1px solid var(--cf-border)">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+      +'<div style="font-size:11px;font-weight:700;color:#4a5e42;text-transform:uppercase;letter-spacing:.06em">✨ Especificaciones técnicas</div>'
+      +'<button onclick="buscarEspecsIA(\''+e.modelo+'\')" style="font-size:10px;padding:3px 10px;border:1px solid var(--cf-border);border-radius:6px;background:var(--cf-white);cursor:pointer;font-family:Inter,sans-serif;color:#2a4a1e;font-weight:600">Buscar con IA</button>'
+      +'</div>'
+      +'<div id="dp-specs-content" style="font-size:12px;color:#4a5e42;line-height:1.6">Haz clic en "Buscar con IA" para obtener las especificaciones de este modelo.</div>'
+      +'</div>';
   }else if(tab==='historial'){
     body.innerHTML=
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
