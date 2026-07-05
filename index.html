@@ -773,6 +773,7 @@ var catalogoAlmacenes={}; // cargado desde Firestore
 var catalogoClientes={};  // cargado desde Firestore
 var centrosEnUso=null;    // llaves de config/general.porCentro (centros con equipos); null = mostrar todos
 var _statsConfig=null;    // caché de config/general para el dashboard (evita skeleton en blanco)
+var _clientesRes=[];      // resultados actuales de la vista Clientes (para que las acciones encuentren el equipo)
 var _catalogosCargados=false;
 var ESTADOS={
   con_cliente: {label:'Con cliente',   color:'#34a853', bg:'#e6f4ea', icon:'🟢'},
@@ -1681,6 +1682,7 @@ function buscarClientes(){
       });
     });
     if(cnt)cnt.textContent='Clientes con Equipo — '+data.length.toLocaleString();
+    _clientesRes=data;
     renderTablaClientes(data,tbody);
   }).catch(function(err){
     tbody.innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:red">Error: '+err.message+'</td></tr>';
@@ -1699,9 +1701,9 @@ function renderTablaClientes(data, tbody){
       +'<td style="padding:5px 8px">'+bCe(e.centro)+'</td>'
       +'<td style="padding:5px 8px;font-size:12px;font-weight:600;color:#2a4a1e;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.clienteNombre||getAlmacenNombre(e.centro,e.almacen)||'—')+'</td>'
       +'<td style="padding:5px 8px"><div style="display:flex;gap:3px">'
-      +'<button class="icon-btn" title="Ver" data-rid="'+rid+'" onclick="openPanel(this.dataset.rid,\'cl\')">👁</button>'
-      +'<button class="icon-btn" title="Orden" data-rid="'+rid+'" onclick="abrirOrdenDesdeEquipo(this.dataset.rid)">📋</button>'
-      +'<button class="icon-btn" title="Estado" data-rid="'+rid+'" onclick="abrirCambioEstado(this.dataset.rid)">⇄</button>'
+      +'<button class="icon-btn" title="Ver ficha" data-rid="'+rid+'" onclick="openPanel(this.dataset.rid,\'cl\')">👁</button>'
+      +'<button class="icon-btn" title="Nueva orden" data-rid="'+rid+'" onclick="ordenDesdeCliente(this.dataset.rid)">📋</button>'
+      +'<button class="icon-btn" title="Cambiar estado" data-rid="'+rid+'" onclick="estadoDesdeCliente(this.dataset.rid)">⇄</button>'
       +'</div></td>'
       +'</tr>';
   }).join(''):(function(){
@@ -1717,10 +1719,25 @@ function renderTablaClientes(data, tbody){
 
 
 
+function findEquipo(docId){
+  return clientes.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);})
+      || equipos.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);})
+      || _clientesRes.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);});
+}
+// Acciones desde la tabla de Clientes (usan _clientesRes como fuente)
+function ordenDesdeCliente(docId){
+  var e=findEquipo(docId);
+  if(!e){toast('No se encontró el equipo');return;}
+  abrirOrdenDesde(e.activoFijo, e.modelo, e.centro, e.clienteNombre||getAlmacenNombre(e.centro,e.almacen), 'correctivo');
+}
+function estadoDesdeCliente(docId){
+  var e=findEquipo(docId);
+  if(!e){toast('No se encontró el equipo');return;}
+  abrirCambioEstado(docId, e.activoFijo, e.modelo, '');
+}
 function openPanel(docId, col){
   // Nueva estructura: todo en una colección, buscar en ambos arrays
-  var e = clientes.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);})
-       || equipos.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);});
+  var e = findEquipo(docId);
   if(!e){toast('Equipo no encontrado');return;}
   openEqId = docId;
   document.getElementById('dp-title').textContent = e.modelo||'Equipo';
@@ -1737,7 +1754,7 @@ function dpTab(tab, eObj, col){
   // Si no se pasa el equipo, buscarlo
   var e = eObj;
   if(!e){
-    e = clientes.find(function(x){return x.id===openEqId;}) || equipos.find(function(x){return x.id===openEqId;});
+    e = findEquipo(openEqId);
   }
   if(!e)return;
   var body = document.getElementById('dp-body');
@@ -2368,6 +2385,7 @@ function autocompletarAF(){
   // Buscar en clientes primero
   var e=clientes.find(function(c){return parseInt(c.activoFijo)===af;});
   if(!e)e=equipos.find(function(c){return parseInt(c.activoFijo)===af;});
+  if(!e)e=_clientesRes.find(function(c){return parseInt(c.activoFijo)===af;});
   if(e){
     document.getElementById('o-serie').value=e.serie||'';
     document.getElementById('o-modelo').value=e.modelo||'';
@@ -2423,7 +2441,7 @@ function cargarChecklistLinea(linea){
 
 // ══ MODAL CAMBIO DE ESTADO ══
 function abrirCambioEstado(docId, af, modelo, nuevoEstado){
-  var e=clientes.find(function(x){return x.id===docId;})||equipos.find(function(x){return x.id===docId;});
+  var e=findEquipo(docId);
   if(!e)return;
   var estadoActual=e.estado||'con_cliente';
   // Crear modal dinámico
