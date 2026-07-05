@@ -954,49 +954,47 @@ function doLogout(){auth.signOut().then(function(){curUser=null;document.getElem
 function enterApp(){
   if(_yaEntro)return;
   _yaEntro=true;
-  // Ocultar login
+  // 1. Ocultar login
   document.getElementById('login-screen').classList.add('hidden');
-  // Mostrar splash de transición
+  // 2. Mostrar splash
   var sp=document.getElementById('splash-screen');
   if(sp){
     sp.style.display='flex';
     sp.classList.remove('fade-out');
-    // Resetear barra
     var bar=sp.querySelector('.splash-bar');
     if(bar){bar.style.animation='none';bar.offsetHeight;bar.style.animation='';}
-    setTimeout(function(){
+  }
+  // 3. Preparar app en fondo
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('app').style.visibility='hidden';
+  document.body.classList.add('app-mode');
+  var av=document.getElementById('cur-av');
+  if(av){av.textContent=ini(curUser.name);av.style.background=curUser.color+'22';av.style.color=curUser.color;}
+  var nm=document.getElementById('cur-nm');
+  if(nm)nm.textContent=curUser.name;
+  var btnL=document.getElementById('login-btn');
+  if(btnL){btnL.textContent='Iniciar sesión';btnL.disabled=false;btnL.style.opacity='1';}
+  var sel=document.getElementById('o-tecnico');
+  if(sel)sel.innerHTML=TECNICOS.map(function(t){return'<option>'+t+'</option>';}).join('');
+  var fEl=document.getElementById('o-fecha');if(fEl)fEl.value=new Date().toISOString().slice(0,10);
+  var hEl=document.getElementById('o-hora');if(hEl)hEl.value=new Date().toTimeString().slice(0,5);
+  // 4. Cargar datos y cuando terminen ocultar splash
+  loadData(function(){
+    // Datos listos — ocultar splash y mostrar app
+    if(sp){
       sp.classList.add('fade-out');
       setTimeout(function(){
         sp.style.display='none';
-        document.getElementById('app').classList.remove('hidden');
-        document.body.classList.add('app-mode');
-        var av=document.getElementById('cur-av');
-        if(av){av.textContent=ini(curUser.name);av.style.background=curUser.color+'22';av.style.color=curUser.color;}
-        var nm=document.getElementById('cur-nm');
-        if(nm)nm.textContent=curUser.name;
-        loadData();
-      },500);
-    },2000);
-  } else {
-    document.getElementById('app').classList.remove('hidden');
-    document.body.classList.add('app-mode');
-    var av=document.getElementById('cur-av');
-    if(av){av.textContent=ini(curUser.name);av.style.background=curUser.color+'22';av.style.color=curUser.color;}
-    var nm=document.getElementById('cur-nm');
-    if(nm)nm.textContent=curUser.name;
-    document.getElementById('login-btn').textContent='Iniciar sesión';
-    document.getElementById('login-btn').disabled=false;
-    document.getElementById('login-btn').style.opacity='1';
-    var sel=document.getElementById('o-tecnico');
-    sel.innerHTML=TECNICOS.map(function(t){return'<option>'+t+'</option>';}).join('');
-    document.getElementById('o-fecha').value=new Date().toISOString().slice(0,10);
-    document.getElementById('o-hora').value=new Date().toTimeString().slice(0,5);
-    loadData();
-  }
+        document.getElementById('app').style.visibility='visible';
+      },400);
+    } else {
+      document.getElementById('app').style.visibility='visible';
+    }
+  });
 }
 
 // ══ CARGA DE DATOS ══
-function loadData(){
+function loadData(onReady){
   setSyncUI('saving','Cargando...');
   // Equipos (clientesEquipo)
   // Cargar clientes una sola vez paginando
@@ -1020,6 +1018,7 @@ function loadData(){
   // NO cargar todos los equipos al inicio — se cargan bajo demanda
   setSyncUI('ok','En línea ✓');
   switchView('dashboard');
+  if(typeof onReady==='function')onReady();
 
   db.collection('equipos').limit(300).get().then(function(s){
     equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
