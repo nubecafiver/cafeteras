@@ -881,7 +881,7 @@ function optsCentros(selected){
   }
   pares.sort(function(a,b){return a[1]<b[1]?-1:1;});
   return '<option value="">Todos los centros</option>'
-    +pares.map(function(p){return'<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('');
+    +pares.map(function(p){return'<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[0]+' — '+p[1]+'</option>';}).join('');
 }
 
 function getCentroNombre(codigo){
