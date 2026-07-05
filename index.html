@@ -1587,7 +1587,7 @@ function renderClientes(){
       +'<div class="tbl-hdr" style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap">'
       +'<span class="tbl-hdr-title" id="cl-count">Clientes con Equipo</span>'
       +'<input class="fi-sm" id="cl-q" type="search" placeholder="Buscar cliente, hotel, activo fijo..." style="flex:1;min-width:200px">'
-      +'<select class="fi-sm" id="cl-ce">'
+      +'<select class="fi-sm" id="cl-ce" onchange="buscarClientes()">'
       +optsCentros('')
       +'</select>'
       +'<button class="btn btn-blue" onclick="buscarClientes()">Buscar</button>'
@@ -1616,6 +1616,7 @@ function renderClientes(){
 function buscarClientes(){
   var tbody=document.getElementById('cl-tbody');if(!tbody)return;
   var q=(document.getElementById('cl-q')?document.getElementById('cl-q').value:'').trim();
+  if(/^\*+$/.test(q))q='';   // "*" = comodín: sin filtro de texto, lista todo el centro
   var ce=document.getElementById('cl-ce')?document.getElementById('cl-ce').value:'';
   var cnt=document.getElementById('cl-count');
   if(!q&&!ce){
@@ -1703,7 +1704,15 @@ function renderTablaClientes(data, tbody){
       +'<button class="icon-btn" title="Estado" data-rid="'+rid+'" onclick="abrirCambioEstado(this.dataset.rid)">⇄</button>'
       +'</div></td>'
       +'</tr>';
-  }).join(''):'<tr><td colspan="8" style="padding:40px;text-align:center;color:#6b7c63">Sin resultados para "'+String(document.getElementById('cl-q')?document.getElementById('cl-q').value:'')+'"</td></tr>';
+  }).join(''):(function(){
+    var qv=(document.getElementById('cl-q')?document.getElementById('cl-q').value:'').trim();
+    if(/^\*+$/.test(qv))qv='';
+    var cv=document.getElementById('cl-ce')?document.getElementById('cl-ce').value:'';
+    var msg = cv&&!qv ? 'Este centro no tiene equipos con cliente asignado.'
+            : qv ? 'Sin resultados para "'+qv+'"'
+            : 'Escribe un cliente o selecciona un centro y presiona Buscar';
+    return'<tr><td colspan="8" style="padding:40px;text-align:center;color:#6b7c63">'+msg+'</td></tr>';
+  })();
 }
 
 
