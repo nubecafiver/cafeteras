@@ -1430,31 +1430,69 @@ function buscarClientes(){
   var q=(document.getElementById('cl-q')?document.getElementById('cl-q').value:'').trim();
   var ce=document.getElementById('cl-ce')?document.getElementById('cl-ce').value:'';
   var cnt=document.getElementById('cl-count');
-
-  tbody.innerHTML='<tr><td colspan="8" style="padding:40px;text-align:center;color:#6b7c63">Buscando...</td></tr>';
-
-  // Query a Firestore — siempre filtra por con_cliente
-  var col=db.collection('equipos');
-  var query=col.where('estado','==','con_cliente');
-  if(ce)query=query.where('centro','==',ce);
-  // Si hay texto buscar por clienteNombre o activoFijo
-  if(q&&!isNaN(q)){
-    query=col.where('estado','==','con_cliente').where('activoFijo','==',parseFloat(q));
+  if(!q&&!ce){
+    tbody.innerHTML='<tr><td colspan="8" style="padding:40px;text-align:center;color:#6b7c63">Escribe un cliente o selecciona un centro y presiona Buscar</td></tr>';
+    return;
   }
-  query.limit(200).get().then(function(snap){
-    var data=snap.docs.map(function(d){return{id:d.id,...d.data()};});
-    // Filtro local por texto si no es numérico
-    if(q&&isNaN(q)){
-      var ql=q.toLowerCase();
-      data=data.filter(function(e){
-        return (e.clienteNombre||'').toLowerCase().includes(ql)||
-               (e.modelo||'').toLowerCase().includes(ql)||
-               String(e.serie||'').toLowerCase().includes(ql)||
-               getAlmacenNombre(e.centro,e.almacen).toLowerCase().includes(ql);
-      });
+  tbody.innerHTML='<tr><td colspan="8" style="padding:40px;text-align:center;color:#6b7c63">Buscando...</td></tr>';
+  var col=db.collection('equipos');
+  var promises=[];
+  // Búsqueda por número de activo fijo
+  if(q&&!isNaN(q)){
+    var prom=col.where('activoFijo','==',parseFloat(q)).limit(50).get();
+    promises.push(prom);
+  } else if(q){
+    // Buscar por clienteNombre >= q y < q+z (prefix search)
+    var ql=q.toLowerCase();
+    var qu=ql.replace(/.$/, function(c){return String.fromCharCode(c.charCodeAt(0)+1);});
+    // Query por clienteNombre con range
+    var p1=col.where('estado','==','con_cliente')
+      .where('clienteNombre','>=',q)
+      .where('clienteNombre','<',q.replace(/.$/, function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);}))
+      .limit(200).get();
+    // Query por clienteNombre mayúsculas
+    var qU=q.toUpperCase();
+    var p2=col.where('estado','==','con_cliente')
+      .where('clienteNombre','>=',qU)
+      .where('clienteNombre','<',qU.replace(/.$/, function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);}))
+      .limit(200).get();
+    // Query capitalizado
+    var qC=q.charAt(0).toUpperCase()+q.slice(1).toLowerCase();
+    var p3=col.where('estado','==','con_cliente')
+      .where('clienteNombre','>=',qC)
+      .where('clienteNombre','<',qC.replace(/.$/, function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);}))
+      .limit(200).get();
+    promises.push(p1,p2,p3);
+    if(ce){
+      // También buscar por centro
+      var p4=col.where('estado','==','con_cliente').where('centro','==',ce).limit(200).get();
+      promises.push(p4);
     }
-    if(cnt)cnt.textContent='Clientes con Equipo — '+data.length.toLocaleString()+(snap.docs.length===200?' (primeros 200)':'');
-    renderTablaClientes(data, tbody);
+  } else if(ce){
+    promises.push(col.where('estado','==','con_cliente').where('centro','==',ce).limit(200).get());
+  }
+  Promise.all(promises).then(function(snaps){
+    var seen={}, data=[];
+    snaps.forEach(function(snap){
+      snap.docs.forEach(function(d){
+        if(!seen[d.id]){
+          seen[d.id]=true;
+          var e={id:d.id,...d.data()};
+          // Filtro adicional: si hay texto Y centro, ambos deben cumplirse
+          if(ce&&e.centro!==ce)return;
+          if(q&&isNaN(q)){
+            var ql=q.toLowerCase();
+            var match=(e.clienteNombre||'').toLowerCase().includes(ql)||
+                      (e.modelo||'').toLowerCase().includes(ql)||
+                      String(e.serie||'').toLowerCase().includes(ql);
+            if(!match)return;
+          }
+          data.push(e);
+        }
+      });
+    });
+    if(cnt)cnt.textContent='Clientes con Equipo — '+data.length.toLocaleString();
+    renderTablaClientes(data,tbody);
   }).catch(function(err){
     tbody.innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:red">Error: '+err.message+'</td></tr>';
   });
