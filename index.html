@@ -771,6 +771,7 @@ var _clientesCargados=false;
 var catalogoCentros={};   // cargado desde Firestore
 var catalogoAlmacenes={}; // cargado desde Firestore
 var catalogoClientes={};  // cargado desde Firestore
+var centrosEnUso=null;    // llaves de config/general.porCentro (centros con equipos); null = mostrar todos
 var _catalogosCargados=false;
 var ESTADOS={
   con_cliente: {label:'Con cliente',   color:'#34a853', bg:'#e6f4ea', icon:'🟢'},
@@ -842,9 +843,14 @@ function setStatus(msg,cls){var el=document.getElementById('scanner-status');if(
 
 // Helpers de catálogos
 function actualizarSelectsCentros(){
-  // Poblar todos los selects de centros con el catálogo real
+  // Poblar los selects solo con los centros que tienen equipos (centrosEnUso).
+  // Si aún no cargó config/general, mostrar todo el catálogo como respaldo.
+  var usar=(centrosEnUso&&Object.keys(centrosEnUso).length)?centrosEnUso:null;
+  var entradas=Object.entries(catalogoCentros).filter(function(e){
+    return usar?Object.prototype.hasOwnProperty.call(usar,e[0]):true;
+  });
   var opciones='<option value="">Todos los centros</option>'
-    +Object.entries(catalogoCentros)
+    +entradas
       .sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;})
       .map(function(e){return'<option value="'+e[0]+'">'+e[0]+' — '+(e[1].nombre||e[0])+'</option>';})
       .join('');
@@ -856,6 +862,26 @@ function actualizarSelectsCentros(){
       if(val)sel.value=val;
     }
   });
+}
+
+// Devuelve las <option> de centros, mostrando SOLO los que tienen equipos
+// (centrosEnUso). Respaldo: catálogo completo, o la constante CENTROS.
+function optsCentros(selected){
+  selected=selected||'';
+  var usar=(centrosEnUso&&Object.keys(centrosEnUso).length)?centrosEnUso:null;
+  var pares;
+  if(Object.keys(catalogoCentros).length){
+    pares=Object.entries(catalogoCentros)
+      .filter(function(e){return usar?Object.prototype.hasOwnProperty.call(usar,e[0]):true;})
+      .map(function(e){return[e[0],(e[1].nombre||e[0])];});
+  }else{
+    pares=Object.entries(CENTROS)
+      .filter(function(e){return usar?Object.prototype.hasOwnProperty.call(usar,e[0]):true;})
+      .map(function(e){return[e[0],e[1]];});
+  }
+  pares.sort(function(a,b){return a[1]<b[1]?-1:1;});
+  return '<option value="">Todos los centros</option>'
+    +pares.map(function(p){return'<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('');
 }
 
 function getCentroNombre(codigo){
@@ -1141,6 +1167,18 @@ function loadData(onReady){
       s.docs.forEach(function(d){catalogoClientes[d.id]=d.data();});
       console.log('Clientes cargados:',Object.keys(catalogoClientes).length);
     }).catch(function(e){console.warn('clientes:',e.message);});
+    // Centros que sí tienen equipos (llaves de porCentro) para filtrar los selects
+    db.collection('config').doc('general').get().then(function(snap){
+      var pc=(snap.exists&&snap.data().porCentro)||{};
+      var enUso={};
+      Object.keys(pc).forEach(function(k){if(pc[k]>0)enUso[k]=pc[k];});
+      centrosEnUso=enUso;
+      console.log('Centros en uso:',Object.keys(centrosEnUso).length);
+      actualizarSelectsCentros();
+      // Repoblar los selects en línea si la vista actual los contiene
+      if(curView==='equipos')renderEquipos();
+      else if(curView==='clientes')renderClientes();
+    }).catch(function(e){console.warn('config centros:',e.message);});
   }
 
   // NO cargar todos los equipos al inicio — se cargan bajo demanda
@@ -1415,8 +1453,7 @@ function renderEquipos(){
     +'<div class="tbl-tools">'
     +'<input class="fi-sm" type="text" id="eq-q" placeholder="&#128269; No. Activo, Serie, Modelo..." style="width:230px" value="'+eqFiltros.q+'" oninput="eqFiltros.q=this.value;buscarEquiposFirestore()">'
     +'<select class="fi-sm" onchange="eqFiltros.centro=this.value;buscarEquiposFirestore()">'
-    +'<option value="">Todos los centros</option>'
-    +(Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce){return'<option value="'+ce[0]+'"'+(eqFiltros.centro===ce[0]?' selected':'')+'>'+ce[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce){return'<option value="'+ce[0]+'"'+(eqFiltros.centro===ce[0]?' selected':'')+'>'+ce[1]+'</option>';}).join(''))
+    +optsCentros(eqFiltros.centro)
     +'</select></div></div>'
     +'<div style="overflow-x:auto"><table><thead><tr><th>No.</th><th>Activo Fijo</th><th>Modelo</th><th>No. Serie</th><th>Linea</th><th>Centro</th><th>Acciones</th></tr></thead>'
     +'<tbody id="eq-tbody"><tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Selecciona una linea o escribe un activo fijo para buscar</td></tr></tbody>'
@@ -1536,10 +1573,7 @@ function renderClientes(){
       +'<span class="tbl-hdr-title" id="cl-count">Clientes con Equipo</span>'
       +'<input class="fi-sm" id="cl-q" type="search" placeholder="Buscar cliente, hotel, activo fijo..." style="flex:1;min-width:200px">'
       +'<select class="fi-sm" id="cl-ce">'
-      +'<option value="">Todos los centros</option>'
-      +(Object.keys(catalogoCentros).length
-        ?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(e){return'<option value="'+e[0]+'">'+e[1].nombre+'</option>';}).join('')
-        :Object.entries(CENTROS).map(function(e){return'<option value="'+e[0]+'">'+e[1]+'</option>';}).join(''))
+      +optsCentros('')
       +'</select>'
       +'<button class="btn btn-blue" onclick="buscarClientes()">Buscar</button>'
       +'</div>'
@@ -1942,8 +1976,7 @@ function renderQR(){
     '<div class="qr-toolbar">'
     +'<input class="fi-sm" type="text" id="qr-q" placeholder="🔍 Buscar activo, modelo..." style="width:200px" oninput="renderQR()" value="'+(q||'')+'">'
     +'<select class="fi-sm" id="qr-ce" onchange="renderQR()">'
-    +'<option value="">Todos los centros</option>'
-    +(Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce2){return'<option value="'+ce2[0]+'"'+(ce===ce2[0]?' selected':'')+'>'+ce2[1]+'</option>';}).join(''))
+    +optsCentros(ce)
     +'</select>'
     +'<select class="fi-sm" id="qr-lin" onchange="renderQR()">'
     +'<option value="">Todas las líneas</option>'
@@ -1993,7 +2026,7 @@ function renderEtiquetas(){
   if(!hojas.length)hojas.push([]);
   w.innerHTML=
     '<div style="background:#fff;border-bottom:1px solid #e8eaed;padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(0,0,0,.07)">'
-    +'<select class="fi-sm" onchange="etiqFilt.ce=this.value;renderEtiquetas()"><option value="">Todos los centros</option>'+(Object.keys(catalogoCentros).length?Object.entries(catalogoCentros).sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;}).map(function(ce2){return'<option value="'+ce2[0]+'"'+(etiqFilt.ce===ce2[0]?' selected':'')+'>'+ce2[1].nombre+'</option>';}).join(''):Object.entries(CENTROS).map(function(ce2){return'<option value="'+ce2[0]+'"'+(etiqFilt.ce===ce2[0]?' selected':'')+'>'+ce2[1]+'</option>';}).join(''))+'</select>'
+    +'<select class="fi-sm" onchange="etiqFilt.ce=this.value;renderEtiquetas()">'+optsCentros(etiqFilt.ce)+'</select>'
     +'<select class="fi-sm" onchange="etiqFilt.lin=this.value;renderEtiquetas()"><option value="">Todas las líneas</option>'+['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'].map(function(l){return'<option value="'+l+'"'+(etiqFilt.lin===l?' selected':'')+'>'+l+'</option>';}).join('')+'</select>'
     +'<input class="fi-sm" type="text" placeholder="🔍 Buscar..." style="width:180px" value="'+etiqFilt.q+'" oninput="etiqFilt.q=this.value;renderEtiquetas()">'
     +'<span style="font-size:12px;color:#9aa0a6">'+data.length+' etiqueta(s) · '+Math.ceil(data.length/ETIQ_POR_HOJA)+' hoja(s)</span>'
