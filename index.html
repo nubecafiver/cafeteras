@@ -778,6 +778,7 @@ var _statsConfig=null;    // caché de config/general para el dashboard (evita s
 var _clientesRes=[];      // resultados actuales de la vista Clientes (para que las acciones encuentren el equipo)
 var _equiposRes=[];       // resultados actuales de la vista Equipos (para que doble clic / ojo abran la ficha)
 var _clFiltroClientes=[]; // lista de clientes distintos del resultado actual (para el select de clientes)
+var _directorioCache=null; // directorio completo en memoria (para búsqueda por coincidencia parcial)
 var _catalogosCargados=false;
 var ESTADOS={
   con_cliente: {label:'Con cliente',   color:'#34a853', bg:'#e6f4ea', icon:'🟢'},
@@ -1154,37 +1155,19 @@ function enterApp(){
 // ══ CARGA DE DATOS ══
 function loadData(onReady){
   setSyncUI('saving','Cargando...');
-  // Catálogos (centros, almacenes, clientes) una sola vez, en paralelo
-  if(!_catalogosCargados){
-    _catalogosCargados=true;
-    db.collection('centros').get().then(function(s){
-      s.docs.forEach(function(d){catalogoCentros[d.id]=d.data();});
-      console.log('Centros cargados:',Object.keys(catalogoCentros).length);
-      actualizarSelectsCentros();
-    }).catch(function(e){console.warn('centros:',e.message);});
-    db.collection('almacenes').get().then(function(s){
-      s.docs.forEach(function(d){catalogoAlmacenes[d.id]=d.data();});
-      console.log('Almacenes cargados:',Object.keys(catalogoAlmacenes).length);
-    }).catch(function(e){console.warn('almacenes:',e.message);});
-    db.collection('clientes').get().then(function(s){
-      s.docs.forEach(function(d){catalogoClientes[d.id]=d.data();});
-      console.log('Clientes cargados:',Object.keys(catalogoClientes).length);
-    }).catch(function(e){console.warn('clientes:',e.message);});
-  }
 
-  // Pintar el dashboard YA (con esqueleto detrás del splash) → nunca pantalla en blanco
+  // Pintar el dashboard YA (esqueleto detrás del splash) → nunca pantalla en blanco
   switchView('dashboard');
 
-  // Ocultar el splash una sola vez: cuando lleguen los datos, o máx. 2.5s de respaldo
   var _listo=false;
   function terminar(){
     if(_listo)return; _listo=true;
     setSyncUI('ok','En línea ✓');
     if(typeof onReady==='function')onReady();
   }
-  setTimeout(terminar,2500); // respaldo: nunca quedarse pegado en el splash
+  setTimeout(terminar,4000); // respaldo amplio (normalmente se oculta al llegar config)
 
-  // Config del dashboard: al llegar, se rellenan los cuadros con datos reales
+  // 1) PRIORIDAD: solo config/general (documento chico) → llena el dashboard y oculta el splash
   var pConfig;
   if(_statsConfig){
     if(curView==='dashboard')renderDashboard();
@@ -1205,15 +1188,34 @@ function loadData(onReady){
       if(curView==='dashboard')renderDashboard();
     });
   }
-  // En cuanto el dashboard tenga datos (o config falle), ocultar el splash
   pConfig.then(terminar);
 
-  // Equipos bajo demanda
+  // 2) Todo lo pesado se carga DESPUÉS de mostrar el dashboard, para no atorar el arranque
+  if(!_catalogosCargados){
+    _catalogosCargados=true;
+    pConfig.then(function(){ setTimeout(cargarCatalogosYDatos,50); });
+  }
+}
+
+// Catálogos pesados + equipos/órdenes — diferido, no bloquea el arranque
+function cargarCatalogosYDatos(){
+  db.collection('centros').get().then(function(s){
+    s.docs.forEach(function(d){catalogoCentros[d.id]=d.data();});
+    console.log('Centros cargados:',Object.keys(catalogoCentros).length);
+    actualizarSelectsCentros();
+  }).catch(function(e){console.warn('centros:',e.message);});
+  db.collection('almacenes').get().then(function(s){
+    s.docs.forEach(function(d){catalogoAlmacenes[d.id]=d.data();});
+    console.log('Almacenes cargados:',Object.keys(catalogoAlmacenes).length);
+  }).catch(function(e){console.warn('almacenes:',e.message);});
+  db.collection('clientes').get().then(function(s){
+    s.docs.forEach(function(d){catalogoClientes[d.id]=d.data();});
+    console.log('Clientes cargados:',Object.keys(catalogoClientes).length);
+  }).catch(function(e){console.warn('clientes:',e.message);});
   db.collection('equipos').limit(300).get().then(function(s){
     equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
     if(curView==='equipos')renderEquipos();
   }).catch(function(e){console.warn(e);});
-  // Órdenes en vivo (re-render del dashboard es seguro: no repinta esqueleto)
   db.collection('ordenes').orderBy('creadoEn','desc').limit(200).onSnapshot(function(s){
     ordenes=s.docs.map(function(d){return{id:d.id,...d.data()};});
     if(curView==='dashboard')renderDashboard();
@@ -1812,36 +1814,29 @@ function buscarDirectorio(){
     return;
   }
   cont.innerHTML='<div style="padding:40px;text-align:center;color:#6b7c63">Buscando...</div>';
-  var col=db.collection('directorio');
-  var prom;
-  // Una sola condición por consulta (sin índice compuesto); el resto se afina en cliente
-  if(q&&/^\d+$/.test(q)){
-    prom=col.where('numero','==',q).limit(50).get();
-  }else if(q){
-    var ql=q.toLowerCase();
-    var qHi=ql.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
-    prom=col.where('nombreLower','>=',ql).where('nombreLower','<',qHi).limit(200).get();
-  }else{
-    prom=col.where('region','==',reg).limit(500).get();
-  }
-  prom.then(function(s){
-    var data=[];
-    s.docs.forEach(function(d){
-      var e=d.data();
-      if(reg&&e.region!==reg)return;
-      if(q&&isNaN(q)){
-        var ql2=q.toLowerCase();
-        if(!(e.nombre||'').toLowerCase().includes(ql2)&&
-           !(e.busqueda||'').toLowerCase().includes(ql2)&&
-           String(e.numero||'').indexOf(q)<0)return;
-      }
-      data.push(e);
-    });
-    data.sort(function(a,b){return(a.nombre||'')<(b.nombre||'')?-1:1;});
-    renderDirCards(data);
+  // Cargar el directorio completo una sola vez y buscar en memoria (coincidencia parcial)
+  if(_directorioCache){ filtrarDirectorio(q,reg); return; }
+  db.collection('directorio').get().then(function(s){
+    _directorioCache=s.docs.map(function(d){return d.data();});
+    console.log('Directorio cargado:',_directorioCache.length);
+    filtrarDirectorio(q,reg);
   }).catch(function(err){
     cont.innerHTML='<div style="padding:20px;text-align:center;color:#c0392b">Error: '+err.message+'</div>';
   });
+}
+
+function filtrarDirectorio(q,reg){
+  var terminos=q.toLowerCase().split(/\s+/).filter(Boolean);
+  var data=(_directorioCache||[]).filter(function(c){
+    if(reg&&c.region!==reg)return false;
+    if(terminos.length){
+      var heno=((c.nombre||'')+' '+(c.busqueda||'')+' '+(c.numero||'')+' '+(c.poblacion||'')+' '+(c.rfc||'')).toLowerCase();
+      for(var i=0;i<terminos.length;i++){ if(heno.indexOf(terminos[i])<0)return false; }
+    }
+    return true;
+  });
+  data.sort(function(a,b){return(a.nombre||'')<(b.nombre||'')?-1:1;});
+  renderDirCards(data);
 }
 
 function renderDirCards(data){
@@ -1863,7 +1858,7 @@ function renderDirCards(data){
       return'<div style="background:#fff;border:1px solid rgba(42,74,30,.12);border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(42,74,30,.06)">'
         +'<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">'
         +'<span style="background:#f0ece3;color:#8b6914;font-family:monospace;font-weight:700;font-size:11px;padding:2px 7px;border-radius:6px;white-space:nowrap">#'+(e.numero||'—')+'</span>'
-        +'<div style="font-family:\'Playfair Display\',serif;font-weight:700;color:#2a4a1e;font-size:15px;line-height:1.25">'+(e.nombre||'—')+'</div>'
+        +'<div style="font-family:\'Playfair Display\',serif;font-weight:700;color:#2a4a1e;font-size:15px;line-height:1.25">'+(e.nombre||'—')+(e.busqueda&&(e.busqueda||'').toLowerCase()!==(e.nombre||'').toLowerCase()?'<div style="font-family:Inter,sans-serif;font-weight:600;font-size:11px;color:#8b6914;margin-top:2px">🔎 '+e.busqueda+'</div>':'')+'</div>'
         +'</div>'
         +'<div style="font-size:12.5px;color:#4a5e42;line-height:1.5">'
         +'<div style="margin-bottom:3px">📍 '+(e.direccion||'—')+'</div>'
