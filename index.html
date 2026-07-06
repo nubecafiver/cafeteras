@@ -1623,7 +1623,21 @@ function renderClientes(){
       var inp=document.getElementById('cl-q');
       if(inp)inp.addEventListener('keydown',function(e){if(e.key==='Enter')buscarClientes();});
     },100);
+    // Centro por defecto + búsqueda automática para no aparecer vacío
+    setTimeout(function(){
+      var sel=document.getElementById('cl-ce');
+      var def=centroPorDefecto();
+      if(sel&&def&&!sel.value){sel.value=def;buscarClientes();}
+    },150);
   }
+}
+
+// Elige un centro por defecto: prefiere uno EU* (Equipo Usado = con cliente) para no salir vacío
+function centroPorDefecto(){
+  var keys=(centrosEnUso&&Object.keys(centrosEnUso).length)?Object.keys(centrosEnUso):Object.keys(catalogoCentros);
+  if(!keys.length)return '';
+  var eu=keys.filter(function(k){return /^EU/i.test(k);}).sort();
+  return (eu.length?eu:keys.slice().sort())[0]||'';
 }
 
 function buscarClientes(){
@@ -1866,6 +1880,33 @@ function renderDirCards(data){
     +(data.length>300?'<div style="padding:14px;text-align:center;color:#8b6914;font-size:12px">Mostrando 300 de '+data.length.toLocaleString()+'. Afina la búsqueda para ver más.</div>':'');
 }
 
+// Enlace directorio ↔ ficha (solo desde Clientes): el número de almacén es el número de cliente
+function cargarDirectorioCliente(almacen){
+  var box=document.getElementById('dp-directorio-content');if(!box)return;
+  var alm=String(almacen||'').trim();
+  var almNum=/^\d+$/.test(alm)?String(parseInt(alm,10)):null;
+  if(!almNum){
+    box.innerHTML='<div style="color:#8b6914;font-size:12px;padding:2px 0">Almacén alfanumérico ('+(alm||'—')+'). El enlace con el directorio se resolverá más adelante.</div>';
+    return;
+  }
+  db.collection('directorio').doc(almNum).get().then(function(d){
+    if(!d.exists){
+      box.innerHTML='<div style="color:#b0a99a;font-size:12px;padding:2px 0">Sin datos en el directorio para el cliente #'+almNum+'.</div>';
+      return;
+    }
+    var c=d.data();
+    box.innerHTML=
+      dpRow('Cliente','<strong>'+(c.nombre||'—')+'</strong> <span style="font-family:monospace;font-size:10px;color:#8b6914">#'+almNum+'</span>')
+      +dpRow('Dirección',c.direccion||'—')
+      +dpRow('Correo',c.correo?'<a href="mailto:'+esc(c.correo)+'" style="color:#3d6b2c;font-weight:600">'+c.correo+'</a>':'—')
+      +dpRow('Teléfono',c.telefono?'<a href="tel:'+esc(c.telefono)+'" style="color:#3d6b2c;font-weight:600">'+c.telefono+'</a>':'<span style="color:#b0a99a">Sin teléfono</span>')
+      +dpRow('RFC',c.rfc||'—')
+      +dpRow('Zona',(c.zona||'—')+(c.oficina?' · '+c.oficina:''));
+  }).catch(function(err){
+    box.innerHTML='<div style="color:#c0392b;font-size:12px;padding:2px 0">Error al cargar directorio: '+err.message+'</div>';
+  });
+}
+
 function findEquipo(docId){
   return clientes.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);})
       || equipos.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);})
@@ -1932,6 +1973,7 @@ function dpTab(tab, eObj, col){
       +'<div class="dp-sec-t">Cliente asignado</div>'
       +dpRow('Cliente / Almacén',nmCliente)
       +dpRow('Almacén',e.almacen+'  —  '+getAlmacenNombre(e.centro,e.almacen))
+      +(curView==='clientes'?'<div class="dp-sec-t">📇 Datos de contacto (directorio)</div><div id="dp-directorio-content"><div style="color:#9aa0a6;font-size:12px">Buscando datos del cliente...</div></div>':'')
       +'<div class="dp-sec-t">Resumen servicios</div>'
       +dpRow('Total servicios',hist.length)
       +dpRow('Correctivos',hist.filter(function(h){return h.tipo==='correctivo';}).length)
@@ -1962,6 +2004,8 @@ function dpTab(tab, eObj, col){
         var modelo=e.modelo;
         inp.onchange=function(){subirFotoEquipo(this,modelo);};
       }
+      // Datos del cliente desde el directorio (solo en la vista Clientes)
+      if(curView==='clientes')cargarDirectorioCliente(e.almacen);
     },200);
   }else if(tab==='historial'){
     body.innerHTML=
