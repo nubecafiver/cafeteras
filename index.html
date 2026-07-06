@@ -774,6 +774,8 @@ var catalogoClientes={};  // cargado desde Firestore
 var centrosEnUso=null;    // llaves de config/general.porCentro (centros con equipos); null = mostrar todos
 var _statsConfig=null;    // caché de config/general para el dashboard (evita skeleton en blanco)
 var _clientesRes=[];      // resultados actuales de la vista Clientes (para que las acciones encuentren el equipo)
+var _equiposRes=[];       // resultados actuales de la vista Equipos (para que doble clic / ojo abran la ficha)
+var _clFiltroClientes=[]; // lista de clientes distintos del resultado actual (para el select de clientes)
 var _catalogosCargados=false;
 var ESTADOS={
   con_cliente: {label:'Con cliente',   color:'#34a853', bg:'#e6f4ea', icon:'🟢'},
@@ -1168,31 +1170,25 @@ function loadData(onReady){
     }).catch(function(e){console.warn('clientes:',e.message);});
   }
 
-  // Guardar callback para ocultar el splash SOLO cuando el dashboard ya tenga datos
-  if(typeof onReady==='function')window._dashOnReady=onReady;
+  // Pintar el dashboard YA (con esqueleto detrás del splash) → nunca pantalla en blanco
+  switchView('dashboard');
 
-  // Arranca el dashboard ya con config en caché → los cuadros nacen con datos,
-  // nunca se ve skeleton en blanco ni pantalla vacía.
-  function arrancarDashboard(){
+  // Ocultar el splash una sola vez: cuando lleguen los datos, o máx. 2.5s de respaldo
+  var _listo=false;
+  function terminar(){
+    if(_listo)return; _listo=true;
     setSyncUI('ok','En línea ✓');
-    switchView('dashboard');
-    // Equipos bajo demanda
-    db.collection('equipos').limit(300).get().then(function(s){
-      equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
-      if(curView==='equipos')renderEquipos();
-    }).catch(function(e){console.warn(e);});
-    // Órdenes en vivo (re-render del dashboard es seguro: usa la caché, sin skeleton)
-    db.collection('ordenes').orderBy('creadoEn','desc').limit(200).onSnapshot(function(s){
-      ordenes=s.docs.map(function(d){return{id:d.id,...d.data()};});
-      if(curView==='dashboard')renderDashboard();
-      if(curView==='ordenes')renderOrdenes();
-    },function(e){console.warn(e);});
+    if(typeof onReady==='function')onReady();
   }
+  setTimeout(terminar,2500); // respaldo: nunca quedarse pegado en el splash
 
+  // Config del dashboard: al llegar, se rellenan los cuadros con datos reales
+  var pConfig;
   if(_statsConfig){
-    arrancarDashboard();
+    if(curView==='dashboard')renderDashboard();
+    pConfig=Promise.resolve();
   }else{
-    db.collection('config').doc('general').get().then(function(snap){
+    pConfig=db.collection('config').doc('general').get().then(function(snap){
       _statsConfig=(snap.exists?snap.data():{})||{};
       var pc=_statsConfig.porCentro||{};
       var enUso={};
@@ -1200,13 +1196,27 @@ function loadData(onReady){
       centrosEnUso=enUso;
       console.log('Centros en uso:',Object.keys(centrosEnUso).length);
       actualizarSelectsCentros();
+      if(curView==='dashboard')renderDashboard();
     }).catch(function(e){
       console.warn('config general:',e.message);
-      _statsConfig={};
-    }).then(function(){
-      arrancarDashboard();
+      if(!_statsConfig)_statsConfig={};
+      if(curView==='dashboard')renderDashboard();
     });
   }
+  // En cuanto el dashboard tenga datos (o config falle), ocultar el splash
+  pConfig.then(terminar);
+
+  // Equipos bajo demanda
+  db.collection('equipos').limit(300).get().then(function(s){
+    equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
+    if(curView==='equipos')renderEquipos();
+  }).catch(function(e){console.warn(e);});
+  // Órdenes en vivo (re-render del dashboard es seguro: no repinta esqueleto)
+  db.collection('ordenes').orderBy('creadoEn','desc').limit(200).onSnapshot(function(s){
+    ordenes=s.docs.map(function(d){return{id:d.id,...d.data()};});
+    if(curView==='dashboard')renderDashboard();
+    if(curView==='ordenes')renderOrdenes();
+  },function(e){console.warn(e);});
 }
 
 // ══ NAVEGACIÓN ══
@@ -1231,9 +1241,9 @@ function switchView(v){
 function renderDashboard(){
   var w=document.getElementById('view-dashboard');if(!w)return;
   var hoy=new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  // Skeleton solo en la primerísima carga (sin caché). En re-renders ya hay
-  // datos, así que cargarStatsDashboard pinta los cuadros llenos sin parpadeo.
-  if(!_statsConfig){
+  // Skeleton solo si el dashboard está vacío (primera pintura). En refrescos ya
+  // hay contenido, así que cargarStatsDashboard actualiza sin parpadeo ni blanco.
+  if(!w.querySelector('.db-wrap')){
     w.innerHTML='<div class="db-wrap">'
       +'<div class="db-header"><div><div class="db-title">Panel de Control — CAFIVER</div>'
       +'<div class="db-fecha">'+hoy+'</div></div></div>'
@@ -1545,6 +1555,7 @@ function buscarEquiposFirestore(){
         }
       });
     });
+    _equiposRes=items;
     renderEquiposTabla(items);
   }).catch(function(err){
     toast('Error: '+err.message);
@@ -1588,6 +1599,7 @@ function renderClientes(){
       +'<select class="fi-sm" id="cl-ce" onchange="buscarClientes()">'
       +optsCentros('')
       +'</select>'
+      +'<select class="fi-sm" id="cl-cliente" onchange="filtrarClientesPorCliente()" title="Filtrar por cliente"><option value="">Todos los clientes</option></select>'
       +'<button class="btn btn-blue" onclick="buscarClientes()">Buscar</button>'
       +'</div>'
       +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
@@ -1624,66 +1636,101 @@ function buscarClientes(){
   tbody.innerHTML='<tr><td colspan="8" style="padding:40px;text-align:center;color:#6b7c63">Buscando...</td></tr>';
   var col=db.collection('equipos');
   var promises=[];
-  // Búsqueda por número de activo fijo
-  if(q&&!isNaN(q)){
-    var prom=col.where('activoFijo','==',parseFloat(q)).limit(50).get();
-    promises.push(prom);
+  var esAF=(q&&!isNaN(q));   // búsqueda por número de activo fijo
+  // Consultas por UN SOLO campo (sin índice compuesto). Estado, centro y texto
+  // se afinan en el cliente para no depender de índices en Firestore.
+  if(esAF){
+    promises.push(col.where('activoFijo','==',parseFloat(q)).limit(50).get());
   } else if(q){
-    // Buscar por clienteNombre >= q y < q+z (prefix search)
-    var ql=q.toLowerCase();
-    var qu=ql.replace(/.$/, function(c){return String.fromCharCode(c.charCodeAt(0)+1);});
-    // Query por clienteNombre con range
-    var p1=col.where('estado','==','con_cliente')
-      .where('clienteNombre','>=',q)
-      .where('clienteNombre','<',q.replace(/.$/, function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);}))
-      .limit(200).get();
-    // Query por clienteNombre mayúsculas
-    var qU=q.toUpperCase();
-    var p2=col.where('estado','==','con_cliente')
-      .where('clienteNombre','>=',qU)
-      .where('clienteNombre','<',qU.replace(/.$/, function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);}))
-      .limit(200).get();
-    // Query capitalizado
-    var qC=q.charAt(0).toUpperCase()+q.slice(1).toLowerCase();
-    var p3=col.where('estado','==','con_cliente')
-      .where('clienteNombre','>=',qC)
-      .where('clienteNombre','<',qC.replace(/.$/, function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);}))
-      .limit(200).get();
-    promises.push(p1,p2,p3);
-    if(ce){
-      // También buscar por centro
-      var p4=col.where('estado','==','con_cliente').where('centro','==',ce).limit(200).get();
-      promises.push(p4);
-    }
+    // Prefijo por nombre en 3 variantes de mayúsculas/minúsculas (cada una un solo campo)
+    var variantes=[q, q.toUpperCase(), q.charAt(0).toUpperCase()+q.slice(1).toLowerCase()];
+    var visto={};
+    variantes.forEach(function(v){
+      if(visto[v])return; visto[v]=true;
+      var vHi=v.replace(/.$/, function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
+      promises.push(col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(300).get());
+    });
+    if(ce)promises.push(col.where('centro','==',ce).limit(2000).get());
   } else if(ce){
-    promises.push(col.where('estado','==','con_cliente').where('centro','==',ce).limit(200).get());
+    promises.push(col.where('centro','==',ce).limit(2000).get());
   }
   Promise.all(promises).then(function(snaps){
     var seen={}, data=[];
     snaps.forEach(function(snap){
       snap.docs.forEach(function(d){
-        if(!seen[d.id]){
-          seen[d.id]=true;
-          var e={id:d.id,...d.data()};
-          // Filtro adicional: si hay texto Y centro, ambos deben cumplirse
-          if(ce&&e.centro!==ce)return;
-          if(q&&isNaN(q)){
-            var ql=q.toLowerCase();
-            var match=(e.clienteNombre||'').toLowerCase().includes(ql)||
-                      (e.modelo||'').toLowerCase().includes(ql)||
-                      String(e.serie||'').toLowerCase().includes(ql);
-            if(!match)return;
-          }
-          data.push(e);
+        if(seen[d.id])return;
+        seen[d.id]=true;
+        var e={id:d.id,...d.data()};
+        // Solo equipos con cliente asignado (salvo búsqueda directa por activo fijo)
+        if(!esAF&&(e.estado||'')!=='con_cliente')return;
+        if(ce&&e.centro!==ce)return;
+        if(q&&isNaN(q)){
+          var ql=q.toLowerCase();
+          var match=(e.clienteNombre||'').toLowerCase().includes(ql)||
+                    (e.modelo||'').toLowerCase().includes(ql)||
+                    String(e.serie||'').toLowerCase().includes(ql);
+          if(!match)return;
         }
+        data.push(e);
       });
     });
     if(cnt)cnt.textContent='Clientes con Equipo — '+data.length.toLocaleString();
     _clientesRes=data;
+    poblarFiltroClientes(data);
     renderTablaClientes(data,tbody);
   }).catch(function(err){
     tbody.innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:red">Error: '+err.message+'</td></tr>';
   });
+}
+
+// Llena el select de clientes con los distintos clientes del resultado actual.
+// Muestra "almacén — nombre" (o el número si no hay nombre), como el filtro de centro.
+function poblarFiltroClientes(data){
+  var sel=document.getElementById('cl-cliente');if(!sel)return;
+  var map={};
+  data.forEach(function(e){
+    var nombre=(e.clienteNombre||getAlmacenNombre(e.centro,e.almacen)||'').trim();
+    var alm=(e.almacen||'').trim();
+    var key=nombre||('ALM:'+alm)||('CE:'+e.centro);
+    if(!map[key])map[key]={key:key,nombre:nombre,almacen:alm,count:0};
+    map[key].count++;
+  });
+  _clFiltroClientes=Object.values(map).sort(function(a,b){
+    var an=(a.nombre||a.almacen||'').toLowerCase(), bn=(b.nombre||b.almacen||'').toLowerCase();
+    return an<bn?-1:(an>bn?1:0);
+  });
+  var prev=sel.value;
+  sel.innerHTML='<option value="">Todos los clientes ('+data.length.toLocaleString()+')</option>'
+    +_clFiltroClientes.map(function(c,i){
+      var etiqueta=c.nombre
+        ?(c.almacen?c.almacen+' — '+c.nombre:c.nombre)
+        :(c.almacen||'—');
+      return'<option value="'+i+'">'+etiqueta+' ('+c.count+')</option>';
+    }).join('');
+  sel.value=''; // al recargar, mostrar todos
+}
+
+// Filtra la tabla al cliente elegido (sin volver a consultar la base)
+function filtrarClientesPorCliente(){
+  var sel=document.getElementById('cl-cliente');
+  var tbody=document.getElementById('cl-tbody');
+  if(!sel||!tbody)return;
+  var cnt=document.getElementById('cl-count');
+  var idx=sel.value;
+  var subset;
+  if(idx===''||!_clFiltroClientes[idx]){
+    subset=_clientesRes;
+  }else{
+    var c=_clFiltroClientes[idx];
+    subset=_clientesRes.filter(function(e){
+      var nombre=(e.clienteNombre||getAlmacenNombre(e.centro,e.almacen)||'').trim();
+      var alm=(e.almacen||'').trim();
+      var key=nombre||('ALM:'+alm)||('CE:'+e.centro);
+      return key===c.key;
+    });
+  }
+  if(cnt)cnt.textContent='Clientes con Equipo — '+subset.length.toLocaleString();
+  renderTablaClientes(subset,tbody);
 }
 
 function renderTablaClientes(data, tbody){
@@ -1719,7 +1766,8 @@ function renderTablaClientes(data, tbody){
 function findEquipo(docId){
   return clientes.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);})
       || equipos.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);})
-      || _clientesRes.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);});
+      || _clientesRes.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);})
+      || _equiposRes.find(function(x){return x.id===docId||String(x.activoFijo)===String(docId);});
 }
 // Acciones desde la tabla de Clientes (usan _clientesRes como fuente)
 function ordenDesdeCliente(docId){
