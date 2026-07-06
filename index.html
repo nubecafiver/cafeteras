@@ -1795,14 +1795,101 @@ function renderDirectorio(){
       +'<input class="fi-sm" id="dir-q" type="search" placeholder="Buscar por nombre o número de cliente..." style="flex:1;min-width:220px">'
       +'<select class="fi-sm" id="dir-region" onchange="buscarDirectorio()">'+optsReg+'</select>'
       +'<button class="btn btn-blue" onclick="buscarDirectorio()">Buscar</button>'
+      +'<button class="btn" onclick="dirVolverResumen()" title="Volver al resumen">🏠 Resumen</button>'
       +'</div>'
-      +'<div id="dir-tbody" style="padding:14px"><div style="padding:40px;text-align:center;color:#6b7c63">Escribe un nombre/número o elige una región para ver los clientes</div></div>'
+      +'<div id="dir-tbody" style="padding:14px"></div>'
       +'</div>';
     setTimeout(function(){
       var inp=document.getElementById('dir-q');
       if(inp)inp.addEventListener('keydown',function(e){if(e.key==='Enter')buscarDirectorio();});
     },100);
   }
+  // Al entrar, mostrar el dashboard de resumen
+  renderDirDashboard();
+}
+
+// Dashboard de entrada del Directorio: totales y desgloses clicables
+function renderDirDashboard(){
+  var cont=document.getElementById('dir-tbody');if(!cont)return;
+  var cfg=_statsConfig||{};
+  var porRegion=cfg.dirPorRegion, porZona=cfg.dirPorZona, porGrupo=cfg.dirPorGrupo;
+  var conCorreo=cfg.dirConCorreo||0, total=cfg.totalDirectorio||0;
+  // Si config no trae agregados, calcularlos del caché (si ya está cargado)
+  if((!porRegion||!Object.keys(porRegion).length)&&_directorioCache){
+    porRegion={};porZona={};porGrupo={};conCorreo=0;total=_directorioCache.length;
+    _directorioCache.forEach(function(c){
+      if(c.region)porRegion[c.region]=(porRegion[c.region]||0)+1;
+      if(c.zona)porZona[c.zona]=(porZona[c.zona]||0)+1;
+      if(c.grupo)porGrupo[c.grupo]=(porGrupo[c.grupo]||0)+1;
+      if(c.correo)conCorreo++;
+    });
+  }
+  // Si no hay ni agregados ni caché, cargar el directorio y reintentar
+  if((!porRegion||!Object.keys(porRegion).length)&&!_directorioCache){
+    cont.innerHTML='<div style="padding:40px;text-align:center;color:#6b7c63">Cargando resumen del directorio...</div>';
+    db.collection('directorio').get().then(function(s){
+      _directorioCache=s.docs.map(function(d){return d.data();});
+      renderDirDashboard();
+    }).catch(function(err){
+      cont.innerHTML='<div style="padding:20px;text-align:center;color:#c0392b">Error: '+err.message+'</div>';
+    });
+    return;
+  }
+  var cnt=document.getElementById('dir-count');
+  if(cnt)cnt.textContent='Directorio de Clientes — '+total.toLocaleString();
+  porRegion=porRegion||{};porZona=porZona||{};porGrupo=porGrupo||{};
+  var nReg=Object.keys(porRegion).length, nZon=Object.keys(porZona).length;
+  var pctCorreo=total?Math.round(conCorreo/total*100):0;
+
+  function kpi(val,lbl,ic){
+    return'<div style="background:#fff;border:1px solid rgba(42,74,30,.12);border-radius:12px;padding:14px 16px;box-shadow:0 1px 3px rgba(42,74,30,.06)">'
+      +'<div style="font-size:22px;margin-bottom:2px">'+ic+'</div>'
+      +'<div style="font-family:\'Playfair Display\',serif;font-weight:800;font-size:24px;color:#2a4a1e;line-height:1">'+val+'</div>'
+      +'<div style="font-size:11px;color:#6b7c63;text-transform:uppercase;letter-spacing:.04em;margin-top:3px">'+lbl+'</div></div>';
+  }
+  function seccion(titulo,obj,onClickFn,limite){
+    var arr=Object.entries(obj).sort(function(a,b){return b[1]-a[1];});
+    if(limite)arr=arr.slice(0,limite);
+    if(!arr.length)return'';
+    var max=arr[0][1]||1;
+    return'<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#4a5e42;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">'+titulo+'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px">'
+      +arr.map(function(e){
+        var w=Math.max(6,Math.round(e[1]/max*100));
+        return'<div onclick="'+onClickFn+'(\''+esc(String(e[0]))+'\')" style="cursor:pointer;background:#fff;border:1px solid rgba(42,74,30,.12);border-radius:10px;padding:9px 12px;transition:.15s" onmouseover="this.style.borderColor=\'#5a8f42\';this.style.background=\'#f7f9f4\'" onmouseout="this.style.borderColor=\'rgba(42,74,30,.12)\';this.style.background=\'#fff\'">'
+          +'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span style="font-size:12.5px;font-weight:600;color:#2a4a1e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e[0]+'</span><span style="font-family:monospace;font-weight:700;color:#8b6914;font-size:12px">'+e[1].toLocaleString()+'</span></div>'
+          +'<div style="height:4px;background:#eee7db;border-radius:3px;margin-top:5px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:linear-gradient(90deg,#3d6b2c,#5a8f42)"></div></div>'
+          +'</div>';
+      }).join('')+'</div></div>';
+  }
+
+  cont.innerHTML=
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:4px">'
+    +kpi(total.toLocaleString(),'Clientes','👥')
+    +kpi(conCorreo.toLocaleString()+' <span style="font-size:13px;color:#8b6914">'+pctCorreo+'%</span>','Con correo','✉️')
+    +kpi(nReg,'Regiones','🗺️')
+    +kpi(nZon,'Zonas de venta','📍')
+    +'</div>'
+    +'<div style="margin-top:14px;padding:10px 14px;background:#f5f0e8;border-radius:10px;font-size:12.5px;color:#6b7c63">💡 Toca una región, zona o grupo para ver esos clientes, o usa el buscador de arriba.</div>'
+    +seccion('Por región / estado',porRegion,'dirIrRegion',12)
+    +seccion('Por zona de ventas',porZona,'dirIrTexto',null)
+    +seccion('Por grupo de cliente',porGrupo,'dirIrTexto',8);
+}
+
+function dirIrRegion(r){
+  var q=document.getElementById('dir-q');if(q)q.value='';
+  var sel=document.getElementById('dir-region');if(sel)sel.value=r;
+  buscarDirectorio();
+}
+function dirIrTexto(t){
+  var sel=document.getElementById('dir-region');if(sel)sel.value='';
+  var q=document.getElementById('dir-q');if(q)q.value=t;
+  buscarDirectorio();
+}
+function dirVolverResumen(){
+  var q=document.getElementById('dir-q');if(q)q.value='';
+  var sel=document.getElementById('dir-region');if(sel)sel.value='';
+  renderDirDashboard();
 }
 
 function buscarDirectorio(){
@@ -1810,7 +1897,7 @@ function buscarDirectorio(){
   var q=(document.getElementById('dir-q')?document.getElementById('dir-q').value:'').trim();
   var reg=document.getElementById('dir-region')?document.getElementById('dir-region').value:'';
   if(!q&&!reg){
-    cont.innerHTML='<div style="padding:40px;text-align:center;color:#6b7c63">Escribe un nombre/número o elige una región para ver los clientes</div>';
+    renderDirDashboard();
     return;
   }
   cont.innerHTML='<div style="padding:40px;text-align:center;color:#6b7c63">Buscando...</div>';
@@ -1830,7 +1917,7 @@ function filtrarDirectorio(q,reg){
   var data=(_directorioCache||[]).filter(function(c){
     if(reg&&c.region!==reg)return false;
     if(terminos.length){
-      var heno=((c.nombre||'')+' '+(c.busqueda||'')+' '+(c.numero||'')+' '+(c.poblacion||'')+' '+(c.rfc||'')).toLowerCase();
+      var heno=((c.nombre||'')+' '+(c.busqueda||'')+' '+(c.numero||'')+' '+(c.poblacion||'')+' '+(c.rfc||'')+' '+(c.zona||'')+' '+(c.grupo||'')).toLowerCase();
       for(var i=0;i<terminos.length;i++){ if(heno.indexOf(terminos[i])<0)return false; }
     }
     return true;
