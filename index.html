@@ -763,7 +763,7 @@ var curUser=null, curView='dashboard';
 var equipos=[], clientes=[], ordenes=[];
 var openEqId=null, dpCurTab='info';
 var ordenActual=null, sigPad=null;
-var eqFiltros={linea:'',centro:'',q:''};
+var eqFiltros={linea:'',centro:'',q:'',modelo:''};
 var ordFiltros={tipo:'',estado:''};
 var lastScanned=null, zxingReader=null;
 var geoLat=null, geoLng=null;
@@ -1281,6 +1281,7 @@ async function cargarStatsDashboard(){
   var enRep      = config.totalReparacion||0;
   var disponibles= config.totalDisponible||0;
   var porLinea   = config.porLinea||{};
+  var porModelo  = config.porModelo||{};
   var valorNeto  = config.valorNeto||{};
   var valorNetoTotal = Object.values(valorNeto).reduce(function(a,b){return a+(b||0);},0);
   var porClase   = config.porClase||{};
@@ -1381,6 +1382,26 @@ async function cargarStatsDashboard(){
 
     +'</div>' // grid linea+centros
 
+    // ── EQUIPOS POR MODELO (top del parque) ──
+    +'<div class="db-card" style="margin-bottom:10px">'
+    +'<div class="db-card-hd"><span>Equipos por modelo</span><span style="font-size:11px;color:#8b6914;font-weight:500">Top del parque</span></div>'
+    +(Object.keys(porModelo).length?
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px">'
+      +Object.entries(porModelo).sort(function(a,b){return b[1]-a[1];}).slice(0,16).map(function(e,i){
+        var mx=Math.max.apply(null,Object.values(porModelo));
+        var cols=['#2a4a1e','#3d6b2c','#8b6914','#5a8f42','#6b4423','#4a7a6b','#2d5a3d','#7a6b2a','#5a4a3e','#3d6b4a'];
+        var c=cols[i%10];
+        return'<div style="cursor:pointer;padding:5px 0;border-bottom:1px solid rgba(42,74,30,.08)" onclick="dbModeloClick(this)" data-modelo="'+esc(e[0])+'">'
+          +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">'
+          +'<span style="font-size:11px;color:#2a4a1e;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:78%" title="'+esc(e[0])+'">'+e[0]+'</span>'
+          +'<span style="font-size:11px;font-weight:700;color:'+c+'">'+e[1].toLocaleString()+'</span></div>'
+          +'<div style="height:3px;background:rgba(42,74,30,.06);border-radius:2px;overflow:hidden">'
+          +'<div style="height:100%;width:'+Math.max(3,Math.round(e[1]/mx*100))+'%;background:'+c+';border-radius:2px;transition:width .6s ease"></div></div></div>';
+      }).join('')
+      +'</div>'
+      :'<div style="color:#6b7c63;font-size:12px;padding:8px 0">Entra a <b>Equipos</b> una vez para calcular el top de modelos.</div>')
+    +'</div>'
+
     // Técnicos + órdenes recientes
     +'<div class="db-grid-2">'
     +'<div class="db-card">'
@@ -1442,11 +1463,17 @@ function dbKpi(label,val,sub,color,icon,filtro){
     +'</div></div>';
 }
 
+function dbModeloClick(el){
+  var m=el.getAttribute('data-modelo')||'';
+  if(!m)return;
+  eqFiltros={q:'',linea:'',centro:'',estado:'',claseActivo:'',modelo:m};
+  switchView('equipos');
+}
 function dbKpiClick(el){
   var filtro=el.getAttribute('data-filtro')||'';
   var parts=filtro.split(':');
   var campo=parts[0], valor=parts.slice(1).join(':');
-  eqFiltros={q:'',linea:'',centro:'',estado:'',claseActivo:''};
+  eqFiltros={q:'',linea:'',centro:'',estado:'',claseActivo:'',modelo:''};
   if(campo==='estado')eqFiltros.estado=valor;
   else if(campo==='linea')eqFiltros.linea=valor;
   else if(campo==='claseActivo')eqFiltros.claseActivo=valor;
@@ -1456,18 +1483,22 @@ function dbKpiClick(el){
 
 function actualizarTotalesConfig(){
   var tots={con_cliente:0,disponible:0,reparacion:0,retiro:0,baja:0};
-  var porLinea={},porClase={},porCentro={},valorNeto={};
+  var porLinea={},porClase={},porCentro={},valorNeto={},porModelo={};
   clientes.forEach(function(e){
     if(tots[e.estado]!==undefined)tots[e.estado]++;
     var lin=e.grupoArt?getGrupoNombre(e.grupoArt):(e.linea||'Sin linea'); porLinea[lin]=(porLinea[lin]||0)+1;
     var cl=e.claseActivo||'Otro';  porClase[cl]=(porClase[cl]||0)+1;
     var ce=e.centro||'—';          porCentro[ce]=(porCentro[ce]||0)+1;
+    var md=(e.modelo||'').trim();  if(md){porModelo[md]=(porModelo[md]||0)+1;}
     if(e.valorNeto&&e.centro){valorNeto[ce]=(valorNeto[ce]||0)+(parseFloat(e.valorNeto)||0);}
   });
+  // Solo guardamos el top 50 de modelos para mantener chico el documento config/general
+  var porModeloTop={};
+  Object.entries(porModelo).sort(function(a,b){return b[1]-a[1];}).slice(0,50).forEach(function(x){porModeloTop[x[0]]=x[1];});
   db.collection('config').doc('general').set({
     totalConCliente:tots.con_cliente, totalDisponible:tots.disponible,
     totalReparacion:tots.reparacion,  totalRetiro:tots.retiro, totalBaja:tots.baja,
-    porLinea:porLinea, porClase:porClase, porCentro:porCentro, valorNeto:valorNeto,
+    porLinea:porLinea, porClase:porClase, porCentro:porCentro, valorNeto:valorNeto, porModelo:porModeloTop,
   },{merge:true}).catch(function(){});
   if(curView==='dashboard')cargarStatsDashboard();
 }
@@ -1475,9 +1506,10 @@ function actualizarTotalesConfig(){
 function renderEquipos(){
   var w=document.getElementById('view-equipos');if(!w)return;
   w.innerHTML=
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
-    +'<button class="btn btn-sm'+(eqFiltros.linea===''?' btn-blue':'')+'" onclick="eqFiltros.linea=\'\';eqFiltros.q=\'\';buscarEquiposFirestore()">Todos</button>'
-    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" onclick="eqFiltros.linea=\''+l+'\';buscarEquiposFirestore()">'+l+'</button>';}).join('')
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">'
+    +'<button class="btn btn-sm'+(eqFiltros.linea===''&&eqFiltros.modelo===''?' btn-blue':'')+'" onclick="eqFiltros.linea=\'\';eqFiltros.q=\'\';eqFiltros.modelo=\'\';buscarEquiposFirestore()">Todos</button>'
+    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" onclick="eqFiltros.modelo=\'\';eqFiltros.linea=\''+l+'\';buscarEquiposFirestore()">'+l+'</button>';}).join('')
+    +(eqFiltros.modelo?'<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(42,74,30,.08);border:1px solid var(--cf-border);border-radius:14px;padding:4px 10px;font-size:12px;color:#2a4a1e;font-weight:500">Modelo: '+eqFiltros.modelo+'<span style="cursor:pointer;font-weight:700;color:#8b6914" onclick="eqFiltros.modelo=\'\';buscarEquiposFirestore();renderEquipos()" title="Quitar filtro">✕</span></span>':'')
     +'</div>'
     +'<div class="tbl-box">'
     +'<div class="tbl-hdr"><span class="tbl-hdr-title">Universo de Equipos</span>'
@@ -1530,6 +1562,8 @@ function buscarEquiposFirestore(){
     var af=parseInt(q);
     if(!isNaN(af))queries.push(col.where('activoFijo','==',af).limit(50).get());
     else queries.push(col.where('serie','==',q).limit(50).get());
+  }else if(eqFiltros.modelo){
+    queries.push(col.where('modelo','==',eqFiltros.modelo).limit(LIM).get());
   }else if(eqFiltros.linea){
     if(eqFiltros.linea==='Cafe soluble'){
       // Valor con acento/variantes: rango sobre el mismo campo (sin índice compuesto)
