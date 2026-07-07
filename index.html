@@ -414,6 +414,7 @@ tbody td{padding:5px 8px!important;border-bottom:1px solid rgba(42,74,30,.06)!im
     <button class="tnav"    id="tnav-preventivos" onclick="switchView('preventivos')"><span>🔄</span><span class="tnav-txt"> PM</span></button>
     <button class="tnav"    id="tnav-qr"          onclick="switchView('qr')">         <span>⬡</span><span class="tnav-txt"> QR</span></button>
     <button class="tnav"    id="tnav-reportes"    onclick="switchView('reportes')">   <span>📈</span><span class="tnav-txt"> Reportes</span></button>
+    <button class="tnav"    id="tnav-resumen"     onclick="switchView('resumen')">    <span>🗂</span><span class="tnav-txt"> Resumen</span></button>
     <button class="tnav"    id="tnav-movimientos" onclick="switchView('movimientos')"><span>🔄</span><span class="tnav-txt"> Movimientos</span></button>
     <div class="topbar-right">
       <div class="sync-pill ok" id="topbar-sync">
@@ -439,6 +440,7 @@ tbody td{padding:5px 8px!important;border-bottom:1px solid rgba(42,74,30,.06)!im
   <div id="view-preventivos" class="view-wrap hidden"></div>
   <div id="view-qr"          class="hidden" style="flex:1;overflow:auto;background:#eef2f7"></div>
   <div id="view-reportes"    class="view-wrap hidden"></div>
+  <div id="view-resumen"     class="view-wrap hidden"></div>
   <div id="view-movimientos" class="view-wrap hidden"></div>
   <div id="view-etiquetas"   class="hidden" style="flex:1;overflow:auto;background:#e8eaed"></div>
 </div>
@@ -764,6 +766,7 @@ var equipos=[], clientes=[], ordenes=[];
 var openEqId=null, dpCurTab='info';
 var ordenActual=null, sigPad=null;
 var eqFiltros={linea:'',centro:'',q:'',modelo:''};
+var _resumenAbierto={},_resumenLineas=[];
 var ordFiltros={tipo:'',estado:''};
 var lastScanned=null, zxingReader=null;
 var geoLat=null, geoLng=null;
@@ -1143,7 +1146,7 @@ function enterApp(){
   // 5. Timeout de seguridad — máximo 8 segundos de splash
   var safetyTimer=setTimeout(function(){
     mostrarApp();
-  },8000);
+  },32000);
 
   // 6. Cargar datos
   loadData(function(){
@@ -1165,7 +1168,7 @@ function loadData(onReady){
     setSyncUI('ok','En línea ✓');
     if(typeof onReady==='function')onReady();
   }
-  setTimeout(terminar,4000); // respaldo amplio (normalmente se oculta al llegar config)
+  setTimeout(terminar,30000); // respaldo duro: nunca dejar el splash colgado más de 30s
 
   // 1) PRIORIDAD: solo config/general (documento chico) → llena el dashboard y oculta el splash
   var pConfig;
@@ -1188,7 +1191,20 @@ function loadData(onReady){
       if(curView==='dashboard')renderDashboard();
     });
   }
-  pConfig.then(terminar);
+  pConfig.then(function(){
+    var tieneResumen=_statsConfig && _statsConfig.resumenModelos && Object.keys(_statsConfig.resumenModelos).length;
+    if(tieneResumen){
+      // Datos ya calculados → mostrar la app de inmediato y refrescar en segundo plano
+      terminar();
+      setTimeout(function(){ cargarEquiposBajoDemanda(); },2000);
+    }else{
+      // Primera vez → mantener el logo latiendo hasta terminar el conteo completo
+      var t=document.getElementById('splash-txt');
+      if(t)t.textContent='Preparando resumen de equipos…';
+      var revelado=false, revelar=function(){ if(!revelado){revelado=true; terminar();} };
+      cargarEquiposBajoDemanda(revelar);
+    }
+  });
 
   // 2) Todo lo pesado se carga DESPUÉS de mostrar el dashboard, para no atorar el arranque
   if(!_catalogosCargados){
@@ -1226,7 +1242,7 @@ function cargarCatalogosYDatos(){
 // ══ NAVEGACIÓN ══
 function switchView(v){
   curView=v;
-  ['dashboard','equipos','clientes','directorio','ordenes','preventivos','qr','reportes','etiquetas','movimientos'].forEach(function(x){
+  ['dashboard','equipos','clientes','directorio','ordenes','preventivos','qr','reportes','resumen','etiquetas','movimientos'].forEach(function(x){
     var w=document.getElementById('view-'+x);if(w)w.classList.toggle('hidden',x!==v);
     var b=document.getElementById('tnav-'+x);if(b)b.classList.toggle('on',x===v);
   });
@@ -1238,6 +1254,7 @@ function switchView(v){
   if(v==='preventivos')renderPreventivos();
   if(v==='qr')renderQR();
   if(v==='reportes')renderReportes();
+  if(v==='resumen')renderResumen();
   if(v==='movimientos')renderMovimientos();
   if(v==='etiquetas')renderEtiquetas();
 }
@@ -1493,6 +1510,10 @@ function dbKpiClick(el){
 function actualizarTotalesConfig(){
   var tots={con_cliente:0,disponible:0,reparacion:0,retiro:0,baja:0};
   var porLinea={},porClase={},porCentro={},valorNeto={},porModelo={};
+  // Resumen tipo tabla dinámica: linea -> {tot:{...}, modelos:{modelo:{...}}}
+  // Columnas (estados): disponible, con_cliente(=Instalado), reparacion, retiro(=Traslado)
+  var resumen={};
+  var ESTADOS_RES=['disponible','con_cliente','reparacion','retiro'];
   clientes.forEach(function(e){
     if(tots[e.estado]!==undefined)tots[e.estado]++;
     var lin=e.grupoArt?getGrupoNombre(e.grupoArt):(e.linea||'Sin linea'); porLinea[lin]=(porLinea[lin]||0)+1;
@@ -1500,16 +1521,126 @@ function actualizarTotalesConfig(){
     var ce=e.centro||'—';          porCentro[ce]=(porCentro[ce]||0)+1;
     var md=(e.modelo||'').trim();  if(md){porModelo[md]=(porModelo[md]||0)+1;}
     if(e.valorNeto&&e.centro){valorNeto[ce]=(valorNeto[ce]||0)+(parseFloat(e.valorNeto)||0);}
+    // Resumen (solo los 4 estados relevantes; baja/otros se excluyen para que el total cuadre)
+    if(ESTADOS_RES.indexOf(e.estado)>=0){
+      var mdr=md||'—';
+      if(!resumen[lin])resumen[lin]={tot:{disponible:0,con_cliente:0,reparacion:0,retiro:0},modelos:{}};
+      if(!resumen[lin].modelos[mdr])resumen[lin].modelos[mdr]={disponible:0,con_cliente:0,reparacion:0,retiro:0};
+      resumen[lin].tot[e.estado]++;
+      resumen[lin].modelos[mdr][e.estado]++;
+    }
+  });
+  // Limitar modelos por línea a top 60 (resto -> "Otros") para acotar el tamaño del documento
+  Object.keys(resumen).forEach(function(lin){
+    var ms=resumen[lin].modelos;
+    var arr=Object.keys(ms).map(function(m){var s=ms[m];return{m:m,s:s,t:s.disponible+s.con_cliente+s.reparacion+s.retiro};});
+    arr.sort(function(a,b){return b.t-a.t;});
+    if(arr.length>60){
+      var keep=arr.slice(0,60), rest=arr.slice(60);
+      var otros={disponible:0,con_cliente:0,reparacion:0,retiro:0};
+      rest.forEach(function(r){otros.disponible+=r.s.disponible;otros.con_cliente+=r.s.con_cliente;otros.reparacion+=r.s.reparacion;otros.retiro+=r.s.retiro;});
+      var nm={}; keep.forEach(function(k){nm[k.m]=k.s;}); nm['Otros ('+rest.length+' modelos)']=otros;
+      resumen[lin].modelos=nm;
+    }
   });
   // Solo guardamos el top 50 de modelos para mantener chico el documento config/general
   var porModeloTop={};
   Object.entries(porModelo).sort(function(a,b){return b[1]-a[1];}).slice(0,50).forEach(function(x){porModeloTop[x[0]]=x[1];});
+  // Refrescar copia en memoria para que dashboard y resumen se vean al instante
+  if(!_statsConfig)_statsConfig={};
+  _statsConfig.porLinea=porLinea; _statsConfig.porClase=porClase; _statsConfig.porCentro=porCentro;
+  _statsConfig.valorNeto=valorNeto; _statsConfig.porModelo=porModeloTop; _statsConfig.resumenModelos=resumen;
+  _statsConfig.totalConCliente=tots.con_cliente; _statsConfig.totalDisponible=tots.disponible;
+  _statsConfig.totalReparacion=tots.reparacion; _statsConfig.totalRetiro=tots.retiro; _statsConfig.totalBaja=tots.baja;
   db.collection('config').doc('general').set({
     totalConCliente:tots.con_cliente, totalDisponible:tots.disponible,
     totalReparacion:tots.reparacion,  totalRetiro:tots.retiro, totalBaja:tots.baja,
-    porLinea:porLinea, porClase:porClase, porCentro:porCentro, valorNeto:valorNeto, porModelo:porModeloTop,
+    porLinea:porLinea, porClase:porClase, porCentro:porCentro, valorNeto:valorNeto,
+    porModelo:porModeloTop, resumenModelos:resumen,
   },{merge:true}).catch(function(){});
   if(curView==='dashboard')cargarStatsDashboard();
+  if(curView==='resumen')renderResumen();
+}
+
+// ══ RESUMEN (tabla dinámica línea → modelo → estado) ══
+var RES_COLS=[['disponible','Disponible'],['con_cliente','Instalado'],['reparacion','Reparación'],['retiro','Traslado']];
+function _escH(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function _resTotLinea(o){var t=0;RES_COLS.forEach(function(c){t+=(o.tot[c[0]]||0);});return t;}
+function toggleResumenLinea(i){
+  var lin=_resumenLineas[i]; if(lin==null)return;
+  _resumenAbierto[lin]=!_resumenAbierto[lin];
+  renderResumen();
+}
+function renderResumen(){
+  var w=document.getElementById('view-resumen'); if(!w)return;
+  var R=(_statsConfig&&_statsConfig.resumenModelos)||{};
+  if(!Object.keys(R).length){
+    w.innerHTML='<div class="tbl-box" style="padding:28px;text-align:center">'
+      +'<div style="font-size:13px;color:#6b7c63;margin-bottom:14px">El resumen se genera automáticamente al abrir la app. Si acabas de actualizar los datos en SAP, recalcúlalo ahora:</div>'
+      +'<button onclick="calcularModelosAhora(this)" style="background:linear-gradient(135deg,var(--cf-green),var(--cf-green2));color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">Calcular ahora</button>'
+      +'</div>';
+    return;
+  }
+  var lineas=Object.keys(R).sort(function(a,b){return _resTotLinea(R[b])-_resTotLinea(R[a]);});
+  _resumenLineas=lineas;
+  var gtot={disponible:0,con_cliente:0,reparacion:0,retiro:0};
+  lineas.forEach(function(l){RES_COLS.forEach(function(c){gtot[c[0]]+=(R[l].tot[c[0]]||0);});});
+  var granTotal=RES_COLS.reduce(function(a,c){return a+gtot[c[0]];},0);
+
+  var th=function(txt,al){return '<th style="padding:9px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#4a5e42;text-align:'+(al||'left')+';border-bottom:2px solid var(--cf-green);position:sticky;top:0;background:#fff;z-index:1">'+txt+'</th>';};
+  var html='<div class="tbl-box">'
+    +'<div class="tbl-hdr"><span class="tbl-hdr-title">Relación de equipos por modelos</span>'
+    +'<div class="tbl-tools">'
+    +'<button class="btn btn-sm" onclick="descargarResumenCSV()">⬇ CSV</button>'
+    +'<button class="btn btn-sm" onclick="calcularModelosAhora(this)">↻ Actualizar</button>'
+    +'</div></div>'
+    +'<div style="overflow:auto;max-height:calc(100vh - 170px)"><table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr>'+th('Línea / Modelo')+RES_COLS.map(function(c){return th(c[1],'right');}).join('')+th('Total general','right')+'</tr></thead><tbody>';
+
+  lineas.forEach(function(lin,idx){
+    var o=R[lin], abierto=!!_resumenAbierto[lin], subt=_resTotLinea(o);
+    html+='<tr style="cursor:pointer;background:rgba(42,74,30,.05)" onclick="toggleResumenLinea('+idx+')">'
+      +'<td style="padding:8px 12px;font-weight:700;color:#1e2d1a;font-size:12px;border-bottom:1px solid rgba(42,74,30,.1)"><span style="display:inline-block;width:14px;color:#8b6914">'+(abierto?'▾':'▸')+'</span>'+_escH(lin)+'</td>'
+      +RES_COLS.map(function(c){var v=o.tot[c[0]]||0;return '<td style="padding:8px 12px;text-align:right;font-weight:700;color:#2a4a1e;font-size:12px;border-bottom:1px solid rgba(42,74,30,.1)">'+(v?v.toLocaleString():'')+'</td>';}).join('')
+      +'<td style="padding:8px 12px;text-align:right;font-weight:800;color:#8b6914;font-size:12px;border-bottom:1px solid rgba(42,74,30,.1)">'+subt.toLocaleString()+'</td></tr>';
+    if(abierto){
+      var ms=o.modelos;
+      Object.keys(ms).map(function(m){var s=ms[m];return{m:m,s:s,t:(s.disponible||0)+(s.con_cliente||0)+(s.reparacion||0)+(s.retiro||0)};})
+        .sort(function(a,b){return b.t-a.t;})
+        .forEach(function(r){
+          html+='<tr>'
+            +'<td style="padding:5px 12px 5px 32px;color:#2a4a1e;font-size:12px;border-bottom:1px solid rgba(42,74,30,.05)">'+_escH(r.m)+'</td>'
+            +RES_COLS.map(function(c){var v=r.s[c[0]]||0;return '<td style="padding:5px 12px;text-align:right;color:#4a5e42;font-size:12px;border-bottom:1px solid rgba(42,74,30,.05)">'+(v?v.toLocaleString():'')+'</td>';}).join('')
+            +'<td style="padding:5px 12px;text-align:right;font-weight:600;color:#2a4a1e;font-size:12px;border-bottom:1px solid rgba(42,74,30,.05)">'+r.t.toLocaleString()+'</td></tr>';
+        });
+    }
+  });
+  html+='<tr style="background:var(--cf-green)">'
+    +'<td style="padding:10px 12px;font-weight:800;color:#fff;font-size:12px">Total general</td>'
+    +RES_COLS.map(function(c){return '<td style="padding:10px 12px;text-align:right;font-weight:800;color:#fff;font-size:12px">'+gtot[c[0]].toLocaleString()+'</td>';}).join('')
+    +'<td style="padding:10px 12px;text-align:right;font-weight:800;color:#fff;font-size:12px">'+granTotal.toLocaleString()+'</td></tr>';
+  html+='</tbody></table></div></div>';
+  w.innerHTML=html;
+}
+function descargarResumenCSV(){
+  var R=(_statsConfig&&_statsConfig.resumenModelos)||{};
+  if(!Object.keys(R).length){toast('No hay resumen para exportar');return;}
+  var rows=[['Línea / Modelo'].concat(RES_COLS.map(function(c){return c[1];})).concat(['Total general'])];
+  var lineas=Object.keys(R).sort(function(a,b){return _resTotLinea(R[b])-_resTotLinea(R[a]);});
+  var g={disponible:0,con_cliente:0,reparacion:0,retiro:0};
+  lineas.forEach(function(lin){
+    var o=R[lin];
+    rows.push([lin].concat(RES_COLS.map(function(c){return o.tot[c[0]]||0;})).concat([_resTotLinea(o)]));
+    var ms=o.modelos;
+    Object.keys(ms).map(function(m){var s=ms[m];return{m:m,s:s,t:(s.disponible||0)+(s.con_cliente||0)+(s.reparacion||0)+(s.retiro||0)};})
+      .sort(function(a,b){return b.t-a.t;})
+      .forEach(function(r){rows.push(['   '+r.m].concat(RES_COLS.map(function(c){return r.s[c[0]]||0;})).concat([r.t]));});
+    RES_COLS.forEach(function(c){g[c[0]]+=(o.tot[c[0]]||0);});
+  });
+  rows.push(['Total general'].concat(RES_COLS.map(function(c){return g[c[0]];})).concat([RES_COLS.reduce(function(a,c){return a+g[c[0]];},0)]));
+  var csv=rows.map(function(r){return r.map(function(x){var s=String(x);return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(',');}).join('\n');
+  var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='CAFIVER_resumen_modelos.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);
 }
 
 function renderEquipos(){
@@ -1546,6 +1677,8 @@ function cargarEquiposBajoDemanda(callback){
       var nuevos=s.docs.map(function(d){return{id:d.id,...d.data()};});
       clientes=clientes.concat(nuevos);
       equipos=clientes;
+      var _spt=document.getElementById('splash-txt');
+      if(_spt)_spt.textContent='Procesando equipos… '+clientes.length.toLocaleString();
       if(s.docs.length===500){
         cargarPagina(s.docs[s.docs.length-1]);
       }else{
