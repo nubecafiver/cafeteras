@@ -766,7 +766,7 @@ var equipos=[], clientes=[], ordenes=[];
 var openEqId=null, dpCurTab='info';
 var ordenActual=null, sigPad=null;
 var eqFiltros={linea:'',centro:'',q:'',modelo:''};
-var _resumenAbierto={},_resumenLineas=[];
+var _resumenAbierto={},_resumenLineas=[],_resumenModo='arbol';
 var ordFiltros={tipo:'',estado:''};
 var lastScanned=null, zxingReader=null;
 var geoLat=null, geoLng=null;
@@ -1146,7 +1146,7 @@ function enterApp(){
   // 5. Timeout de seguridad — máximo 8 segundos de splash
   var safetyTimer=setTimeout(function(){
     mostrarApp();
-  },32000);
+  },8000);
 
   // 6. Cargar datos
   loadData(function(){
@@ -1168,7 +1168,7 @@ function loadData(onReady){
     setSyncUI('ok','En línea ✓');
     if(typeof onReady==='function')onReady();
   }
-  setTimeout(terminar,30000); // respaldo duro: nunca dejar el splash colgado más de 30s
+  setTimeout(terminar,4000); // respaldo: muestra la app aunque config tarde
 
   // 1) PRIORIDAD: solo config/general (documento chico) → llena el dashboard y oculta el splash
   var pConfig;
@@ -1191,20 +1191,8 @@ function loadData(onReady){
       if(curView==='dashboard')renderDashboard();
     });
   }
-  pConfig.then(function(){
-    var tieneResumen=_statsConfig && _statsConfig.resumenModelos && Object.keys(_statsConfig.resumenModelos).length;
-    if(tieneResumen){
-      // Datos ya calculados → mostrar la app de inmediato y refrescar en segundo plano
-      terminar();
-      setTimeout(function(){ cargarEquiposBajoDemanda(); },2000);
-    }else{
-      // Primera vez → mantener el logo latiendo hasta terminar el conteo completo
-      var t=document.getElementById('splash-txt');
-      if(t)t.textContent='Preparando resumen de equipos…';
-      var revelado=false, revelar=function(){ if(!revelado){revelado=true; terminar();} };
-      cargarEquiposBajoDemanda(revelar);
-    }
-  });
+  // Mostrar la app EN CUANTO llega config (documento chico). El resumen pesado NO bloquea.
+  pConfig.then(terminar);
 
   // 2) Todo lo pesado se carga DESPUÉS de mostrar el dashboard, para no atorar el arranque
   if(!_catalogosCargados){
@@ -1571,32 +1559,87 @@ function toggleResumenLinea(i){
   _resumenAbierto[lin]=!_resumenAbierto[lin];
   renderResumen();
 }
+function _resModelosArr(o){
+  var ms=o.modelos;
+  return Object.keys(ms).map(function(m){var s=ms[m];return{m:m,s:s,t:(s.disponible||0)+(s.con_cliente||0)+(s.reparacion||0)+(s.retiro||0)};}).sort(function(a,b){return b.t-a.t;});
+}
+function setResumenModo(m){_resumenModo=m; renderResumen();}
+function expandirResumen(abrir){ _resumenLineas.forEach(function(l){_resumenAbierto[l]=abrir;}); renderResumen(); }
+function _resumenHeader(granTotal,nLineas,nModelos){
+  return '<div class="tbl-hdr" style="border-radius:12px;margin-bottom:12px">'
+    +'<div><span class="tbl-hdr-title">Equipos por línea → modelo</span>'
+    +'<div style="font-size:11px;color:#6b7c63;margin-top:3px">'+granTotal.toLocaleString()+' equipos · '+nLineas+' líneas · '+nModelos+' modelos</div></div>'
+    +'<div class="tbl-tools">'
+    +'<button class="btn btn-sm'+(_resumenModo==='arbol'?' btn-blue':'')+'" onclick="setResumenModo(\'arbol\')">🌳 Árbol</button>'
+    +'<button class="btn btn-sm'+(_resumenModo==='tabla'?' btn-blue':'')+'" onclick="setResumenModo(\'tabla\')">▦ Tabla</button>'
+    +'<button class="btn btn-sm" onclick="expandirResumen(true)">Expandir</button>'
+    +'<button class="btn btn-sm" onclick="expandirResumen(false)">Colapsar</button>'
+    +'<button class="btn btn-sm" onclick="descargarResumenCSV()">⬇ CSV</button>'
+    +'<button class="btn btn-sm" onclick="calcularModelosAhora(this)" title="Recalcular">↻</button>'
+    +'</div></div>';
+}
+var RES_COLORS=['#2a4a1e','#3d6b2c','#8b6914','#5a8f42','#6b4423','#4a7a6b','#2d5a3d','#7a6b2a','#5a4a3e','#3d6b4a'];
 function renderResumen(){
   var w=document.getElementById('view-resumen'); if(!w)return;
   var R=(_statsConfig&&_statsConfig.resumenModelos)||{};
   if(!Object.keys(R).length){
     w.innerHTML='<div class="tbl-box" style="padding:28px;text-align:center">'
-      +'<div style="font-size:13px;color:#6b7c63;margin-bottom:14px">El resumen se genera automáticamente al abrir la app. Si acabas de actualizar los datos en SAP, recalcúlalo ahora:</div>'
+      +'<div style="font-size:13px;color:#6b7c63;margin-bottom:14px">El resumen se genera al procesar el parque. Si acabas de actualizar los datos en SAP, calcúlalo ahora:</div>'
       +'<button onclick="calcularModelosAhora(this)" style="background:linear-gradient(135deg,var(--cf-green),var(--cf-green2));color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">Calcular ahora</button>'
       +'</div>';
     return;
   }
   var lineas=Object.keys(R).sort(function(a,b){return _resTotLinea(R[b])-_resTotLinea(R[a]);});
   _resumenLineas=lineas;
+  if(_resumenModo==='tabla') renderResumenTabla(w,R,lineas);
+  else renderResumenArbol(w,R,lineas);
+}
+function renderResumenArbol(w,R,lineas){
+  var granTotal=lineas.reduce(function(a,l){return a+_resTotLinea(R[l]);},0);
+  var maxLinea=lineas.length?_resTotLinea(R[lineas[0]]):1;
+  var nModelos=lineas.reduce(function(a,l){return a+Object.keys(R[l].modelos).length;},0);
+  var body='';
+  lineas.forEach(function(lin,idx){
+    var o=R[lin], t=_resTotLinea(o), abierto=!!_resumenAbierto[lin];
+    var pct=granTotal?(t/granTotal*100):0;
+    var barw=maxLinea?Math.max(2,Math.round(t/maxLinea*100)):0;
+    var c=RES_COLORS[idx%10];
+    var modelos=_resModelosArr(o);
+    body+='<div style="margin-bottom:7px;border:1px solid rgba(42,74,30,.1);border-radius:10px;overflow:hidden;background:var(--cf-white)">'
+      +'<div style="cursor:pointer;padding:11px 14px;background:rgba(42,74,30,.04)" onclick="toggleResumenLinea('+idx+')">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;gap:10px">'
+      +'<span style="font-size:13px;font-weight:700;color:#1e2d1a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="display:inline-block;width:16px;color:#8b6914">'+(abierto?'▾':'▸')+'</span>'+_escH(lin)+' <span style="color:#8b6914;font-weight:500;font-size:11px">· '+modelos.length+' modelos</span></span>'
+      +'<span style="font-size:14px;font-weight:800;color:'+c+';white-space:nowrap">'+t.toLocaleString()+' <span style="font-size:11px;color:#6b7c63;font-weight:600">'+pct.toFixed(1)+'%</span></span></div>'
+      +'<div style="height:6px;background:rgba(42,74,30,.06);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+barw+'%;background:'+c+';border-radius:3px;transition:width .5s ease"></div></div>'
+      +'</div>';
+    if(abierto){
+      var maxMod=modelos.length?modelos[0].t:1;
+      body+='<div style="padding:10px 16px 12px 34px">';
+      modelos.forEach(function(r){
+        var mp=t?(r.t/t*100):0;
+        var mbar=maxMod?Math.max(3,Math.round(r.t/maxMod*100)):0;
+        body+='<div style="margin-bottom:8px">'
+          +'<div style="display:flex;justify-content:space-between;margin-bottom:3px;gap:10px">'
+          +'<span style="font-size:12px;color:#2a4a1e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_escH(r.m)+'</span>'
+          +'<span style="font-size:12px;font-weight:700;color:'+c+';white-space:nowrap">'+r.t.toLocaleString()+' <span style="font-size:10px;color:#9aa0a6;font-weight:500">'+mp.toFixed(1)+'%</span></span></div>'
+          +'<div style="height:4px;background:rgba(42,74,30,.05);border-radius:2px;overflow:hidden"><div style="height:100%;width:'+mbar+'%;background:'+c+';opacity:.65;border-radius:2px"></div></div>'
+          +'</div>';
+      });
+      body+='</div>';
+    }
+    body+='</div>';
+  });
+  w.innerHTML=_resumenHeader(granTotal,lineas.length,nModelos)+'<div style="padding:2px">'+body+'</div>';
+}
+function renderResumenTabla(w,R,lineas){
   var gtot={disponible:0,con_cliente:0,reparacion:0,retiro:0};
   lineas.forEach(function(l){RES_COLS.forEach(function(c){gtot[c[0]]+=(R[l].tot[c[0]]||0);});});
   var granTotal=RES_COLS.reduce(function(a,c){return a+gtot[c[0]];},0);
-
+  var nModelos=lineas.reduce(function(a,l){return a+Object.keys(R[l].modelos).length;},0);
   var th=function(txt,al){return '<th style="padding:9px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#4a5e42;text-align:'+(al||'left')+';border-bottom:2px solid var(--cf-green);position:sticky;top:0;background:#fff;z-index:1">'+txt+'</th>';};
-  var html='<div class="tbl-box">'
-    +'<div class="tbl-hdr"><span class="tbl-hdr-title">Relación de equipos por modelos</span>'
-    +'<div class="tbl-tools">'
-    +'<button class="btn btn-sm" onclick="descargarResumenCSV()">⬇ CSV</button>'
-    +'<button class="btn btn-sm" onclick="calcularModelosAhora(this)">↻ Actualizar</button>'
-    +'</div></div>'
-    +'<div style="overflow:auto;max-height:calc(100vh - 170px)"><table style="width:100%;border-collapse:collapse">'
+  var html=_resumenHeader(granTotal,lineas.length,nModelos)
+    +'<div class="tbl-box"><div style="overflow:auto;max-height:calc(100vh - 210px)"><table style="width:100%;border-collapse:collapse">'
     +'<thead><tr>'+th('Línea / Modelo')+RES_COLS.map(function(c){return th(c[1],'right');}).join('')+th('Total general','right')+'</tr></thead><tbody>';
-
   lineas.forEach(function(lin,idx){
     var o=R[lin], abierto=!!_resumenAbierto[lin], subt=_resTotLinea(o);
     html+='<tr style="cursor:pointer;background:rgba(42,74,30,.05)" onclick="toggleResumenLinea('+idx+')">'
@@ -1604,15 +1647,12 @@ function renderResumen(){
       +RES_COLS.map(function(c){var v=o.tot[c[0]]||0;return '<td style="padding:8px 12px;text-align:right;font-weight:700;color:#2a4a1e;font-size:12px;border-bottom:1px solid rgba(42,74,30,.1)">'+(v?v.toLocaleString():'')+'</td>';}).join('')
       +'<td style="padding:8px 12px;text-align:right;font-weight:800;color:#8b6914;font-size:12px;border-bottom:1px solid rgba(42,74,30,.1)">'+subt.toLocaleString()+'</td></tr>';
     if(abierto){
-      var ms=o.modelos;
-      Object.keys(ms).map(function(m){var s=ms[m];return{m:m,s:s,t:(s.disponible||0)+(s.con_cliente||0)+(s.reparacion||0)+(s.retiro||0)};})
-        .sort(function(a,b){return b.t-a.t;})
-        .forEach(function(r){
-          html+='<tr>'
-            +'<td style="padding:5px 12px 5px 32px;color:#2a4a1e;font-size:12px;border-bottom:1px solid rgba(42,74,30,.05)">'+_escH(r.m)+'</td>'
-            +RES_COLS.map(function(c){var v=r.s[c[0]]||0;return '<td style="padding:5px 12px;text-align:right;color:#4a5e42;font-size:12px;border-bottom:1px solid rgba(42,74,30,.05)">'+(v?v.toLocaleString():'')+'</td>';}).join('')
-            +'<td style="padding:5px 12px;text-align:right;font-weight:600;color:#2a4a1e;font-size:12px;border-bottom:1px solid rgba(42,74,30,.05)">'+r.t.toLocaleString()+'</td></tr>';
-        });
+      _resModelosArr(o).forEach(function(r){
+        html+='<tr>'
+          +'<td style="padding:5px 12px 5px 32px;color:#2a4a1e;font-size:12px;border-bottom:1px solid rgba(42,74,30,.05)">'+_escH(r.m)+'</td>'
+          +RES_COLS.map(function(c){var v=r.s[c[0]]||0;return '<td style="padding:5px 12px;text-align:right;color:#4a5e42;font-size:12px;border-bottom:1px solid rgba(42,74,30,.05)">'+(v?v.toLocaleString():'')+'</td>';}).join('')
+          +'<td style="padding:5px 12px;text-align:right;font-weight:600;color:#2a4a1e;font-size:12px;border-bottom:1px solid rgba(42,74,30,.05)">'+r.t.toLocaleString()+'</td></tr>';
+      });
     }
   });
   html+='<tr style="background:var(--cf-green)">'
