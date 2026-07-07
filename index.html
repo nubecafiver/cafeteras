@@ -1502,21 +1502,51 @@ function actualizarTotalesConfig(){
   // Columnas (estados): disponible, con_cliente(=Instalado), reparacion, retiro(=Traslado)
   var resumen={};
   var ESTADOS_RES=['disponible','con_cliente','reparacion','retiro'];
+  // Identidad del modelo = MATERIAL (código SAP). Se muestra el "Texto de material"
+  // (descripcion), que es consistente por material. Solo si el equipo no trae material
+  // se usa el texto libre (modelo) normalizado por mayúsculas/acentos/espacios.
+  function _normMod(s){var x=String(s||'').trim();if(!x)return '';return x.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s*-\s*/g,'-').replace(/\s+/g,' ');}
+  function _modeloKey(e){
+    var mat=(e.material==null?'':String(e.material)).trim();
+    var desc=(e.descripcion||'').trim();
+    var mod=(e.modelo||'').trim();
+    if(mat) return {k:'M:'+mat, disp:(desc||mod||('Material '+mat))};
+    var nk=_normMod(mod);
+    if(nk) return {k:'N:'+nk, disp:mod};
+    return {k:'—', disp:'—'};
+  }
+  var porModeloK={};   // clave -> conteo
+  var dispVar={};      // clave -> {texto: veces} para elegir el nombre a mostrar
+  function _regDisp(k,orig){if(!orig)return;var d=dispVar[k]||(dispVar[k]={});d[orig]=(d[orig]||0)+1;}
+  function _bestDisp(k){if(k==='—')return '—';var d=dispVar[k];if(!d)return k;var best='',bc=-1;for(var o in d){if(d[o]>bc){bc=d[o];best=o;}}return best||k;}
   clientes.forEach(function(e){
     if(tots[e.estado]!==undefined)tots[e.estado]++;
     var lin=e.grupoArt?getGrupoNombre(e.grupoArt):(e.linea||'Sin linea'); porLinea[lin]=(porLinea[lin]||0)+1;
     var cl=e.claseActivo||'Otro';  porClase[cl]=(porClase[cl]||0)+1;
     var ce=e.centro||'—';          porCentro[ce]=(porCentro[ce]||0)+1;
-    var md=(e.modelo||'').trim();  if(md){porModelo[md]=(porModelo[md]||0)+1;}
+    var mk=_modeloKey(e);
+    porModeloK[mk.k]=(porModeloK[mk.k]||0)+1; _regDisp(mk.k,mk.disp);
     if(e.valorNeto&&e.centro){valorNeto[ce]=(valorNeto[ce]||0)+(parseFloat(e.valorNeto)||0);}
     // Resumen (solo los 4 estados relevantes; baja/otros se excluyen para que el total cuadre)
     if(ESTADOS_RES.indexOf(e.estado)>=0){
-      var mdr=md||'—';
+      var mdrK=mk.k;
       if(!resumen[lin])resumen[lin]={tot:{disponible:0,con_cliente:0,reparacion:0,retiro:0},modelos:{}};
-      if(!resumen[lin].modelos[mdr])resumen[lin].modelos[mdr]={disponible:0,con_cliente:0,reparacion:0,retiro:0};
+      if(!resumen[lin].modelos[mdrK])resumen[lin].modelos[mdrK]={disponible:0,con_cliente:0,reparacion:0,retiro:0};
       resumen[lin].tot[e.estado]++;
-      resumen[lin].modelos[mdr][e.estado]++;
+      resumen[lin].modelos[mdrK][e.estado]++;
     }
+  });
+  // porModelo con el nombre a mostrar (Texto de material)
+  Object.keys(porModeloK).forEach(function(k){var d=_bestDisp(k); porModelo[d]=(porModelo[d]||0)+porModeloK[k];});
+  // Convertir claves (material) del resumen a su nombre a mostrar
+  Object.keys(resumen).forEach(function(lin){
+    var oldM=resumen[lin].modelos, newM={};
+    Object.keys(oldM).forEach(function(k){
+      var d=_bestDisp(k), s=oldM[k];
+      if(!newM[d])newM[d]={disponible:0,con_cliente:0,reparacion:0,retiro:0};
+      newM[d].disponible+=s.disponible; newM[d].con_cliente+=s.con_cliente; newM[d].reparacion+=s.reparacion; newM[d].retiro+=s.retiro;
+    });
+    resumen[lin].modelos=newM;
   });
   // Limitar modelos por línea a top 60 (resto -> "Otros") para acotar el tamaño del documento
   Object.keys(resumen).forEach(function(lin){
