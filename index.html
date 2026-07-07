@@ -1399,7 +1399,7 @@ async function cargarStatsDashboard(){
           +'<div style="height:100%;width:'+Math.max(3,Math.round(e[1]/mx*100))+'%;background:'+c+';border-radius:2px;transition:width .6s ease"></div></div></div>';
       }).join('')
       +'</div>'
-      :'<div style="color:#6b7c63;font-size:12px;padding:8px 0">Entra a <b>Equipos</b> una vez para calcular el top de modelos.</div>')
+      :'<div style="padding:8px 0"><div style="color:#6b7c63;font-size:12px;margin-bottom:8px">Aún no se ha calculado el top de modelos.</div><button onclick="calcularModelosAhora(this)" style="background:linear-gradient(135deg,var(--cf-green),var(--cf-green2));color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">Calcular ahora</button></div>')
     +'</div>'
 
     // Técnicos + órdenes recientes
@@ -1463,6 +1463,15 @@ function dbKpi(label,val,sub,color,icon,filtro){
     +'</div></div>';
 }
 
+function calcularModelosAhora(btn){
+  if(btn){btn.disabled=true;btn.textContent='Calculando… (puede tardar)';}
+  toast('Calculando top de modelos…');
+  if(_clientesCargados){
+    actualizarTotalesConfig();
+  }else{
+    cargarEquiposBajoDemanda(function(){ if(curView==='dashboard')cargarStatsDashboard(); });
+  }
+}
 function dbModeloClick(el){
   var m=el.getAttribute('data-modelo')||'';
   if(!m)return;
