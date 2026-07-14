@@ -1404,7 +1404,7 @@ async function cargarStatsDashboard(){
           +'<div style="height:100%;width:'+Math.max(3,Math.round(e[1]/mx*100))+'%;background:'+c+';border-radius:2px;transition:width .6s ease"></div></div></div>';
       }).join('')
       +'</div>'
-      :'<div style="padding:8px 0"><div style="color:#6b7c63;font-size:12px;margin-bottom:8px">Aún no se ha calculado el top de modelos.</div><button onclick="calcularModelosAhora(this)" style="background:linear-gradient(135deg,var(--cf-green),var(--cf-green2));color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">Calcular ahora</button></div>')
+      :'<div style="color:#6b7c63;font-size:12px;padding:8px 0">Sin datos. Ejecuta <code>node cafiver-resumen.js</code> para generar el resumen.</div>')
     +'</div>'
 
     // Técnicos + órdenes recientes
@@ -1468,15 +1468,6 @@ function dbKpi(label,val,sub,color,icon,filtro){
     +'</div></div>';
 }
 
-function calcularModelosAhora(btn){
-  if(btn){btn.disabled=true;btn.textContent='Calculando… (puede tardar)';}
-  toast('Calculando top de modelos…');
-  if(_clientesCargados){
-    actualizarTotalesConfig();
-  }else{
-    cargarEquiposBajoDemanda(function(){ if(curView==='dashboard')cargarStatsDashboard(); });
-  }
-}
 function dbModeloClick(el){
   var m=el.getAttribute('data-modelo')||'';
   if(!m)return;
@@ -1495,90 +1486,6 @@ function dbKpiClick(el){
   switchView('equipos');
 }
 
-function actualizarTotalesConfig(){
-  var tots={con_cliente:0,disponible:0,reparacion:0,retiro:0,baja:0};
-  var porLinea={},porClase={},porCentro={},valorNeto={},porModelo={};
-  // Resumen tipo tabla dinámica: linea -> {tot:{...}, modelos:{modelo:{...}}}
-  // Columnas (estados): disponible, con_cliente(=Instalado), reparacion, retiro(=Traslado)
-  var resumen={};
-  var ESTADOS_RES=['disponible','con_cliente','reparacion','retiro'];
-  // Identidad del modelo = MATERIAL (código SAP). Se muestra el "Texto de material"
-  // (descripcion), que es consistente por material. Solo si el equipo no trae material
-  // se usa el texto libre (modelo) normalizado por mayúsculas/acentos/espacios.
-  function _normMod(s){var x=String(s||'').trim();if(!x)return '';return x.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s*-\s*/g,'-').replace(/\s+/g,' ');}
-  function _modeloKey(e){
-    var mat=(e.material==null?'':String(e.material)).trim();
-    var desc=(e.descripcion||'').trim();
-    var mod=(e.modelo||'').trim();
-    if(mat) return {k:'M:'+mat, disp:(desc||mod||('Material '+mat))};
-    var nk=_normMod(mod);
-    if(nk) return {k:'N:'+nk, disp:mod};
-    return {k:'—', disp:'—'};
-  }
-  var porModeloK={};   // clave -> conteo
-  var dispVar={};      // clave -> {texto: veces} para elegir el nombre a mostrar
-  function _regDisp(k,orig){if(!orig)return;var d=dispVar[k]||(dispVar[k]={});d[orig]=(d[orig]||0)+1;}
-  function _bestDisp(k){if(k==='—')return '—';var d=dispVar[k];if(!d)return k;var best='',bc=-1;for(var o in d){if(d[o]>bc){bc=d[o];best=o;}}return best||k;}
-  clientes.forEach(function(e){
-    if(tots[e.estado]!==undefined)tots[e.estado]++;
-    var lin=e.grupoArt?getGrupoNombre(e.grupoArt):(e.linea||'Sin linea'); porLinea[lin]=(porLinea[lin]||0)+1;
-    var cl=e.claseActivo||'Otro';  porClase[cl]=(porClase[cl]||0)+1;
-    var ce=e.centro||'—';          porCentro[ce]=(porCentro[ce]||0)+1;
-    var mk=_modeloKey(e);
-    porModeloK[mk.k]=(porModeloK[mk.k]||0)+1; _regDisp(mk.k,mk.disp);
-    if(e.valorNeto&&e.centro){valorNeto[ce]=(valorNeto[ce]||0)+(parseFloat(e.valorNeto)||0);}
-    // Resumen (solo los 4 estados relevantes; baja/otros se excluyen para que el total cuadre)
-    if(ESTADOS_RES.indexOf(e.estado)>=0){
-      var mdrK=mk.k;
-      if(!resumen[lin])resumen[lin]={tot:{disponible:0,con_cliente:0,reparacion:0,retiro:0},modelos:{}};
-      if(!resumen[lin].modelos[mdrK])resumen[lin].modelos[mdrK]={disponible:0,con_cliente:0,reparacion:0,retiro:0};
-      resumen[lin].tot[e.estado]++;
-      resumen[lin].modelos[mdrK][e.estado]++;
-    }
-  });
-  // porModelo con el nombre a mostrar (Texto de material)
-  Object.keys(porModeloK).forEach(function(k){var d=_bestDisp(k); porModelo[d]=(porModelo[d]||0)+porModeloK[k];});
-  // Convertir claves (material) del resumen a su nombre a mostrar
-  Object.keys(resumen).forEach(function(lin){
-    var oldM=resumen[lin].modelos, newM={};
-    Object.keys(oldM).forEach(function(k){
-      var d=_bestDisp(k), s=oldM[k];
-      if(!newM[d])newM[d]={disponible:0,con_cliente:0,reparacion:0,retiro:0};
-      newM[d].disponible+=s.disponible; newM[d].con_cliente+=s.con_cliente; newM[d].reparacion+=s.reparacion; newM[d].retiro+=s.retiro;
-    });
-    resumen[lin].modelos=newM;
-  });
-  // Limitar modelos por línea a top 60 (resto -> "Otros") para acotar el tamaño del documento
-  Object.keys(resumen).forEach(function(lin){
-    var ms=resumen[lin].modelos;
-    var arr=Object.keys(ms).map(function(m){var s=ms[m];return{m:m,s:s,t:s.disponible+s.con_cliente+s.reparacion+s.retiro};});
-    arr.sort(function(a,b){return b.t-a.t;});
-    if(arr.length>60){
-      var keep=arr.slice(0,60), rest=arr.slice(60);
-      var otros={disponible:0,con_cliente:0,reparacion:0,retiro:0};
-      rest.forEach(function(r){otros.disponible+=r.s.disponible;otros.con_cliente+=r.s.con_cliente;otros.reparacion+=r.s.reparacion;otros.retiro+=r.s.retiro;});
-      var nm={}; keep.forEach(function(k){nm[k.m]=k.s;}); nm['Otros ('+rest.length+' modelos)']=otros;
-      resumen[lin].modelos=nm;
-    }
-  });
-  // Solo guardamos el top 50 de modelos para mantener chico el documento config/general
-  var porModeloTop={};
-  Object.entries(porModelo).sort(function(a,b){return b[1]-a[1];}).slice(0,50).forEach(function(x){porModeloTop[x[0]]=x[1];});
-  // Refrescar copia en memoria para que dashboard y resumen se vean al instante
-  if(!_statsConfig)_statsConfig={};
-  _statsConfig.porLinea=porLinea; _statsConfig.porClase=porClase; _statsConfig.porCentro=porCentro;
-  _statsConfig.valorNeto=valorNeto; _statsConfig.porModelo=porModeloTop; _statsConfig.resumenModelos=resumen;
-  _statsConfig.totalConCliente=tots.con_cliente; _statsConfig.totalDisponible=tots.disponible;
-  _statsConfig.totalReparacion=tots.reparacion; _statsConfig.totalRetiro=tots.retiro; _statsConfig.totalBaja=tots.baja;
-  db.collection('config').doc('general').set({
-    totalConCliente:tots.con_cliente, totalDisponible:tots.disponible,
-    totalReparacion:tots.reparacion,  totalRetiro:tots.retiro, totalBaja:tots.baja,
-    porLinea:porLinea, porClase:porClase, porCentro:porCentro, valorNeto:valorNeto,
-    porModelo:porModeloTop, resumenModelos:resumen,
-  },{merge:true}).catch(function(){});
-  if(curView==='dashboard')cargarStatsDashboard();
-  if(curView==='resumen')renderResumen();
-}
 
 // ══ RESUMEN (tabla dinámica línea → modelo → estado) ══
 var RES_COLS=[['disponible','Disponible'],['con_cliente','Instalado'],['reparacion','Reparación'],['retiro','Traslado']];
@@ -1605,7 +1512,6 @@ function _resumenHeader(granTotal,nLineas,nModelos){
     +'<button class="btn btn-sm" onclick="expandirResumen(true)">Expandir</button>'
     +'<button class="btn btn-sm" onclick="expandirResumen(false)">Colapsar</button>'
     +'<button class="btn btn-sm" onclick="descargarResumenCSV()">⬇ CSV</button>'
-    +'<button class="btn btn-sm" onclick="calcularModelosAhora(this)" title="Recalcular">↻</button>'
     +'</div></div>';
 }
 var RES_COLORS=['#2a4a1e','#3d6b2c','#8b6914','#5a8f42','#6b4423','#4a7a6b','#2d5a3d','#7a6b2a','#5a4a3e','#3d6b4a'];
@@ -1614,8 +1520,7 @@ function renderResumen(){
   var R=(_statsConfig&&_statsConfig.resumenModelos)||{};
   if(!Object.keys(R).length){
     w.innerHTML='<div class="tbl-box" style="padding:28px;text-align:center">'
-      +'<div style="font-size:13px;color:#6b7c63;margin-bottom:14px">El resumen se genera al procesar el parque. Si acabas de actualizar los datos en SAP, calcúlalo ahora:</div>'
-      +'<button onclick="calcularModelosAhora(this)" style="background:linear-gradient(135deg,var(--cf-green),var(--cf-green2));color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">Calcular ahora</button>'
+      +'<div style="font-size:13px;color:#6b7c63">Aún no hay resumen generado.<br>Ejecuta <code>node cafiver-resumen.js</code> en el servidor para calcularlo.</div>'
       +'</div>';
     return;
   }
@@ -1736,30 +1641,6 @@ function renderEquipos(){
   buscarEquiposFirestore(); // cargar siempre al entrar
 }
 // ══ CLIENTES ══
-function cargarEquiposBajoDemanda(callback){
-  if(_clientesCargados){ if(callback)callback(); return; }
-  _clientesCargados=true;
-  setSyncUI('saving','Cargando equipos...');
-  function cargarPagina(ultimo){
-    var q=db.collection('equipos').orderBy('activoFijo').limit(500);
-    if(ultimo)q=q.startAfter(ultimo);
-    q.get().then(function(s){
-      var nuevos=s.docs.map(function(d){return{id:d.id,...d.data()};});
-      clientes=clientes.concat(nuevos);
-      equipos=clientes;
-      var _spt=document.getElementById('splash-txt');
-      if(_spt)_spt.textContent='Procesando equipos… '+clientes.length.toLocaleString();
-      if(s.docs.length===500){
-        cargarPagina(s.docs[s.docs.length-1]);
-      }else{
-        setSyncUI('ok','En línea ✓');
-        actualizarTotalesConfig();
-        if(callback)callback();
-      }
-    }).catch(function(e){setSyncUI('error','Error');console.warn(e);});
-  }
-  cargarPagina(null);
-}
 
 function buscarEquiposFirestore(){
   var tbody=document.getElementById('eq-tbody');
@@ -2631,35 +2512,29 @@ function printTodasEtiquetas(){
 // ══ REPORTES ══
 function renderReportes(){
   var w=document.getElementById('view-reportes');if(!w)return;
-  if(!_clientesCargados){cargarEquiposBajoDemanda(function(){renderReportes();});return;}
   var total=ordenes.length;
   var ingr=ordenes.reduce(function(a,o){return a+(o.costoTotal||0);},0);
   var corr=ordenes.filter(function(o){return o.tipo==='correctivo';}).length;
   var prev=ordenes.filter(function(o){return o.tipo==='preventivo';}).length;
   var byTec={};ordenes.forEach(function(o){if(!byTec[o.tecnicoNombre||'—']){byTec[o.tecnicoNombre||'—']={n:0,c:0};}byTec[o.tecnicoNombre||'—'].n++;byTec[o.tecnicoNombre||'—'].c+=o.costoTotal||0;});
   var byCe={};ordenes.forEach(function(o){if(!byCe[o.centro||'—']){byCe[o.centro||'—']={n:0,c:0};}byCe[o.centro||'—'].n++;byCe[o.centro||'—'].c+=o.costoTotal||0;});
-  // Calcular tabla de equipos por centro y línea
-  var LINEAS=['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'];
-  var tabCentro={};
-  clientes.forEach(function(c){
-    var ce=c.centro||'—';
-    var alm=String(c.almacen||'—');
-    var key=ce+'|'+alm;
-    if(!tabCentro[key])tabCentro[key]={ce:ce,alm:alm,total:0};
-    LINEAS.forEach(function(l){tabCentro[key][l]=tabCentro[key][l]||0;});
-    // Normalizar línea para Cafe soluble
-    var lin=c.linea||'—';
-    if(lin.startsWith('Caf')&&lin.includes('soluble'))lin='Cafe soluble';
-    if(tabCentro[key][lin]!==undefined)tabCentro[key][lin]++;
-    tabCentro[key].total++;
-  });
-  // Agrupar por centro
+  // ── Tabla de equipos por centro y línea: PRECALCULADA en config/general ──
+  // (antes se escaneaban los ~48k equipos aquí: ~49,000 lecturas por visita)
+  var cfg=_statsConfig||{};
+  var CL=cfg.centroLinea||{};
+  var LINEAS=(cfg.lineasCat&&cfg.lineasCat.length)?cfg.lineasCat:Object.keys(cfg.porLinea||{}).sort();
   var tabByCe={};
-  Object.values(tabCentro).forEach(function(r){
-    if(!tabByCe[r.ce])tabByCe[r.ce]={ce:r.ce,rows:[],totals:{}};
-    tabByCe[r.ce].rows.push(r);
-    LINEAS.forEach(function(l){tabByCe[r.ce].totals[l]=(tabByCe[r.ce].totals[l]||0)+(r[l]||0);});
-    tabByCe[r.ce].totals.total=(tabByCe[r.ce].totals.total||0)+r.total;
+  Object.keys(CL).forEach(function(ce){
+    var alms=CL[ce];
+    tabByCe[ce]={ce:ce,rows:[],totals:{}};
+    Object.keys(alms).forEach(function(alm){
+      var a=alms[alm];
+      var row={ce:ce,alm:alm,total:a.total||0};
+      LINEAS.forEach(function(l){row[l]=a[l]||0;});
+      tabByCe[ce].rows.push(row);
+      LINEAS.forEach(function(l){tabByCe[ce].totals[l]=(tabByCe[ce].totals[l]||0)+(a[l]||0);});
+      tabByCe[ce].totals.total=(tabByCe[ce].totals.total||0)+(a.total||0);
+    });
   });
   var totalGeneral={total:0};
   LINEAS.forEach(function(l){totalGeneral[l]=0;});
