@@ -351,6 +351,63 @@ tbody td{padding:5px 8px!important;border-bottom:1px solid rgba(42,74,30,.06)!im
 .db-acc:hover{background:var(--cf-cream2)!important;border-color:var(--cf-green3)!important}
 .db-kpi-skeleton{background:linear-gradient(90deg,var(--cf-cream) 0%,var(--cf-cream2) 50%,var(--cf-cream) 100%)!important}
 #toast{background:var(--cf-green)!important}
+/* ══════════ CAFIVER · SKIN "BARISTATECH CLAY" (solo estética) ══════════ */
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600&family=Hanken+Grotesk:wght@400;500;700&display=swap');
+:root{
+  --cf-cream:#fff8f2; --cf-cream2:#f4ede6;
+  --cf-green:#154212; --cf-green2:#002b02; --cf-green3:#24501f;
+  --cf-gold:#904d00; --cf-text:#1e1b17; --cf-text2:#42493e;
+  --cf-border:#dcd5cc; --cf-white:#fff8f2;
+  --clay-light:#ffffff; --clay-dark:#e5e2d9;
+  --cf-shadow:-5px -5px 10px var(--clay-light), 5px 5px 14px var(--clay-dark);
+}
+body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-serif!important}
+.proj-name,.splash-brand,.tbl-hdr-title,.form-section,.db-card-hd,.db-title{font-family:'Source Serif 4',serif!important;letter-spacing:normal!important}
+
+/* ── ESCRITORIO: topbar horizontal → barra lateral ── */
+#app{flex-direction:row!important}
+.topbar{
+  flex-direction:column!important; align-items:stretch!important;
+  height:100vh!important; width:212px!important; padding:16px 12px!important;
+  gap:3px!important; overflow-y:auto!important; flex-wrap:nowrap!important;
+  border-bottom:none!important; border-right:1px solid var(--cf-border)!important;
+  box-shadow:4px 0 18px rgba(21,66,18,.05)!important; background:var(--cf-cream2)!important;
+}
+.logo-wrap{flex-direction:column!important; gap:8px!important; margin:2px 0 16px!important; align-items:center!important;text-align:center!important}
+.tnav{width:100%!important; justify-content:flex-start!important; padding:9px 12px!important; border-radius:12px!important; font-size:12.5px!important; gap:10px!important; color:var(--cf-text2)!important}
+.tnav-txt{display:inline!important}
+.tnav:hover{background:rgba(21,66,18,.06)!important; color:var(--cf-green)!important}
+.tnav.on{background:var(--cf-green)!important; color:#fff!important; border-radius:12px!important; box-shadow:inset 2px 2px 5px rgba(0,0,0,.18)!important}
+.topbar-right{margin-left:0!important; margin-top:auto!important; flex-direction:column!important; align-items:stretch!important; width:100%!important; gap:6px!important; border-top:1px solid var(--cf-border)!important; padding-top:12px!important}
+.topbar-right .btn{width:100%!important; justify-content:center!important}
+.sync-pill,.user-pill{width:100%!important; justify-content:center!important}
+.view-wrap{height:100vh!important; background:var(--cf-cream)!important}
+
+/* ── Tarjetas / inputs / botones estilo "clay" ── */
+.tbl-box,.db-card{background:var(--cf-white)!important; border:none!important; border-radius:18px!important; box-shadow:var(--cf-shadow)!important}
+.db-title,.db-card-hd{color:var(--cf-green)!important}
+.fi-sm,input.fi-sm,select.fi-sm{background:var(--cf-cream2)!important; border:none!important; border-radius:999px!important; box-shadow:inset 2px 2px 5px var(--clay-dark),inset -2px -2px 5px var(--clay-light)!important; color:var(--cf-text)!important}
+.fi-sm:focus{box-shadow:inset 2px 2px 5px var(--clay-dark),inset -2px -2px 5px var(--clay-light),0 0 0 2px rgba(21,66,18,.22)!important}
+.btn{background:var(--cf-white)!important; border:none!important; border-radius:12px!important; box-shadow:-2px -2px 5px var(--clay-light),2px 2px 6px var(--clay-dark)!important; color:var(--cf-text)!important}
+.btn:hover{box-shadow:-1px -1px 3px var(--clay-light),1px 1px 3px var(--clay-dark)!important}
+.btn:active{box-shadow:inset 2px 2px 5px var(--clay-dark),inset -2px -2px 5px var(--clay-light)!important}
+.btn-blue{background:var(--cf-green)!important; color:#fff!important; box-shadow:-2px -2px 5px var(--clay-light),3px 3px 9px var(--clay-dark)!important}
+.icon-btn{background:var(--cf-white)!important; border:none!important; border-radius:9px!important; box-shadow:-2px -2px 4px var(--clay-light),2px 2px 4px var(--clay-dark)!important}
+.icon-btn:hover{box-shadow:inset 1px 1px 3px var(--clay-dark),inset -1px -1px 3px var(--clay-light)!important}
+
+/* ── Splash con la nueva tipografía/paleta ── */
+.splash-brand{font-family:'Source Serif 4',serif!important;letter-spacing:.12em!important;color:var(--cf-green)!important}
+
+/* ── MÓVIL: vuelve a barra superior (bottom nav queda para el siguiente paso) ── */
+@media(max-width:820px){
+  #app{flex-direction:column!important}
+  .topbar{flex-direction:row!important; flex-wrap:wrap!important; width:auto!important; height:auto!important; overflow:visible!important; border-right:none!important; border-bottom:1px solid var(--cf-border)!important; box-shadow:0 2px 10px rgba(21,66,18,.06)!important; gap:5px!important; padding:10px 12px!important}
+  .logo-wrap{flex-direction:row!important; margin:0 8px 0 0!important}
+  .tnav{width:auto!important; padding:6px 9px!important}
+  .topbar-right{flex-direction:row!important; margin-top:0!important; margin-left:auto!important; width:100%!important; justify-content:flex-end!important; border-top:1px solid var(--cf-border)!important; padding-top:8px!important}
+  .topbar-right .btn,.sync-pill,.user-pill{width:auto!important}
+  .view-wrap{height:auto!important}
+}
 </style>
 </head>
 <body>
@@ -1719,193 +1776,177 @@ function renderEquiposTabla(data){
 }
 
 // ══ CLIENTES ══
-function renderClientes(){
-  var w=document.getElementById('view-clientes');if(!w)return;
-  // Construir shell solo una vez
-  if(!document.getElementById('cl-tbody')){
-    w.innerHTML=
-      '<div class="tbl-box">'
-      +'<div class="tbl-hdr" style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap">'
-      +'<span class="tbl-hdr-title" id="cl-count">Clientes con Equipo</span>'
-      +'<input class="fi-sm" id="cl-q" type="search" placeholder="Buscar cliente, hotel, activo fijo..." style="flex:1;min-width:200px">'
-      +'<select class="fi-sm" id="cl-ce" onchange="buscarClientes()">'
-      +optsCentros('')
-      +'</select>'
-      +'<select class="fi-sm" id="cl-cliente" onchange="filtrarClientesPorCliente()" title="Filtrar por cliente"><option value="">Todos los clientes</option></select>'
-      +'<button class="btn btn-blue" onclick="buscarClientes()">Buscar</button>'
-      +'</div>'
-      +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
-      +'<thead><tr>'
-      +'<th style="padding:7px 8px">No.</th>'
-      +'<th style="padding:7px 8px">Activo Fijo</th>'
-      +'<th style="padding:7px 8px">Modelo</th>'
-      +'<th style="padding:7px 8px">No. Serie</th>'
-      +'<th style="padding:7px 8px">Línea</th>'
-      +'<th style="padding:7px 8px">Centro</th>'
-      +'<th style="padding:7px 8px">Cliente / Hotel</th>'
-      +'<th style="padding:7px 8px">Acciones</th>'
-      +'</tr></thead>'
-      +'<tbody id="cl-tbody"><tr><td colspan="8" style="padding:40px;text-align:center;color:#6b7c63">Escribe un cliente o selecciona un centro y presiona Buscar</td></tr></tbody>'
-      +'</table></div></div>';
-    // Buscar al presionar Enter en el input
-    setTimeout(function(){
-      var inp=document.getElementById('cl-q');
-      if(inp)inp.addEventListener('keydown',function(e){if(e.key==='Enter')buscarClientes();});
-    },100);
-    // Centro por defecto + búsqueda automática para no aparecer vacío
-    setTimeout(function(){
-      var sel=document.getElementById('cl-ce');
-      var def=centroPorDefecto();
-      if(sel&&def&&!sel.value){sel.value=def;buscarClientes();}
-    },150);
-  }
-}
+// ══ VISTA CLIENTES / BODEGA (árbol, consultas acotadas) ══
+var _clModo='clientes', _clAbierto={}, _clData=[];
 
-// Elige un centro por defecto: prefiere uno EU* (Equipo Usado = con cliente) para no salir vacío
+function renderClientes(){
+  var w=document.getElementById('view-clientes'); if(!w)return;
+  var modo=_clModo;
+  w.innerHTML=
+    '<div class="tbl-box">'
+    +'<div class="tbl-hdr" style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap">'
+    +'<div style="display:flex;gap:4px">'
+    +'<button class="btn btn-sm'+(modo==='clientes'?' btn-blue':'')+'" onclick="clSetModo(\'clientes\')">👤 Clientes</button>'
+    +'<button class="btn btn-sm'+(modo==='bodega'?' btn-blue':'')+'" onclick="clSetModo(\'bodega\')">📦 Bodega</button>'
+    +'</div>'
+    +'<input class="fi-sm" id="cl-q" type="search" placeholder="'+(modo==='clientes'?'Buscar por número (10237) o nombre (Iberostar)...':'Buscar equipo, modelo o serie...')+'" style="flex:1;min-width:220px">'
+    +'<select class="fi-sm" id="cl-ce">'+optsCentros('')+'</select>'
+    +'<button class="btn btn-blue" onclick="buscarClientes()">Buscar</button>'
+    +'</div>'
+    +'<div id="cl-tree" style="padding:6px 4px"><div style="padding:36px;text-align:center;color:#6b7c63">'
+      +(modo==='clientes'?'Busca un cliente por número o nombre.':'Elige un centro y presiona Buscar para ver su bodega.')
+    +'</div></div>'
+    +'</div>';
+  setTimeout(function(){
+    var inp=document.getElementById('cl-q');
+    if(inp)inp.addEventListener('keydown',function(e){if(e.key==='Enter')buscarClientes();});
+    if(modo==='bodega'){ var sel=document.getElementById('cl-ce'); var def=centroPorDefecto(); if(sel&&def&&!sel.value)sel.value=def; }
+  },80);
+}
+function clSetModo(m){ _clModo=m; _clAbierto={}; _clData=[]; renderClientes(); }
+function clToggle(k){ _clAbierto[k]=!_clAbierto[k]; if(_clModo==='bodega')renderBodegaTree(_clData); else renderClientesTree(_clData); }
+
 function centroPorDefecto(){
-  var keys=(centrosEnUso&&Object.keys(centrosEnUso).length)?Object.keys(centrosEnUso):Object.keys(catalogoCentros);
+  var keys=(typeof centrosEnUso!=='undefined'&&centrosEnUso&&Object.keys(centrosEnUso).length)?Object.keys(centrosEnUso):Object.keys(catalogoCentros||{});
   if(!keys.length)return '';
   var eu=keys.filter(function(k){return /^EU/i.test(k);}).sort();
   return (eu.length?eu:keys.slice().sort())[0]||'';
 }
 
 function buscarClientes(){
-  var tbody=document.getElementById('cl-tbody');if(!tbody)return;
-  var q=(document.getElementById('cl-q')?document.getElementById('cl-q').value:'').trim();
-  if(/^\*+$/.test(q))q='';   // "*" = comodín: sin filtro de texto, lista todo el centro
-  var ce=document.getElementById('cl-ce')?document.getElementById('cl-ce').value:'';
-  var cnt=document.getElementById('cl-count');
-  if(!q&&!ce){
-    tbody.innerHTML='<tr><td colspan="8" style="padding:40px;text-align:center;color:#6b7c63">Escribe un cliente o selecciona un centro y presiona Buscar</td></tr>';
-    return;
-  }
-  tbody.innerHTML='<tr><td colspan="8" style="padding:40px;text-align:center;color:#6b7c63">Buscando...</td></tr>';
-  var col=db.collection('equipos');
-  var promises=[];
-  var esAF=(q&&!isNaN(q));   // búsqueda por número de activo fijo
-  // Consultas por UN SOLO campo (sin índice compuesto). Estado, centro y texto
-  // se afinan en el cliente para no depender de índices en Firestore.
-  if(esAF){
-    promises.push(col.where('activoFijo','==',parseFloat(q)).limit(50).get());
-  } else if(q){
-    // Prefijo por nombre en 3 variantes de mayúsculas/minúsculas (cada una un solo campo)
-    var variantes=[q, q.toUpperCase(), q.charAt(0).toUpperCase()+q.slice(1).toLowerCase()];
-    var visto={};
-    variantes.forEach(function(v){
-      if(visto[v])return; visto[v]=true;
-      var vHi=v.replace(/.$/, function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
-      promises.push(col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(300).get());
-    });
-    if(ce)promises.push(col.where('centro','==',ce).limit(2000).get());
-  } else if(ce){
-    promises.push(col.where('centro','==',ce).limit(2000).get());
+  var tree=document.getElementById('cl-tree'); if(!tree)return;
+  var q=((document.getElementById('cl-q')||{}).value||'').trim();
+  var ce=(document.getElementById('cl-ce')||{}).value||'';
+  tree.innerHTML='<div style="padding:36px;text-align:center;color:#6b7c63">Buscando...</div>';
+  var col=db.collection('equipos'), promises=[];
+  if(_clModo==='bodega'){
+    if(!ce){ tree.innerHTML='<div style="padding:36px;text-align:center;color:#6b7c63">Elige un centro para ver su bodega.</div>'; return; }
+    promises.push(col.where('centro','==',ce).limit(4000).get());
+  } else {
+    if(!q&&!ce){ tree.innerHTML='<div style="padding:36px;text-align:center;color:#6b7c63">Busca por número o nombre de cliente.</div>'; return; }
+    if(q&&!isNaN(q)){
+      promises.push(col.where('cliente','==',q).limit(1500).get());
+      promises.push(col.where('activoFijo','==',parseFloat(q)).limit(50).get());
+    } else if(q){
+      var variantes=[q,q.toUpperCase(),q.charAt(0).toUpperCase()+q.slice(1).toLowerCase()], visto={};
+      variantes.forEach(function(v){ if(visto[v])return; visto[v]=true;
+        var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
+        promises.push(col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(600).get());
+      });
+      if(ce)promises.push(col.where('centro','==',ce).limit(4000).get());
+    } else if(ce){
+      promises.push(col.where('centro','==',ce).limit(4000).get());
+    }
   }
   Promise.all(promises).then(function(snaps){
     var seen={}, data=[];
-    snaps.forEach(function(snap){
-      snap.docs.forEach(function(d){
-        if(seen[d.id])return;
-        seen[d.id]=true;
-        var e={id:d.id,...d.data()};
-        // Solo equipos con cliente asignado (salvo búsqueda directa por activo fijo)
-        if(!esAF&&(e.estado||'')!=='con_cliente')return;
-        if(ce&&e.centro!==ce)return;
-        if(q&&isNaN(q)){
-          var ql=q.toLowerCase();
-          var match=(e.clienteNombre||'').toLowerCase().includes(ql)||
-                    (e.modelo||'').toLowerCase().includes(ql)||
-                    String(e.serie||'').toLowerCase().includes(ql);
-          if(!match)return;
-        }
-        data.push(e);
-      });
+    snaps.forEach(function(s){ s.docs.forEach(function(d){ if(seen[d.id])return; seen[d.id]=true; data.push({id:d.id, ...d.data()}); }); });
+    var ql=q.toLowerCase(), qNum=(q&&!isNaN(q));
+    data=data.filter(function(e){
+      if(ce&&e.centro!==ce)return false;
+      var ubi=e.ubicacion||(e.estado==='con_cliente'?'cliente':(e.estado==='bodega'?'bodega':''));
+      if(_clModo==='bodega'){ if(ubi!=='bodega')return false; }
+      else { if(ubi!=='cliente'&&!(qNum&&String(e.activoFijo)===q))return false; }
+      if(q&&!qNum){
+        if(!((e.clienteNombre||'').toLowerCase().includes(ql)||(e.modelo||'').toLowerCase().includes(ql)||String(e.serie||'').toLowerCase().includes(ql)))return false;
+      }
+      if(q&&qNum&&_clModo==='bodega'){
+        if(!(String(e.activoFijo).includes(q)||String(e.serie||'').includes(q)))return false;
+      }
+      return true;
     });
-    if(cnt)cnt.textContent='Clientes con Equipo — '+data.length.toLocaleString();
-    _clientesRes=data;
-    poblarFiltroClientes(data);
-    renderTablaClientes(data,tbody);
-  }).catch(function(err){
-    tbody.innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:red">Error: '+err.message+'</td></tr>';
-  });
+    _clData=data; _clientesRes=data;
+    if(_clModo==='bodega')renderBodegaTree(data); else renderClientesTree(data);
+  }).catch(function(err){ tree.innerHTML='<div style="padding:20px;text-align:center;color:red">Error: '+err.message+'</div>'; });
 }
 
-// Llena el select de clientes con los distintos clientes del resultado actual.
-// Muestra "almacén — nombre" (o el número si no hay nombre), como el filtro de centro.
-function poblarFiltroClientes(data){
-  var sel=document.getElementById('cl-cliente');if(!sel)return;
-  var map={};
+// Árbol: Cliente → Almacén → equipos
+function renderClientesTree(data){
+  var tree=document.getElementById('cl-tree'); if(!tree)return;
+  if(!data.length){ tree.innerHTML='<div style="padding:36px;text-align:center;color:#6b7c63">Sin resultados.</div>'; return; }
+  var porCli={};
   data.forEach(function(e){
-    var nombre=(e.clienteNombre||getAlmacenNombre(e.centro,e.almacen)||'').trim();
-    var alm=(e.almacen||'').trim();
-    var key=nombre||('ALM:'+alm)||('CE:'+e.centro);
-    if(!map[key])map[key]={key:key,nombre:nombre,almacen:alm,count:0};
-    map[key].count++;
+    var cnum=String(e.cliente||'').trim()||'—';
+    var cnom=e.clienteNombre||getClienteNombre(cnum)||cnum;
+    if(!porCli[cnum])porCli[cnum]={num:cnum,nombre:cnom,total:0,alm:{}};
+    porCli[cnum].total++;
+    var akey=(e.centro||'')+'_'+(e.almacen||'');
+    if(!porCli[cnum].alm[akey])porCli[cnum].alm[akey]={key:akey,nombre:getAlmacenNombre(e.centro,e.almacen),centro:e.centro,almacen:e.almacen,eq:[]};
+    porCli[cnum].alm[akey].eq.push(e);
   });
-  _clFiltroClientes=Object.values(map).sort(function(a,b){
-    var an=(a.nombre||a.almacen||'').toLowerCase(), bn=(b.nombre||b.almacen||'').toLowerCase();
-    return an<bn?-1:(an>bn?1:0);
+  var clientes=Object.values(porCli).sort(function(a,b){return b.total-a.total;});
+  var html='<div style="padding:4px 10px 10px;color:#6b7c63;font-size:12px">'+clientes.length.toLocaleString()+' cliente(s) · '+data.length.toLocaleString()+' equipos</div>';
+  clientes.forEach(function(c){
+    var kC='C:'+c.num, abC=!!_clAbierto[kC];
+    html+='<div style="border:1px solid rgba(42,74,30,.1);border-radius:10px;margin:0 6px 7px;overflow:hidden;background:var(--cf-white)">'
+      +'<div style="cursor:pointer;padding:10px 14px;background:rgba(42,74,30,.05);display:flex;justify-content:space-between;align-items:center;gap:8px" onclick="clToggle(\''+kC+'\')">'
+      +'<span style="font-size:13px;font-weight:700;color:#1e2d1a"><span style="display:inline-block;width:15px;color:#8b6914">'+(abC?'▾':'▸')+'</span>'+esc(c.nombre)+' <span style="color:#8b6914;font-weight:500;font-size:11px">· cliente '+esc(c.num)+'</span></span>'
+      +'<span style="font-size:13px;font-weight:800;color:#2a4a1e;white-space:nowrap">'+c.total.toLocaleString()+' equipos</span></div>';
+    if(abC){
+      var alms=Object.values(c.alm).sort(function(a,b){return b.eq.length-a.eq.length;});
+      alms.forEach(function(a){
+        var kA=kC+'|A:'+a.key, abA=!!_clAbierto[kA];
+        html+='<div style="border-top:1px solid rgba(42,74,30,.06)">'
+          +'<div style="cursor:pointer;padding:8px 14px 8px 30px;display:flex;justify-content:space-between;align-items:center;gap:8px" onclick="clToggle(\''+kA+'\')">'
+          +'<span style="font-size:12px;font-weight:600;color:#2a4a1e"><span style="display:inline-block;width:14px;color:#8b6914">'+(abA?'▾':'▸')+'</span>'+esc(a.nombre)+' <span style="color:#9aa0a6;font-weight:500;font-size:10px">'+bCe(a.centro)+'</span></span>'
+          +'<span style="font-size:12px;font-weight:700;color:#5a8f42">'+a.eq.length+'</span></div>';
+        if(abA)html+=tablaEquiposArbol(a.eq);
+        html+='</div>';
+      });
+    }
+    html+='</div>';
   });
-  var prev=sel.value;
-  sel.innerHTML='<option value="">Todos los clientes ('+data.length.toLocaleString()+')</option>'
-    +_clFiltroClientes.map(function(c,i){
-      var etiqueta=c.nombre
-        ?(c.almacen?c.almacen+' — '+c.nombre:c.nombre)
-        :(c.almacen||'—');
-      return'<option value="'+i+'">'+etiqueta+' ('+c.count+')</option>';
-    }).join('');
-  sel.value=''; // al recargar, mostrar todos
+  tree.innerHTML=html;
 }
 
-// Filtra la tabla al cliente elegido (sin volver a consultar la base)
-function filtrarClientesPorCliente(){
-  var sel=document.getElementById('cl-cliente');
-  var tbody=document.getElementById('cl-tbody');
-  if(!sel||!tbody)return;
-  var cnt=document.getElementById('cl-count');
-  var idx=sel.value;
-  var subset;
-  if(idx===''||!_clFiltroClientes[idx]){
-    subset=_clientesRes;
-  }else{
-    var c=_clFiltroClientes[idx];
-    subset=_clientesRes.filter(function(e){
-      var nombre=(e.clienteNombre||getAlmacenNombre(e.centro,e.almacen)||'').trim();
-      var alm=(e.almacen||'').trim();
-      var key=nombre||('ALM:'+alm)||('CE:'+e.centro);
-      return key===c.key;
-    });
-  }
-  if(cnt)cnt.textContent='Clientes con Equipo — '+subset.length.toLocaleString();
-  renderTablaClientes(subset,tbody);
+// Árbol bodega: Almacén → equipos (dentro del centro elegido)
+function renderBodegaTree(data){
+  var tree=document.getElementById('cl-tree'); if(!tree)return;
+  if(!data.length){ tree.innerHTML='<div style="padding:36px;text-align:center;color:#6b7c63">Este centro no tiene equipos en bodega (o ninguno coincide).</div>'; return; }
+  var porAlm={};
+  data.forEach(function(e){
+    var akey=(e.centro||'')+'_'+(e.almacen||'');
+    if(!porAlm[akey])porAlm[akey]={key:akey,nombre:getAlmacenNombre(e.centro,e.almacen),centro:e.centro,almacen:e.almacen,eq:[]};
+    porAlm[akey].eq.push(e);
+  });
+  var alms=Object.values(porAlm).sort(function(a,b){return b.eq.length-a.eq.length;});
+  var html='<div style="padding:4px 10px 10px;color:#6b7c63;font-size:12px">📦 Bodega · '+alms.length+' almacén(es) · '+data.length.toLocaleString()+' equipos</div>';
+  alms.forEach(function(a){
+    var kA='B:'+a.key, abA=!!_clAbierto[kA];
+    html+='<div style="border:1px solid rgba(42,74,30,.1);border-radius:10px;margin:0 6px 7px;overflow:hidden;background:var(--cf-white)">'
+      +'<div style="cursor:pointer;padding:10px 14px;background:rgba(139,105,20,.06);display:flex;justify-content:space-between;align-items:center;gap:8px" onclick="clToggle(\''+kA+'\')">'
+      +'<span style="font-size:13px;font-weight:700;color:#1e2d1a"><span style="display:inline-block;width:15px;color:#8b6914">'+(abA?'▾':'▸')+'</span>'+esc(a.nombre)+' <span style="color:#9aa0a6;font-weight:500;font-size:10px">'+esc(a.centro||'')+' · '+esc(a.almacen||'')+'</span></span>'
+      +'<span style="font-size:13px;font-weight:800;color:#8b6914;white-space:nowrap">'+a.eq.length.toLocaleString()+' equipos</span></div>';
+    if(abA)html+=tablaEquiposArbol(a.eq);
+    html+='</div>';
+  });
+  tree.innerHTML=html;
 }
 
-function renderTablaClientes(data, tbody){
-  tbody.innerHTML=data.length?data.map(function(e,i){
+function tablaEquiposArbol(eqs){
+  var rows=eqs.slice().sort(function(a,b){return (a.activoFijo||0)-(b.activoFijo||0);}).map(function(e){
     var rid=String(e.id);
-    return'<tr class="db-tr" style="border-bottom:1px solid rgba(42,74,30,.07);cursor:pointer">'
-      +'<td style="padding:5px 8px;color:#8b6914;font-size:10px">'+(i+1)+'</td>'
-      +'<td style="padding:5px 8px"><span style="font-family:monospace;font-weight:700;color:#2a4a1e;font-size:12px">'+e.activoFijo+'</span></td>'
-      +'<td style="padding:5px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500">'+(e.modelo||'—')+'</td>'
-      +'<td style="padding:5px 8px;font-family:monospace;font-size:11px;color:#4a5e42">'+(e.serie||'—')+'</td>'
-      +'<td style="padding:5px 8px">'+lbl(e.linea,e.grupoArt)+'</td>'
-      +'<td style="padding:5px 8px">'+bCe(e.centro)+'</td>'
-      +'<td style="padding:5px 8px;font-size:12px;font-weight:600;color:#2a4a1e;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.clienteNombre||getAlmacenNombre(e.centro,e.almacen)||'—')+'</td>'
-      +'<td style="padding:5px 8px"><div style="display:flex;gap:3px">'
+    return '<tr style="border-bottom:1px solid rgba(42,74,30,.05)">'
+      +'<td style="padding:4px 8px;font-family:monospace;font-weight:700;color:#2a4a1e;font-size:11px">'+e.activoFijo+'</td>'
+      +'<td style="padding:4px 8px;font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.modelo||'—')+'</td>'
+      +'<td style="padding:4px 8px;font-family:monospace;font-size:10px;color:#4a5e42">'+(e.serie||'—')+'</td>'
+      +'<td style="padding:4px 8px">'+lbl(e.linea,e.grupoArt)+'</td>'
+      +'<td style="padding:4px 8px"><div style="display:flex;gap:3px">'
       +'<button class="icon-btn" title="Ver ficha" data-rid="'+rid+'" onclick="openPanel(this.dataset.rid,\'cl\')">👁</button>'
       +'<button class="icon-btn" title="Nueva orden" data-rid="'+rid+'" onclick="ordenDesdeCliente(this.dataset.rid)">📋</button>'
-      +'<button class="icon-btn" title="Cambiar estado" data-rid="'+rid+'" onclick="estadoDesdeCliente(this.dataset.rid)">⇄</button>'
-      +'</div></td>'
-      +'</tr>';
-  }).join(''):(function(){
-    var qv=(document.getElementById('cl-q')?document.getElementById('cl-q').value:'').trim();
-    if(/^\*+$/.test(qv))qv='';
-    var cv=document.getElementById('cl-ce')?document.getElementById('cl-ce').value:'';
-    var msg = cv&&!qv ? 'Este centro no tiene equipos con cliente asignado.'
-            : qv ? 'Sin resultados para "'+qv+'"'
-            : 'Escribe un cliente o selecciona un centro y presiona Buscar';
-    return'<tr><td colspan="8" style="padding:40px;text-align:center;color:#6b7c63">'+msg+'</td></tr>';
-  })();
+      +'</div></td></tr>';
+  }).join('');
+  return '<div style="overflow-x:auto;padding:2px 8px 8px 30px"><table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr>'
+    +'<th style="padding:4px 8px;text-align:left;font-size:9px;color:#9aa0a6;text-transform:uppercase">Activo</th>'
+    +'<th style="padding:4px 8px;text-align:left;font-size:9px;color:#9aa0a6;text-transform:uppercase">Modelo</th>'
+    +'<th style="padding:4px 8px;text-align:left;font-size:9px;color:#9aa0a6;text-transform:uppercase">Serie</th>'
+    +'<th style="padding:4px 8px;text-align:left;font-size:9px;color:#9aa0a6;text-transform:uppercase">Línea</th>'
+    +'<th style="padding:4px 8px;text-align:left;font-size:9px;color:#9aa0a6;text-transform:uppercase">Acciones</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
+
+
 
 // ══ DIRECTORIO DE CLIENTES ══
 function renderDirectorio(){
