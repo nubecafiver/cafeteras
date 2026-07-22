@@ -173,12 +173,12 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 <script>
 // ══════════ CONFIG FIREBASE ══════════
 var firebaseConfig = {
-  apiKey:            'AIzaSyDTo9_ExbhOSAuzDDS81lZXoxUlKqGel_Q',
-  authDomain:        'cafeteras-90e78.firebaseapp.com',
-  projectId:         'cafeteras-90e78',
-  storageBucket:     'cafeteras-90e78.firebasestorage.app',
-  messagingSenderId: '307085933091',
-  appId:             '1:307085933091:web:43caf1ec5a163d97960f96'
+  apiKey: "AIzaSyDTo9_ExbhOSAuzDDS81lZXoxUlKqGel_Q",
+  authDomain: "cafeteras-90e78.firebaseapp.com",
+  projectId: "cafeteras-90e78",
+  storageBucket: "cafeteras-90e78.firebasestorage.app",
+  messagingSenderId: "307085933091",
+  appId: "1:307085933091:web:43caf1ec5a163d97960f96"
 };
 firebase.initializeApp(firebaseConfig);
 var auth = firebase.auth();
@@ -673,20 +673,45 @@ function guardarOrden(){
 
 // ══════════ ESCÁNER QR (ZXing 0.19.1, igual que el escritorio) ══════════
 var _codeReader=null, _lastScan=null;
+// Carga ZXing desde varios CDN con respaldo (algunos celulares no alcanzan uno u otro)
+function ensureZXing(){
+  return new Promise(function(resolve,reject){
+    if(typeof ZXing!=='undefined'){resolve();return;}
+    var urls=[
+      'https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js',
+      'https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/zxing-js-library/0.19.1/umd/index.min.js'
+    ];
+    var i=0;
+    (function tryNext(){
+      if(typeof ZXing!=='undefined'){resolve();return;}
+      if(i>=urls.length){reject(new Error('cdn'));return;}
+      var s=document.createElement('script');
+      s.src=urls[i++];
+      s.onload=function(){ setTimeout(function(){ if(typeof ZXing!=='undefined')resolve(); else tryNext(); },60); };
+      s.onerror=tryNext;
+      document.head.appendChild(s);
+    })();
+  });
+}
 function openScan(){
   $('scanWrap').style.display='flex';
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ toast('Este navegador no permite usar la cámara.'); setTimeout(closeScan,2000); return; }
-  if(typeof ZXing==='undefined'){ toast('El escáner no cargó. Revisa tu conexión y vuelve a abrir.'); setTimeout(closeScan,1800); return; }
-  // 1) Pedir permiso + cámara trasera PRIMERO (dispara el aviso en Android de forma confiable)
-  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}}).then(function(stream){
+  toast('Cargando escáner...');
+  ensureZXing().then(function(){
+    // 1) Pedir permiso + cámara trasera PRIMERO (dispara el aviso en Android de forma confiable)
+    return navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});
+  }).then(function(stream){
     stream.getTracks().forEach(function(t){t.stop();});  // soltar; ZXing abrirá el suyo
     iniciarZXing();
   }).catch(function(e){
-    console.error('getUserMedia:',e);
-    var m = (e.name==='NotAllowedError'||e.name==='SecurityError') ? 'Permiso de cámara denegado. Tócale al candado ⓘ junto a la dirección → Permisos → Cámara → Permitir, y recarga.' :
-            e.name==='NotFoundError' ? 'No se encontró ninguna cámara en el dispositivo.' :
-            e.name==='NotReadableError' ? 'La cámara está siendo usada por otra app. Ciérrala e intenta de nuevo.' :
-            'No se pudo abrir la cámara ('+(e.name||e.message)+').';
+    console.error('scan error:',e);
+    var m;
+    if(e && e.message==='cdn'){ m='No se pudo cargar el escáner (sin conexión estable). Conéctate a wifi/datos e intenta de nuevo.'; }
+    else if(e && (e.name==='NotAllowedError'||e.name==='SecurityError')){ m='Permiso de cámara denegado. Toca el candado ⓘ junto a la dirección → Permisos → Cámara → Permitir, y recarga.'; }
+    else if(e && e.name==='NotFoundError'){ m='No se encontró ninguna cámara en el dispositivo.'; }
+    else if(e && e.name==='NotReadableError'){ m='La cámara está siendo usada por otra app. Ciérrala e intenta de nuevo.'; }
+    else { m='No se pudo abrir la cámara ('+((e&&(e.name||e.message))||'?')+').'; }
     toast(m); setTimeout(closeScan,3500);
   });
 }
