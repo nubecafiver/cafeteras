@@ -8,7 +8,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+<script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 <style>
 :root{
   --bg:#fff8f2; --surface:#fff8f2; --surface2:#f4ede6; --low:#faf2eb;
@@ -173,13 +173,12 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 <script>
 // ══════════ CONFIG FIREBASE ══════════
 var firebaseConfig = {
-   apiKey:            'AIzaSyDTo9_ExbhOSAuzDDS81lZXoxUlKqGel_Q',
-  authDomain:        'cafeteras-90e78.firebaseapp.com',
-  projectId:         'cafeteras-90e78',
-  storageBucket:     'cafeteras-90e78.firebasestorage.app',
-  messagingSenderId: '307085933091',
-  appId:             '1:307085933091:web:43caf1ec5a163d97960f96'
-
+  apiKey: "AIzaSyD-PLACEHOLDER-REEMPLAZAR",
+  authDomain: "cafeteras-90e78.firebaseapp.com",
+  projectId: "cafeteras-90e78",
+  storageBucket: "cafeteras-90e78.firebasestorage.app",
+  messagingSenderId: "000000000000",
+  appId: "1:000000000000:web:0000000000000000000000"
 };
 firebase.initializeApp(firebaseConfig);
 var auth = firebase.auth();
@@ -586,22 +585,40 @@ function guardarOrden(){
   }).catch(function(e){ toast('Error: '+e.message); abrirFormOrden(); });
 }
 
-// ══════════ ESCÁNER QR ══════════
-var _codeReader=null;
+// ══════════ ESCÁNER QR (ZXing 0.19.1, igual que el escritorio) ══════════
+var _codeReader=null, _lastScan=null;
 function openScan(){
   $('scanWrap').style.display='flex';
-  if(typeof ZXing==='undefined'){toast('Escáner no disponible');return;}
-  _codeReader=new ZXing.BrowserMultiFormatReader();
-  _codeReader.decodeFromVideoDevice(null,'scanVideo',function(result,err){
-    if(result){
-      var txt=result.getText()||'';
-      var m=txt.match(/af=(\w+)/i); var af=m?m[1]:txt.trim();
-      closeScan();
-      $('eq-q').value=af; nav('equipos'); buscarEquipos();
-    }
-  }).catch(function(e){ toast('No pude abrir la cámara'); });
+  if(typeof ZXing==='undefined'){ toast('El escáner no cargó. Revisa tu conexión y vuelve a abrir.'); setTimeout(closeScan,1500); return; }
+  try{
+    _codeReader=new ZXing.BrowserQRCodeReader();
+    _codeReader.listVideoInputDevices().then(function(devices){
+      var deviceId;
+      devices.forEach(function(d){
+        var l=(d.label||'').toLowerCase();
+        if(l.includes('back')||l.includes('rear')||l.includes('trasera')||l.includes('environment'))deviceId=d.deviceId;
+      });
+      if(!deviceId&&devices.length>0)deviceId=devices[devices.length-1].deviceId;
+      _codeReader.decodeFromVideoDevice(deviceId,'scanVideo',function(result,err){
+        if(result){
+          var data=result.getText()||'';
+          var af=null;
+          if(data.includes('af='))af=data.split('af=')[1].split('&')[0].trim();
+          else if(/^\d+$/.test(data.trim()))af=data.trim();
+          else af=data.trim();
+          if(af&&af!==_lastScan){
+            _lastScan=af;
+            if(navigator.vibrate)navigator.vibrate([100,50,100]);
+            closeScan();
+            $('eq-q').value=af; nav('equipos'); buscarEquipos();
+          }
+        }
+        if(err&&!(err instanceof ZXing.NotFoundException))console.warn('ZXing:',err);
+      });
+    }).catch(function(e){ console.error(e); toast('No se pudo acceder a la cámara. Acepta el permiso.'); setTimeout(closeScan,1800); });
+  }catch(e){ console.error(e); toast('Error del escáner: '+e.message); setTimeout(closeScan,1800); }
 }
-function closeScan(){ $('scanWrap').style.display='none'; if(_codeReader){try{_codeReader.reset();}catch(e){}_codeReader=null;} }
+function closeScan(){ $('scanWrap').style.display='none'; if(_codeReader){try{_codeReader.reset();}catch(e){}_codeReader=null;} _lastScan=null; }
 
 </script>
 </body>
