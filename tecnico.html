@@ -9,7 +9,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 <style>
 :root{
   --bg:#fff8f2; --surface:#fff8f2; --surface2:#f4ede6; --low:#faf2eb;
@@ -235,11 +234,21 @@ function folio(){return 'OS-'+Date.now().toString().slice(-8);}
 
 // ══════════ AUTH ══════════
 function doLogin(){
-  var em=$('lg-email').value.trim(), pw=$('lg-pass').value;
+  var em=$('lg-email').value.trim(), pw=$('lg-pass').value.trim();
   $('lg-err').textContent='';
   if(!em||!pw){$('lg-err').textContent='Escribe correo y contraseña.';return;}
-  auth.signInWithEmailAndPassword(em,pw).catch(function(e){
-    $('lg-err').textContent = e.code==='auth/wrong-password'||e.code==='auth/invalid-credential' ? 'Correo o contraseña incorrectos.' : e.message;
+  $('lg-err').textContent='Entrando...';
+  auth.signInWithEmailAndPassword(em,pw).then(function(){ $('lg-err').textContent=''; }).catch(function(e){
+    var msg;
+    if(e.code==='auth/wrong-password'||e.code==='auth/invalid-credential') msg='Correo o contraseña incorrectos.';
+    else if(e.code==='auth/user-not-found') msg='Ese correo no está registrado.';
+    else if(e.code==='auth/invalid-email') msg='El correo no tiene formato válido.';
+    else if(e.code==='auth/network-request-failed') msg='Sin conexión a internet.';
+    else if(e.code==='auth/too-many-requests') msg='Demasiados intentos. Espera un momento.';
+    else if(e.code&&(e.code.indexOf('api-key')>=0||e.code.indexOf('invalid-api')>=0)) msg='Configuración de Firebase incorrecta (revisa firebaseConfig).';
+    else msg=e.message;
+    $('lg-err').textContent = msg+'  ['+(e.code||'?')+']';
+    console.error('login error:', e);
   });
 }
 function doLogout(){ auth.signOut(); }
@@ -413,31 +422,56 @@ function abrirCierre(){
   var o=_ordCerrar; if(!o)return;
   $('sheet-title').textContent='Firmar y cerrar · '+(o.folio||'');
   $('sheet-body').innerHTML=
-    '<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Pásale el teléfono al cliente para que firme. Al cerrar, la orden se marca como terminada y se envía por correo.</div>'
-    +'<div class="frow"><label>Nombre de quien recibe</label><input class="fld" id="c-recibe" placeholder="Encargado de sucursal"></div>'
-    +'<div class="frow"><label>Correo para enviar la orden</label><input class="fld" id="c-email" type="email" inputmode="email" placeholder="correo@cliente.com" value="'+esc(o.emailCliente||'')+'"></div>'
+    '<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Pásale el teléfono al cliente para que firme. Al cerrar, la orden queda terminada y podrás compartirla (WhatsApp, correo, etc.).</div>'
+    +'<div class="frow"><label>Nombre de quien recibe</label><input class="fld" id="c-recibe" placeholder="Encargado de sucursal" value="'+esc(o.recibe||'')+'"></div>'
     +'<div class="frow"><label>Firma del cliente</label><canvas id="sig-cli" width="600" height="200" style="width:100%;height:170px;border-radius:12px;background:#fff;touch-action:none;border:1px solid var(--border)"></canvas>'
       +'<button class="btn" style="width:100%;margin-top:6px;padding:8px" onclick="limpiarFirma(\'cli\')">Borrar firma</button></div>';
-  $('sheet-ft').innerHTML='<button class="btn" onclick="verOrden(\''+o.id+'\')">Atrás</button><button class="btn btn-green" onclick="cerrarOrden()">Cerrar y enviar</button>';
+  $('sheet-ft').innerHTML='<button class="btn" onclick="verOrden(\''+o.id+'\')">Atrás</button><button class="btn btn-green" onclick="cerrarOrden()">Cerrar orden</button>';
   setupCanvas('sig-cli','cli');
 }
 function cerrarOrden(){
   var o=_ordCerrar; if(!o)return;
   var fd=firmaData('cli');
   if(!fd){ toast('Falta la firma del cliente'); return; }
-  var email=($('c-email').value||'').trim();
   var recibe=($('c-recibe').value||'').trim();
-  if(!email){ toast('Escribe el correo para enviar'); return; }
   $('sheet-ft').innerHTML='<button class="btn" disabled>Cerrando...</button>';
   db.collection('ordenes').doc(o.id).update({
     estado:'terminado', firmado:true, firmaClienteData:fd, recibe:recibe,
-    emailCliente:email, cerradoEn:firebase.firestore.FieldValue.serverTimestamp()
+    cerradoEn:firebase.firestore.FieldValue.serverTimestamp()
   }).then(function(){
-    o.emailCliente=email; o.recibe=recibe; o.estado='terminado';
-    enviarCorreoOrden(o);   // envío (EmailJS si está configurado, si no abre app de correo)
+    o.recibe=recibe; o.estado='terminado'; o.firmado=true;
     toast('✅ Orden cerrada');
-    closeSheet(); cargarInicio(); cargarOrdenes();
+    mostrarCompartir(o);   // pantalla de compartir
+    cargarInicio(); cargarOrdenes();
   }).catch(function(e){ toast('Error al cerrar: '+e.message); abrirCierre(); });
+}
+// Pantalla final: compartir por el método que el técnico quiera (share nativo)
+function mostrarCompartir(o){
+  _ordCerrar=o;
+  $('sheet-title').textContent='Orden cerrada · '+(o.folio||'');
+  $('sheet-body').innerHTML=
+    '<div class="clay card-pad" style="text-align:center;margin-bottom:14px">'
+    +'<div style="font-size:34px">✅</div>'
+    +'<div class="serif" style="font-size:18px;color:var(--green);margin-top:4px">Orden terminada</div>'
+    +'<div style="font-size:12px;color:var(--text2);margin-top:4px">'+esc(o.folio||'')+' · '+esc(o.cliente||'')+'</div>'
+    +'</div>'
+    +'<div style="font-size:13px;color:var(--text2);margin-bottom:10px">Comparte el comprobante con el cliente:</div>'
+    +'<pre style="white-space:pre-wrap;font-family:inherit;font-size:12px;background:var(--surface2);border-radius:12px;padding:12px;box-shadow:inset 2px 2px 5px var(--clayD),inset -2px -2px 5px var(--clayL);color:var(--text2)">'+esc(resumenOrdenTexto(o))+'</pre>';
+  $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Listo</button><button class="btn btn-green" onclick="compartirOrden()">📤 Compartir</button>';
+}
+function compartirOrden(){
+  var o=_ordCerrar; if(!o)return;
+  var texto=resumenOrdenTexto(o);
+  var titulo='Orden de servicio '+(o.folio||'')+' - CAFIVER';
+  if(navigator.share){
+    navigator.share({title:titulo, text:texto}).catch(function(e){ if(e && e.name!=='AbortError'){ copiarAlPortapapeles(texto); } });
+  } else {
+    copiarAlPortapapeles(texto);
+  }
+}
+function copiarAlPortapapeles(txt){
+  if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(function(){ toast('Resumen copiado — pégalo en WhatsApp o correo'); }).catch(function(){ toast('Copia manual el texto de arriba'); }); }
+  else { toast('Copia manual el texto de arriba'); }
 }
 
 // ══════════ PM (preventivos pendientes del centro) ══════════
@@ -672,18 +706,9 @@ function openScan(){
 }
 function closeScan(){ $('scanWrap').style.display='none'; if(_codeReader){try{_codeReader.reset();}catch(e){}_codeReader=null;} _lastScan=null; }
 
-// ══════════ ENVÍO DE CORREO (EmailJS) ══════════
-// PASO PENDIENTE: crea una cuenta gratis en emailjs.com y pega tus 3 claves aquí.
-// Mientras estén en "PEGA_...", la app abrirá tu app de correo prellenada como respaldo.
-var EMAILJS = {
-  publicKey:  'PEGA_TU_PUBLIC_KEY',
-  serviceId:  'PEGA_TU_SERVICE_ID',
-  templateId: 'PEGA_TU_TEMPLATE_ID'
-};
-try{ if(window.emailjs && EMAILJS.publicKey.indexOf('PEGA_')!==0){ emailjs.init(EMAILJS.publicKey); } }catch(e){}
-
 function resumenOrdenTexto(o){
-  var t = 'Orden de servicio '+(o.folio||'')+'\n'
+  var t = 'CAFIVER — Orden de servicio '+(o.folio||'')+'\n'
+    + '--------------------------------\n'
     + 'Equipo: '+(o.modelo||'')+'  (AF '+(o.activoFijo||'')+')\n'
     + 'Cliente: '+(o.cliente||'')+'\n'
     + 'Tipo: '+(o.tipo||'')+'\n'
@@ -692,32 +717,8 @@ function resumenOrdenTexto(o){
     + 'Recibe: '+(o.recibe||'')+'\n'
     + 'Total: '+fmt$(o.costoTotal)+'\n';
   if(o.descripcion) t += 'Trabajo: '+o.descripcion+'\n';
+  if(o.lat&&o.lng) t += 'Ubicación: https://maps.google.com/?q='+o.lat+','+o.lng+'\n';
   return t;
-}
-function enviarCorreoOrden(o){
-  var configurado = window.emailjs && EMAILJS.publicKey.indexOf('PEGA_')!==0 && EMAILJS.serviceId.indexOf('PEGA_')!==0 && EMAILJS.templateId.indexOf('PEGA_')!==0;
-  if(configurado){
-    emailjs.send(EMAILJS.serviceId, EMAILJS.templateId, {
-      to_email: o.emailCliente,
-      folio: o.folio||'',
-      cliente: o.cliente||'',
-      equipo: (o.modelo||'')+' (AF '+(o.activoFijo||'')+')',
-      tecnico: o.tecnicoNombre||'',
-      fecha: (o.fechaServicio||'')+' '+(o.horaInicio||''),
-      total: fmt$(o.costoTotal),
-      resumen: resumenOrdenTexto(o)
-    }).then(function(){ toast('📧 Orden enviada a '+o.emailCliente); })
-      .catch(function(e){ console.error('EmailJS:',e); toast('No se pudo enviar el correo automático.'); abrirCorreoManual(o); });
-  } else {
-    // Respaldo: abrir la app de correo prellenada
-    abrirCorreoManual(o);
-  }
-}
-function abrirCorreoManual(o){
-  var asunto = 'Orden de servicio '+(o.folio||'')+' - CAFIVER';
-  var cuerpo = resumenOrdenTexto(o);
-  var url = 'mailto:'+encodeURIComponent(o.emailCliente||'')+'?subject='+encodeURIComponent(asunto)+'&body='+encodeURIComponent(cuerpo);
-  try{ window.location.href = url; }catch(e){}
 }
 
 </script>
