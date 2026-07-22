@@ -1043,7 +1043,7 @@ function actualizarSelectsCentros(){
 
 // Devuelve las <option> de centros, mostrando SOLO los que tienen equipos
 // (centrosEnUso). Respaldo: catálogo completo, o la constante CENTROS.
-function optsCentros(selected){
+function optsCentros(selected, prefijo){
   selected=selected||'';
   var usar=(centrosEnUso&&Object.keys(centrosEnUso).length)?centrosEnUso:null;
   var pares;
@@ -1056,6 +1056,7 @@ function optsCentros(selected){
       .filter(function(e){return usar?Object.prototype.hasOwnProperty.call(usar,e[0]):true;})
       .map(function(e){return[e[0],e[1]];});
   }
+  if(prefijo){ pares=pares.filter(function(p){return String(p[0]).toUpperCase().indexOf(prefijo.toUpperCase())===0;}); }
   pares.sort(function(a,b){return a[1]<b[1]?-1:1;});
   return '<option value="">Todos los centros</option>'
     +pares.map(function(p){return'<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[0]+' — '+p[1]+'</option>';}).join('');
@@ -1790,13 +1791,13 @@ function renderEquipos(){
   w.innerHTML=
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">'
     +'<button class="btn btn-sm'+(eqFiltros.linea===''&&eqFiltros.modelo===''?' btn-blue':'')+'" onclick="eqFiltros.linea=\'\';eqFiltros.q=\'\';eqFiltros.modelo=\'\';buscarEquiposFirestore()">Todos</button>'
-    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" onclick="eqFiltros.modelo=\'\';eqFiltros.linea=\''+l+'\';buscarEquiposFirestore()">'+l+'</button>';}).join('')
+    +['Cafeteras Hoteleras','Cafet. Superautomática','Cafeteras percolador','Cafet. Semiautomática','Molinos','Thermos','Accesorios Cafeteras','Bunn'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" onclick="eqFiltros.modelo=\'\';eqFiltros.linea=\''+l+'\';buscarEquiposFirestore()">'+l+'</button>';}).join('')
     +(eqFiltros.modelo?'<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(42,74,30,.08);border:1px solid var(--cf-border);border-radius:14px;padding:4px 10px;font-size:12px;color:#2a4a1e;font-weight:500">Modelo: '+eqFiltros.modelo+'<span style="cursor:pointer;font-weight:700;color:#8b6914" onclick="eqFiltros.modelo=\'\';buscarEquiposFirestore();renderEquipos()" title="Quitar filtro">✕</span></span>':'')
     +'</div>'
     +'<div class="tbl-box">'
     +'<div class="tbl-hdr"><span class="tbl-hdr-title">Universo de Equipos</span>'
     +'<div class="tbl-tools">'
-    +'<input class="fi-sm" type="text" id="eq-q" placeholder="&#128269; No. Activo, Serie, Modelo..." style="width:230px" value="'+eqFiltros.q+'" oninput="eqFiltros.q=this.value;buscarEquiposFirestore()">'
+    +'<input class="fi-sm" type="text" id="eq-q" placeholder="&#128269; No. Activo, Serie, Modelo... (Enter para buscar)" style="width:250px" value="'+eqFiltros.q+'" oninput="eqFiltros.q=this.value;buscarEquiposDebounce()" onkeydown="if(event.key===\'Enter\'){eqFiltros.q=this.value;buscarEquiposFirestore();}">'
     +'<select class="fi-sm" onchange="eqFiltros.centro=this.value;buscarEquiposFirestore()">'
     +optsCentros(eqFiltros.centro)
     +'</select></div></div>'
@@ -1805,7 +1806,19 @@ function renderEquipos(){
     +'</table></div>'
     +'<div id="eq-footer" style="padding:10px 16px;font-size:12px;color:#9aa0a6;text-align:center;border-top:1px solid #e8eaed"></div>'
     +'</div>';
-  buscarEquiposFirestore(); // cargar siempre al entrar
+  // NO consultar al entrar: solo si ya hay un filtro activo (para no leer de más al abrir la vista)
+  if(eqFiltros.q||eqFiltros.modelo||eqFiltros.linea||eqFiltros.centro)buscarEquiposFirestore();
+}
+var _eqDebounce=null;
+function buscarEquiposDebounce(){
+  if(_eqDebounce)clearTimeout(_eqDebounce);
+  var q=(eqFiltros.q||'').trim();
+  if(q.length<3){  // no consultar hasta tener 3+ caracteres
+    var tb=document.getElementById('eq-tbody');
+    if(tb)tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Escribe al menos 3 caracteres, o presiona Enter</td></tr>';
+    return;
+  }
+  _eqDebounce=setTimeout(buscarEquiposFirestore,450);  // espera a que dejes de escribir
 }
 // ══ CLIENTES ══
 
@@ -1815,7 +1828,8 @@ function buscarEquiposFirestore(){
   var q=(eqFiltros.q||'').trim();
   var col=db.collection('equipos');
   var queries=[];
-  var LIM=2000;
+  var LIM=300;
+  var LINEAS_GRANDES=['Cafeteras Hoteleras','Cafet. Superautomática','Thermos'];
   // Firestore exige índice compuesto al combinar dos campos (p.ej. linea + centro).
   // Para evitarlo: consultamos por UN solo campo y el centro se filtra en el cliente.
   if(q){
@@ -1825,16 +1839,18 @@ function buscarEquiposFirestore(){
   }else if(eqFiltros.modelo){
     queries.push(col.where('modelo','==',eqFiltros.modelo).limit(LIM).get());
   }else if(eqFiltros.linea){
-    if(eqFiltros.linea==='Cafe soluble'){
-      // Valor con acento/variantes: rango sobre el mismo campo (sin índice compuesto)
-      queries.push(col.where('linea','>=','Caf').where('linea','<','Cag').limit(LIM).get());
-    }else{
-      queries.push(col.where('linea','==',eqFiltros.linea).limit(LIM).get());
+    // Líneas enormes: exigir centro para no traer miles de golpe
+    if(LINEAS_GRANDES.indexOf(eqFiltros.linea)>=0 && !eqFiltros.centro){
+      if(tbody)tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#8b6914">"'+eqFiltros.linea+'" tiene muchos equipos. Elige también un <b>centro</b> para acotar la búsqueda.</td></tr>';
+      return;
     }
+    queries.push(col.where('linea','==',eqFiltros.linea).limit(LIM).get());
   }else if(eqFiltros.centro){
     queries.push(col.where('centro','==',eqFiltros.centro).limit(LIM).get());
   }else{
-    queries.push(col.limit(100).get());
+    // Sin ningún filtro: NO consultar (evita leer de más al entrar)
+    if(tbody)tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Selecciona una línea, un centro, o escribe un activo fijo/serie para buscar.</td></tr>';
+    return;
   }
   Promise.all(queries).then(function(snaps){
     var seen=new Set(),items=[];
@@ -1882,7 +1898,7 @@ function renderEquiposTabla(data){
       +'<button class="icon-btn" onclick="event.stopPropagation();printEtiquetaAF('+e.activoFijo+',\''+esc(e.modelo)+'\',\''+e.centro+'\')" title="Etiqueta">🏷</button>'
       +'</div></td></tr>';
   }).join(''):'<tr><td colspan="7" style="text-align:center;padding:20px;color:#9aa0a6">Sin resultados</td></tr>';
-  if(footer)footer.textContent=data.length>0?data.length+' equipo(s) encontrado(s)'+(data.length>=200?' — refina la búsqueda para más':''):'Sin resultados para estos filtros';
+  if(footer)footer.textContent=data.length>0?data.length+' equipo(s) encontrado(s)'+(data.length>=300?' — refina la búsqueda (tope 300)':''):'Sin resultados para estos filtros';
 }
 
 // ══ CLIENTES ══
@@ -1900,7 +1916,7 @@ function renderClientes(){
     +'<button class="btn btn-sm'+(modo==='bodega'?' btn-blue':'')+'" onclick="clSetModo(\'bodega\')">📦 Bodega</button>'
     +'</div>'
     +'<input class="fi-sm" id="cl-q" type="search" placeholder="'+(modo==='clientes'?'Buscar por número (10237) o nombre (Iberostar)...':'Buscar equipo, modelo o serie...')+'" style="flex:1;min-width:220px">'
-    +'<select class="fi-sm" id="cl-ce">'+optsCentros('')+'</select>'
+    +'<select class="fi-sm" id="cl-ce">'+optsCentros('', modo==='clientes'?'EU':'')+'</select>'
     +'<button class="btn btn-blue" onclick="buscarClientes()">Buscar</button>'
     +'</div>'
     +'<div id="cl-tree" style="padding:6px 4px"><div style="padding:36px;text-align:center;color:#6b7c63">'
@@ -1948,7 +1964,8 @@ function buscarClientes(){
       promises.push(col.where('centro','==',ce).limit(4000).get());
     }
   }
-  Promise.all(promises).then(function(snaps){
+  var _tOut=new Promise(function(_,rej){setTimeout(function(){rej(new Error('__timeout__'));},12000);});
+  Promise.race([Promise.all(promises),_tOut]).then(function(snaps){
     var seen={}, data=[];
     snaps.forEach(function(s){ s.docs.forEach(function(d){ if(seen[d.id])return; seen[d.id]=true; data.push({id:d.id, ...d.data()}); }); });
     var ql=q.toLowerCase(), qNum=(q&&!isNaN(q));
@@ -1967,7 +1984,13 @@ function buscarClientes(){
     });
     _clData=data; _clientesRes=data;
     if(_clModo==='bodega')renderBodegaTree(data); else renderClientesTree(data);
-  }).catch(function(err){ tree.innerHTML='<div style="padding:20px;text-align:center;color:red">Error: '+err.message+'</div>'; });
+  }).catch(function(err){
+    console.error('buscarClientes error:', err);
+    var msg = err.message==='__timeout__'
+      ? 'La búsqueda tardó demasiado y no respondió. Revisa tu conexión, o si acabas de subir cambios, recarga con Ctrl+F5. (Abre F12 → Console para el detalle.)'
+      : 'Error: '+err.message+(err.code?(' ['+err.code+']'):'')+'. Abre F12 → Console para ver el detalle (si menciona un índice, hay un enlace para crearlo).';
+    tree.innerHTML='<div style="padding:20px;text-align:center;color:#b00">'+msg+'</div>';
+  });
 }
 
 // Árbol: Cliente → Almacén → equipos
