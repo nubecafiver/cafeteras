@@ -9,6 +9,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 <style>
 :root{
   --bg:#fff8f2; --surface:#fff8f2; --surface2:#f4ede6; --low:#faf2eb;
@@ -388,15 +389,55 @@ function verOrden(id){
   db.collection('ordenes').doc(id).get().then(function(d){
     if(!d.exists){toast('Orden no encontrada');return;}
     var o={id:d.id,...d.data()};
+    _ordCerrar=o;
     $('sheet-title').textContent = o.folio||'Orden';
     $('sheet-body').innerHTML='<div class="clay card-pad">'
       +row('Folio',o.folio)+row('Equipo',o.modelo)+row('Cliente',o.cliente||'—')+row('Tipo',o.tipo)
       +row('Estado',o.estado)+row('Técnico',o.tecnicoNombre||'—')+row('Total',fmt$(o.costoTotal))
       +(o.descripcion?'<div style="margin-top:8px;font-size:12px;color:var(--text2)"><b>Trabajo:</b> '+esc(o.descripcion)+'</div>':'')
+      +(o.firmado?'<div style="margin-top:8px;font-size:12px;color:var(--green)"><b>✓ Firmada</b>'+(o.emailCliente?(' · enviada a '+esc(o.emailCliente)):'')+'</div>':'')
       +'</div>';
-    $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cerrar</button>';
+    var esMia = o.tecnicoUid===CUR.uid;
+    if(o.estado!=='terminado' && esMia){
+      $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cerrar</button><button class="btn btn-green" onclick="abrirCierre()">✍️ Firmar y cerrar</button>';
+    } else {
+      $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cerrar</button>';
+    }
     openSheet();
   });
+}
+
+// ══════════ CERRAR ORDEN: cliente firma + correo ══════════
+var _ordCerrar=null;
+function abrirCierre(){
+  var o=_ordCerrar; if(!o)return;
+  $('sheet-title').textContent='Firmar y cerrar · '+(o.folio||'');
+  $('sheet-body').innerHTML=
+    '<div style="font-size:13px;color:var(--text2);margin-bottom:12px">Pásale el teléfono al cliente para que firme. Al cerrar, la orden se marca como terminada y se envía por correo.</div>'
+    +'<div class="frow"><label>Nombre de quien recibe</label><input class="fld" id="c-recibe" placeholder="Encargado de sucursal"></div>'
+    +'<div class="frow"><label>Correo para enviar la orden</label><input class="fld" id="c-email" type="email" inputmode="email" placeholder="correo@cliente.com" value="'+esc(o.emailCliente||'')+'"></div>'
+    +'<div class="frow"><label>Firma del cliente</label><canvas id="sig-cli" width="600" height="200" style="width:100%;height:170px;border-radius:12px;background:#fff;touch-action:none;border:1px solid var(--border)"></canvas>'
+      +'<button class="btn" style="width:100%;margin-top:6px;padding:8px" onclick="limpiarFirma(\'cli\')">Borrar firma</button></div>';
+  $('sheet-ft').innerHTML='<button class="btn" onclick="verOrden(\''+o.id+'\')">Atrás</button><button class="btn btn-green" onclick="cerrarOrden()">Cerrar y enviar</button>';
+  setupCanvas('sig-cli','cli');
+}
+function cerrarOrden(){
+  var o=_ordCerrar; if(!o)return;
+  var fd=firmaData('cli');
+  if(!fd){ toast('Falta la firma del cliente'); return; }
+  var email=($('c-email').value||'').trim();
+  var recibe=($('c-recibe').value||'').trim();
+  if(!email){ toast('Escribe el correo para enviar'); return; }
+  $('sheet-ft').innerHTML='<button class="btn" disabled>Cerrando...</button>';
+  db.collection('ordenes').doc(o.id).update({
+    estado:'terminado', firmado:true, firmaClienteData:fd, recibe:recibe,
+    emailCliente:email, cerradoEn:firebase.firestore.FieldValue.serverTimestamp()
+  }).then(function(){
+    o.emailCliente=email; o.recibe=recibe; o.estado='terminado';
+    enviarCorreoOrden(o);   // envío (EmailJS si está configurado, si no abre app de correo)
+    toast('✅ Orden cerrada');
+    closeSheet(); cargarInicio(); cargarOrdenes();
+  }).catch(function(e){ toast('Error al cerrar: '+e.message); abrirCierre(); });
 }
 
 // ══════════ PM (preventivos pendientes del centro) ══════════
@@ -458,16 +499,14 @@ function abrirFormOrden(){
     +'<div class="frow"><label>Refacciones</label><input class="fld" id="o-ref" type="number" inputmode="decimal" value="0" oninput="calcTotal()"></div></div>'
     +'<div class="frow"><label>Viáticos</label><input class="fld" id="o-viat" type="number" inputmode="decimal" value="0" oninput="calcTotal()"></div>'
     +'<div class="clay card-pad" style="text-align:center;margin-bottom:8px"><span class="lbl">Total</span><div class="num" style="font-size:24px;margin-top:3px" id="o-total">$0.00</div></div>'
-    +'<div class="serif" style="font-size:15px;color:var(--green);margin:14px 0 8px">Firmas</div>'
-    +'<div class="frow"><label>Firma del cliente</label><canvas id="sig-cli" class="sig" width="600" height="180" style="width:100%;height:150px;border-radius:12px;background:#fff;touch-action:none;border:1px solid var(--border)"></canvas>'
-      +'<button class="btn" style="width:100%;margin-top:6px;padding:8px" onclick="limpiarFirma(\'cli\')">Borrar firma</button></div>'
-    +'<div class="frow"><label>Nombre de quien recibe</label><input class="fld" id="o-recibe" placeholder="Encargado de sucursal"></div>'
-    +'<div class="frow"><label>Firma del técnico</label><canvas id="sig-tec" class="sig" width="600" height="180" style="width:100%;height:150px;border-radius:12px;background:#fff;touch-action:none;border:1px solid var(--border)"></canvas>'
-      +'<button class="btn" style="width:100%;margin-top:6px;padding:8px" onclick="limpiarFirma(\'tec\')">Borrar firma</button></div>';
+    +'<div class="serif" style="font-size:15px;color:var(--green);margin:14px 0 8px">Ubicación</div>'
+    +'<button class="btn" style="width:100%" onclick="capturarUbicacion()">📍 &nbsp;Capturar mi ubicación</button>'
+    +'<div id="o-geo" style="font-size:12px;color:var(--muted);text-align:center;margin-top:6px">—</div>';
   $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn btn-green" onclick="guardarOrden()">Guardar orden</button>';
   openSheet();
   $('o-formato').value=_ordFormato;
-  initFirmas();
+  _geoLat=null;_geoLng=null;
+  capturarUbicacion();
   onFormatoChange(true);
 }
 
@@ -526,6 +565,19 @@ function calcTotal(){
   $('o-total').textContent=fmt$(t);
 }
 
+// ══════════ GEOLOCALIZACIÓN ══════════
+var _geoLat=null, _geoLng=null;
+function capturarUbicacion(){
+  var el=$('o-geo'); if(el)el.textContent='Obteniendo ubicación...';
+  if(!navigator.geolocation){ if(el)el.textContent='Este dispositivo no da ubicación.'; return; }
+  navigator.geolocation.getCurrentPosition(function(pos){
+    _geoLat=pos.coords.latitude; _geoLng=pos.coords.longitude;
+    if(el)el.innerHTML='📍 Ubicación capturada ('+_geoLat.toFixed(5)+', '+_geoLng.toFixed(5)+')';
+  },function(err){
+    if(el)el.textContent='No se pudo obtener ubicación (permiso denegado o sin señal).';
+  },{enableHighAccuracy:true,timeout:10000,maximumAge:0});
+}
+
 // ══════════ FIRMAS (canvas táctil) ══════════
 var _sig={};
 function initFirmas(){ ['cli','tec'].forEach(function(w){ setupCanvas('sig-'+w,w); }); }
@@ -571,11 +623,11 @@ function guardarOrden(){
     cliente:$('o-cliente').value, clienteNum:(_ordEquipo&&_ordEquipo.cliente)||'',
     tecnicoNombre:CUR.nombre||CUR.email, tecnicoUid:CUR.uid,
     fechaServicio:$('o-fecha').value, horaInicio:$('o-hora').value,
-    descripcion:$('o-desc').value, recibe:$('o-recibe').value,
+    descripcion:$('o-desc').value,
     formato:_ordFormato, checklistLinea:ckLinea, brillante:brillante,
     costoManoObra:mo, costoRefacciones:ref, costoViaticos:viat, costoTotal:mo+ref+viat,
-    firmaClienteData:firmaData('cli'), firmaTecData:firmaData('tec'),
-    estado:'pendiente', firmado:!!firmaData('cli'), origen:'app_tecnico',
+    lat:_geoLat, lng:_geoLng,
+    estado:'pendiente', firmado:false, origen:'app_tecnico',
     creadoEn:firebase.firestore.FieldValue.serverTimestamp()
   };
   $('sheet-ft').innerHTML='<button class="btn" disabled>Guardando...</button>';
@@ -619,6 +671,54 @@ function openScan(){
   }catch(e){ console.error(e); toast('Error del escáner: '+e.message); setTimeout(closeScan,1800); }
 }
 function closeScan(){ $('scanWrap').style.display='none'; if(_codeReader){try{_codeReader.reset();}catch(e){}_codeReader=null;} _lastScan=null; }
+
+// ══════════ ENVÍO DE CORREO (EmailJS) ══════════
+// PASO PENDIENTE: crea una cuenta gratis en emailjs.com y pega tus 3 claves aquí.
+// Mientras estén en "PEGA_...", la app abrirá tu app de correo prellenada como respaldo.
+var EMAILJS = {
+  publicKey:  'PEGA_TU_PUBLIC_KEY',
+  serviceId:  'PEGA_TU_SERVICE_ID',
+  templateId: 'PEGA_TU_TEMPLATE_ID'
+};
+try{ if(window.emailjs && EMAILJS.publicKey.indexOf('PEGA_')!==0){ emailjs.init(EMAILJS.publicKey); } }catch(e){}
+
+function resumenOrdenTexto(o){
+  var t = 'Orden de servicio '+(o.folio||'')+'\n'
+    + 'Equipo: '+(o.modelo||'')+'  (AF '+(o.activoFijo||'')+')\n'
+    + 'Cliente: '+(o.cliente||'')+'\n'
+    + 'Tipo: '+(o.tipo||'')+'\n'
+    + 'Técnico: '+(o.tecnicoNombre||'')+'\n'
+    + 'Fecha: '+(o.fechaServicio||'')+'  '+(o.horaInicio||'')+'\n'
+    + 'Recibe: '+(o.recibe||'')+'\n'
+    + 'Total: '+fmt$(o.costoTotal)+'\n';
+  if(o.descripcion) t += 'Trabajo: '+o.descripcion+'\n';
+  return t;
+}
+function enviarCorreoOrden(o){
+  var configurado = window.emailjs && EMAILJS.publicKey.indexOf('PEGA_')!==0 && EMAILJS.serviceId.indexOf('PEGA_')!==0 && EMAILJS.templateId.indexOf('PEGA_')!==0;
+  if(configurado){
+    emailjs.send(EMAILJS.serviceId, EMAILJS.templateId, {
+      to_email: o.emailCliente,
+      folio: o.folio||'',
+      cliente: o.cliente||'',
+      equipo: (o.modelo||'')+' (AF '+(o.activoFijo||'')+')',
+      tecnico: o.tecnicoNombre||'',
+      fecha: (o.fechaServicio||'')+' '+(o.horaInicio||''),
+      total: fmt$(o.costoTotal),
+      resumen: resumenOrdenTexto(o)
+    }).then(function(){ toast('📧 Orden enviada a '+o.emailCliente); })
+      .catch(function(e){ console.error('EmailJS:',e); toast('No se pudo enviar el correo automático.'); abrirCorreoManual(o); });
+  } else {
+    // Respaldo: abrir la app de correo prellenada
+    abrirCorreoManual(o);
+  }
+}
+function abrirCorreoManual(o){
+  var asunto = 'Orden de servicio '+(o.folio||'')+' - CAFIVER';
+  var cuerpo = resumenOrdenTexto(o);
+  var url = 'mailto:'+encodeURIComponent(o.emailCliente||'')+'?subject='+encodeURIComponent(asunto)+'&body='+encodeURIComponent(cuerpo);
+  try{ window.location.href = url; }catch(e){}
+}
 
 </script>
 </body>
