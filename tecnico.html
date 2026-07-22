@@ -158,7 +158,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
     <span style="font-weight:700">Escanea el QR</span>
     <button class="btn" style="padding:8px 14px" onclick="closeScan()">✕ Cerrar</button>
   </div>
-  <video id="scanVideo" playsinline></video>
+  <video id="scanVideo" playsinline autoplay muted></video>
 </div>
 
 <!-- SHEET: FICHA / ORDEN -->
@@ -173,12 +173,12 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 <script>
 // ══════════ CONFIG FIREBASE ══════════
 var firebaseConfig = {
-  apiKey:            'AIzaSyDTo9_ExbhOSAuzDDS81lZXoxUlKqGel_Q',
-  authDomain:        'cafeteras-90e78.firebaseapp.com',
-  projectId:         'cafeteras-90e78',
-  storageBucket:     'cafeteras-90e78.firebasestorage.app',
-  messagingSenderId: '307085933091',
-  appId:             '1:307085933091:web:43caf1ec5a163d97960f96'
+  apiKey: "AIzaSyD-PLACEHOLDER-REEMPLAZAR",
+  authDomain: "cafeteras-90e78.firebaseapp.com",
+  projectId: "cafeteras-90e78",
+  storageBucket: "cafeteras-90e78.firebasestorage.app",
+  messagingSenderId: "000000000000",
+  appId: "1:000000000000:web:0000000000000000000000"
 };
 firebase.initializeApp(firebaseConfig);
 var auth = firebase.auth();
@@ -675,7 +675,38 @@ function guardarOrden(){
 var _codeReader=null, _lastScan=null;
 function openScan(){
   $('scanWrap').style.display='flex';
-  if(typeof ZXing==='undefined'){ toast('El escáner no cargó. Revisa tu conexión y vuelve a abrir.'); setTimeout(closeScan,1500); return; }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ toast('Este navegador no permite usar la cámara.'); setTimeout(closeScan,2000); return; }
+  if(typeof ZXing==='undefined'){ toast('El escáner no cargó. Revisa tu conexión y vuelve a abrir.'); setTimeout(closeScan,1800); return; }
+  // 1) Pedir permiso + cámara trasera PRIMERO (dispara el aviso en Android de forma confiable)
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}}).then(function(stream){
+    stream.getTracks().forEach(function(t){t.stop();});  // soltar; ZXing abrirá el suyo
+    iniciarZXing();
+  }).catch(function(e){
+    console.error('getUserMedia:',e);
+    var m = (e.name==='NotAllowedError'||e.name==='SecurityError') ? 'Permiso de cámara denegado. Tócale al candado ⓘ junto a la dirección → Permisos → Cámara → Permitir, y recarga.' :
+            e.name==='NotFoundError' ? 'No se encontró ninguna cámara en el dispositivo.' :
+            e.name==='NotReadableError' ? 'La cámara está siendo usada por otra app. Ciérrala e intenta de nuevo.' :
+            'No se pudo abrir la cámara ('+(e.name||e.message)+').';
+    toast(m); setTimeout(closeScan,3500);
+  });
+}
+function iniciarZXing(){
+  function cb(result,err){
+    if(result){
+      var data=result.getText()||'';
+      var af=null;
+      if(data.includes('af='))af=data.split('af=')[1].split('&')[0].trim();
+      else if(/^\d+$/.test(data.trim()))af=data.trim();
+      else af=data.trim();
+      if(af&&af!==_lastScan){
+        _lastScan=af;
+        if(navigator.vibrate)navigator.vibrate([100,50,100]);
+        closeScan();
+        $('eq-q').value=af; nav('equipos'); buscarEquipos();
+      }
+    }
+    if(err&&!(err instanceof ZXing.NotFoundException))console.warn('ZXing:',err);
+  }
   try{
     _codeReader=new ZXing.BrowserQRCodeReader();
     _codeReader.listVideoInputDevices().then(function(devices){
@@ -685,24 +716,13 @@ function openScan(){
         if(l.includes('back')||l.includes('rear')||l.includes('trasera')||l.includes('environment'))deviceId=d.deviceId;
       });
       if(!deviceId&&devices.length>0)deviceId=devices[devices.length-1].deviceId;
-      _codeReader.decodeFromVideoDevice(deviceId,'scanVideo',function(result,err){
-        if(result){
-          var data=result.getText()||'';
-          var af=null;
-          if(data.includes('af='))af=data.split('af=')[1].split('&')[0].trim();
-          else if(/^\d+$/.test(data.trim()))af=data.trim();
-          else af=data.trim();
-          if(af&&af!==_lastScan){
-            _lastScan=af;
-            if(navigator.vibrate)navigator.vibrate([100,50,100]);
-            closeScan();
-            $('eq-q').value=af; nav('equipos'); buscarEquipos();
-          }
-        }
-        if(err&&!(err instanceof ZXing.NotFoundException))console.warn('ZXing:',err);
-      });
-    }).catch(function(e){ console.error(e); toast('No se pudo acceder a la cámara. Acepta el permiso.'); setTimeout(closeScan,1800); });
-  }catch(e){ console.error(e); toast('Error del escáner: '+e.message); setTimeout(closeScan,1800); }
+      _codeReader.decodeFromVideoDevice(deviceId,'scanVideo',cb);
+    }).catch(function(e){
+      // Si enumerar falla, usar la cámara por defecto
+      console.warn('listVideoInputDevices falló, uso cámara por defecto:',e);
+      _codeReader.decodeFromVideoDevice(null,'scanVideo',cb);
+    });
+  }catch(e){ console.error(e); toast('Error del escáner: '+e.message); setTimeout(closeScan,2000); }
 }
 function closeScan(){ $('scanWrap').style.display='none'; if(_codeReader){try{_codeReader.reset();}catch(e){}_codeReader=null;} _lastScan=null; }
 
