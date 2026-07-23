@@ -114,11 +114,18 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 
   <!-- EQUIPOS -->
   <div class="view" id="v-equipos">
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <input class="fld" id="eq-q" placeholder="Buscar activo, serie o modelo..." style="flex:1">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input class="fld" id="eq-q" placeholder="Activo, serie, modelo o cliente..." style="flex:1" oninput="filtrarLocal()" onkeydown="if(event.key==='Enter')buscarEquipos()">
       <button class="btn btn-green" onclick="buscarEquipos()">Ir</button>
     </div>
-    <div id="eq-list"><div style="text-align:center;color:var(--muted);padding:30px;font-size:13px">Escribe para buscar entre los equipos de tu oficina.</div></div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
+      <button class="btn eqf on" data-f="todos" onclick="setFiltroEq('todos')" style="padding:7px 14px;font-size:13px;white-space:nowrap">Todos</button>
+      <button class="btn eqf" data-f="cliente" onclick="setFiltroEq('cliente')" style="padding:7px 14px;font-size:13px;white-space:nowrap">Con cliente</button>
+      <button class="btn eqf" data-f="bodega" onclick="setFiltroEq('bodega')" style="padding:7px 14px;font-size:13px;white-space:nowrap">Bodega</button>
+    </div>
+    <div id="eq-info" style="font-size:11px;color:var(--muted);margin-bottom:8px"></div>
+    <div id="eq-list"><div class="spin"></div></div>
+    <div id="eq-mas" style="margin-top:6px"></div>
   </div>
 
   <!-- ORDENES -->
@@ -300,6 +307,7 @@ function nav(v){
   var el=$('v-'+v); if(el)el.classList.add('on');
   document.querySelectorAll('.bnav button[data-v]').forEach(function(b){b.classList.toggle('on',b.dataset.v===v);});
   if(v==='inicio')cargarInicio();
+  if(v==='equipos' && !_eqDocs.length)cargarEquiposCentro(true);
   if(v==='ordenes')cargarOrdenes();
   if(v==='pm')cargarPM();
 }
@@ -331,10 +339,123 @@ function renderPendientes(arr){
 }
 
 // ══════════ EQUIPOS ══════════
+// Abre la ficha del equipo escaneado (o avisa si no es de su centro)
+function abrirPorActivo(af){
+  toast('Buscando '+af+'...');
+  var col=db.collection('equipos'), n=parseInt(af), proms=[];
+  if(!isNaN(n)) proms.push(col.where('activoFijo','==',n).limit(5).get());
+  proms.push(col.where('serie','==',String(af)).limit(5).get());
+  Promise.all(proms).then(function(snaps){
+    var hit=null, fuera=false;
+    snaps.forEach(function(s){s.docs.forEach(function(d){
+      var e={id:d.id,...d.data()};
+      if(MI_CENTRO && e.centro!==MI_CENTRO){ fuera=true; return; }
+      if(!hit)hit=e;
+    });});
+    if(hit){ _equipoActivo=hit; abrirFichaEquipo(); }
+    else if(fuera){ toast('Ese equipo no es de tu oficina ('+MI_CENTRO+').'); }
+    else { toast('No se encontró el equipo '+af); }
+  }).catch(function(e){ toast('Error: '+e.message); });
+}
+
+// ══════════ EQUIPOS: lista progresiva de MI CENTRO, agrupada por cliente ══════════
+var _eqDocs=[];          // equipos ya cargados (acumulados)
+var _eqLast=null;        // cursor de paginación
+var _eqFin=false;        // ya no hay más
+var _eqFiltro='todos';   // todos | cliente | bodega
+var _eqAbierto={};       // grupos expandidos
+var _eqCargando=false;
+var EQ_PAGINA=50;        // cuántos trae por tanda (protege la cuota)
+
+function cargarEquiposCentro(reset){
+  if(_eqCargando)return;
+  if(reset){ _eqDocs=[]; _eqLast=null; _eqFin=false; _eqAbierto={}; $('eq-list').innerHTML='<div class="spin"></div>'; }
+  if(_eqFin)return;
+  _eqCargando=true;
+  $('eq-mas').innerHTML='<div class="spin" style="margin:14px auto"></div>';
+  var q=db.collection('equipos');
+  if(MI_CENTRO) q=q.where('centro','==',MI_CENTRO);
+  q=q.limit(EQ_PAGINA);
+  if(_eqLast) q=q.startAfter(_eqLast);
+  q.get().then(function(s){
+    _eqCargando=false;
+    if(s.docs.length<EQ_PAGINA)_eqFin=true;
+    if(s.docs.length)_eqLast=s.docs[s.docs.length-1];
+    s.docs.forEach(function(d){ _eqDocs.push({id:d.id,...d.data()}); });
+    renderListaEquipos();
+  }).catch(function(e){
+    _eqCargando=false;
+    $('eq-list').innerHTML='<div style="color:var(--error);padding:16px;font-size:13px">'+esc(e.message)+'</div>';
+    $('eq-mas').innerHTML='';
+  });
+}
+
+function setFiltroEq(f){
+  _eqFiltro=f;
+  document.querySelectorAll('.eqf').forEach(function(b){b.classList.toggle('on',b.dataset.f===f);b.classList.toggle('btn-green',b.dataset.f===f);});
+  renderListaEquipos();
+}
+function filtrarLocal(){ renderListaEquipos(); }
+
+function eqVisibles(){
+  var txt=($('eq-q').value||'').trim().toLowerCase();
+  return _eqDocs.filter(function(e){
+    var conCliente = !!(e.clienteNombre && String(e.clienteNombre).trim());
+    if(_eqFiltro==='cliente' && !conCliente) return false;
+    if(_eqFiltro==='bodega' && conCliente) return false;
+    if(txt){
+      var blob=(String(e.activoFijo||'')+' '+(e.serie||'')+' '+(e.modelo||'')+' '+(e.clienteNombre||'')+' '+(e.linea||'')).toLowerCase();
+      if(blob.indexOf(txt)<0) return false;
+    }
+    return true;
+  });
+}
+
+function renderListaEquipos(){
+  var arr=eqVisibles();
+  var info=$('eq-info');
+  if(info) info.textContent = _eqDocs.length+' equipos cargados de '+(MI_CENTRO||'tu centro')+(arr.length!==_eqDocs.length?(' · '+arr.length+' coinciden'):'');
+  if(!arr.length){
+    $('eq-list').innerHTML='<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">Sin coincidencias en lo cargado.<br>Toca <b>Ir</b> para buscar un activo o serie exacta en todo tu centro.</div>';
+  } else {
+    // Agrupar por cliente (o Bodega)
+    var g={};
+    arr.forEach(function(e){
+      var k=(e.clienteNombre && String(e.clienteNombre).trim()) ? e.clienteNombre : '📦 Bodega';
+      (g[k]=g[k]||[]).push(e);
+    });
+    var keys=Object.keys(g).sort();
+    var autoAbrir = keys.length<=2;   // si son pocos grupos, ábrelos solos
+    $('eq-list').innerHTML = keys.map(function(k){
+      var lista=g[k];
+      var abierto = _eqAbierto[k] || autoAbrir;
+      return '<div class="clay" style="margin-bottom:10px;overflow:hidden">'
+        +'<div onclick="toggleGrupoEq(\''+esc(k).replace(/'/g,"\\'")+'\')" style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer">'
+          +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(abierto?'▾ ':'▸ ')+esc(k)+'</div></div>'
+          +'<span class="chip chip-c">'+lista.length+'</span>'
+        +'</div>'
+        +(abierto?('<div style="padding:0 10px 10px">'+lista.map(function(e){
+            return '<div onclick="verEquipo(\''+e.id+'\')" style="padding:9px 10px;border-top:1px solid var(--border);cursor:pointer">'
+              +'<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:600;font-size:13px">'+esc(e.modelo||'Equipo')+'</span>'
+              +'<span style="font-family:monospace;font-weight:700;color:var(--green);font-size:12px">'+esc(e.activoFijo||'')+'</span></div>'
+              +'<div style="font-size:11px;color:var(--muted);margin-top:2px">'+esc(e.linea||'')+' · Serie '+esc(e.serie||'—')+'</div>'
+              +'</div>';
+          }).join('')+'</div>'):'')
+        +'</div>';
+    }).join('');
+  }
+  // Botón cargar más
+  $('eq-mas').innerHTML = _eqFin
+    ? '<div style="text-align:center;font-size:11px;color:var(--muted);padding:8px">Ya viste todos los equipos de tu centro.</div>'
+    : '<button class="btn" style="width:100%" onclick="cargarEquiposCentro(false)">Cargar 50 más</button>';
+}
+function toggleGrupoEq(k){ _eqAbierto[k]=!( _eqAbierto[k] ); renderListaEquipos(); }
+
+// Búsqueda exacta en TODO el centro (activo fijo o serie), por si no está en lo cargado
 function buscarEquipos(){
   var q=($('eq-q').value||'').trim();
-  if(q.length<2){ $('eq-list').innerHTML='<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px">Escribe al menos 2 caracteres.</div>'; return; }
-  $('eq-list').innerHTML='<div class="spin"></div>';
+  if(q.length<2){ toast('Escribe al menos 2 caracteres'); return; }
+  $('eq-list').innerHTML='<div class="spin"></div>'; $('eq-mas').innerHTML='';
   var col=db.collection('equipos'), proms=[];
   var af=parseInt(q);
   if(!isNaN(af)) proms.push(col.where('activoFijo','==',af).limit(20).get());
@@ -346,21 +467,15 @@ function buscarEquipos(){
       if(MI_CENTRO && e.centro!==MI_CENTRO) return;   // solo mi oficina
       arr.push(e);
     });});
-    // filtro por modelo en cliente (sobre lo ya traído)
-    if(isNaN(af)){ var ql=q.toLowerCase(); arr=arr.filter(function(e){return (e.serie||'').toLowerCase()===ql||(e.modelo||'').toLowerCase().includes(ql)||String(e.activoFijo||'').includes(q);}); }
-    renderEquipos(arr);
+    if(!arr.length){
+      $('eq-list').innerHTML='<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">No se encontró "'+esc(q)+'" en tu centro.</div>';
+      $('eq-mas').innerHTML='<button class="btn" style="width:100%" onclick="$(\'eq-q\').value=\'\';cargarEquiposCentro(true)">Volver a mi lista</button>';
+      return;
+    }
+    // Meter los encontrados a la lista cargada y mostrarlos
+    arr.forEach(function(e){ if(!_eqDocs.some(function(x){return x.id===e.id;})) _eqDocs.push(e); });
+    renderListaEquipos();
   }).catch(function(e){ $('eq-list').innerHTML='<div style="color:var(--error);padding:16px;font-size:13px">'+esc(e.message)+'</div>'; });
-}
-function renderEquipos(arr){
-  if(!arr.length){ $('eq-list').innerHTML='<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">Sin resultados en tu oficina.</div>'; return; }
-  $('eq-list').innerHTML = arr.map(function(e){
-    return '<div class="clay card-pad" style="margin-bottom:10px" onclick="verEquipo(\''+e.id+'\')">'
-      +'<div style="display:flex;justify-content:space-between;gap:8px"><div style="font-weight:700;font-size:14px">'+esc(e.modelo||'Equipo')+'</div>'
-      +'<span style="font-family:monospace;font-weight:700;color:var(--green);font-size:13px">'+esc(e.activoFijo||'')+'</span></div>'
-      +'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+esc(e.clienteNombre||'Bodega')+'</div>'
-      +'<div style="font-size:11px;color:var(--muted);margin-top:4px">'+esc(e.linea||'')+' · Serie '+esc(e.serie||'—')+'</div>'
-      +'</div>';
-  }).join('');
 }
 function verEquipo(docId){
   db.collection('equipos').doc(docId).get().then(function(d){
@@ -732,7 +847,7 @@ function iniciarZXing(){
         _lastScan=af;
         if(navigator.vibrate)navigator.vibrate([100,50,100]);
         closeScan();
-        $('eq-q').value=af; nav('equipos'); buscarEquipos();
+        abrirPorActivo(af);
       }
     }
     if(err&&!(err instanceof ZXing.NotFoundException))console.warn('ZXing:',err);
