@@ -468,11 +468,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
     <button class="tnav"    id="tnav-clientes"    onclick="switchView('clientes')">   <span>🏨</span><span class="tnav-txt"> Clientes</span></button>
     <button class="tnav"    id="tnav-directorio"  onclick="switchView('directorio')"> <span>📇</span><span class="tnav-txt"> Directorio</span></button>
     <button class="tnav"    id="tnav-ordenes"     onclick="switchView('ordenes')">    <span>📋</span><span class="tnav-txt"> Órdenes</span></button>
-    <button class="tnav"    id="tnav-preventivos" onclick="switchView('preventivos')"><span>🔄</span><span class="tnav-txt"> PM</span></button>
     <button class="tnav"    id="tnav-qr"          onclick="switchView('qr')">         <span>⬡</span><span class="tnav-txt"> QR</span></button>
-    <button class="tnav"    id="tnav-reportes"    onclick="switchView('reportes')">   <span>📈</span><span class="tnav-txt"> Reportes</span></button>
-    <button class="tnav"    id="tnav-resumen"     onclick="switchView('resumen')">    <span>🗂</span><span class="tnav-txt"> Resumen</span></button>
-    <button class="tnav"    id="tnav-movimientos" onclick="switchView('movimientos')"><span>🔄</span><span class="tnav-txt"> Movimientos</span></button>
     <div class="topbar-right">
       <div class="sync-pill ok" id="topbar-sync">
         <span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span>
@@ -773,6 +769,8 @@ firebase.initializeApp({
   appId:             '1:307085933091:web:43caf1ec5a163d97960f96'
 });
 var db = firebase.firestore();
+// Caché local: acelera cargas y reduce lecturas cobradas (los datos ya vistos salen del disco)
+try{ db.enablePersistence({synchronizeTabs:true}).catch(function(e){ console.warn('persistencia:',e.code); }); }catch(e){}
 var auth = firebase.auth();
 var storage = firebase.storage();
 
@@ -874,6 +872,13 @@ var ESTADOS={
 
 // Componentes por línea de cafetera (del formato de evaluación oficial)
 var CHECKLIST_LINEA = {
+  'Cafeteras Hoteleras': [
+    'Jarra','Placa calefactora','Portafiltro','Interruptor','Resistencia',
+    'Deposito de agua','Cable','Tapa','Cuerpo del equipo','Valvula antigoteo','Filtro permanente'
+  ],
+  'Thermos': [
+    'Cuerpo','Tapa','Valvula de servicio','Empaques','Base','Indicador de nivel','Grifo'
+  ],
   'Superautomatica': [
     'Salidas dosificacion de café','Contenedor de producto','Electrovalvulas',
     'Bandeja de desechos liquidos','Bandeja de desechos solidos','Batidores',
@@ -1072,10 +1077,27 @@ function getGrupoNombre(grupoArt){
 
 function getAlmacenNombre(centro,almacen){
   var key=centro+'_'+almacen;
-  return (catalogoAlmacenes[key]&&catalogoAlmacenes[key].nombre)||almacen||'—';
+  if(catalogoAlmacenes[key]&&catalogoAlmacenes[key].nombre) return catalogoAlmacenes[key].nombre;
+  // Carga puntual (1 lectura) solo si falta, y la cachea
+  if(key && !catalogoAlmacenes['__b_'+key]){
+    catalogoAlmacenes['__b_'+key]=true;
+    db.collection('almacenes').doc(key).get().then(function(d){
+      if(d.exists){ catalogoAlmacenes[key]=d.data(); }
+    }).catch(function(){});
+  }
+  return almacen||'—';
 }
 function getClienteNombre(numero){
-  return (catalogoClientes[numero]&&catalogoClientes[numero].nombre)||numero||'—';
+  // Los equipos ya traen clienteNombre; esto es solo respaldo.
+  if(catalogoClientes[numero]&&catalogoClientes[numero].nombre) return catalogoClientes[numero].nombre;
+  // Carga puntual (1 lectura) solo si de verdad falta, y la cachea para la próxima
+  if(numero && !catalogoClientes['__buscando_'+numero]){
+    catalogoClientes['__buscando_'+numero]=true;
+    db.collection('clientes').doc(String(numero)).get().then(function(d){
+      if(d.exists){ catalogoClientes[numero]=d.data(); }
+    }).catch(function(){});
+  }
+  return numero||'—';
 }
 
 function bEstad(estado){
@@ -1376,14 +1398,10 @@ function cargarCatalogosYDatos(){
     console.log('Centros cargados:',Object.keys(catalogoCentros).length);
     actualizarSelectsCentros();
   }).catch(function(e){console.warn('centros:',e.message);});
-  db.collection('almacenes').get().then(function(s){
-    s.docs.forEach(function(d){catalogoAlmacenes[d.id]=d.data();});
-    console.log('Almacenes cargados:',Object.keys(catalogoAlmacenes).length);
-  }).catch(function(e){console.warn('almacenes:',e.message);});
-  db.collection('clientes').get().then(function(s){
-    s.docs.forEach(function(d){catalogoClientes[d.id]=d.data();});
-    console.log('Clientes cargados:',Object.keys(catalogoClientes).length);
-  }).catch(function(e){console.warn('clientes:',e.message);});
+  // Almacenes YA NO se cargan completos al abrir (aligera el arranque).
+  // Los nombres se resuelven puntualmente cuando se necesitan (ver getAlmacenNombre).
+  // Clientes YA NO se cargan completos al abrir (eran miles de lecturas por carga).
+  // Los equipos ya traen clienteNombre; si falta algún nombre, se busca ese cliente puntual.
   db.collection('equipos').limit(300).get().then(function(s){
     equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
     if(curView==='equipos')renderEquipos();
@@ -1607,8 +1625,6 @@ async function cargarStatsDashboard(){
     +'<button id="db-acc-scan" class="db-acc"><div style="font-size:20px;margin-bottom:5px">📷</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">Escanear QR</div><div style="font-size:10px;color:#6b7c63">Identificar equipo</div></button>'
     +'<button id="db-acc-orden" class="db-acc"><div style="font-size:20px;margin-bottom:5px">📋</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">Nueva orden</div><div style="font-size:10px;color:#6b7c63">Registrar servicio</div></button>'
     +'<button id="db-acc-qr" class="db-acc"><div style="font-size:20px;margin-bottom:5px">⬡</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">QR en masa</div><div style="font-size:10px;color:#6b7c63">Imprimir etiquetas</div></button>'
-    +'<button id="db-acc-rep" class="db-acc"><div style="font-size:20px;margin-bottom:5px">📊</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">Reportes</div><div style="font-size:10px;color:#6b7c63">Excel y estadísticas</div></button>'
-    +'<button id="db-acc-mov" class="db-acc"><div style="font-size:20px;margin-bottom:5px">🔄</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">Movimientos</div><div style="font-size:10px;color:#6b7c63">Historial</div></button>'
     +'<button id="db-acc-etiq" class="db-acc"><div style="font-size:20px;margin-bottom:5px">🏷</div><div style="font-size:12px;font-weight:600;color:#1e2d1a">Etiquetas</div><div style="font-size:10px;color:#6b7c63">Imprimir</div></button>'
     +'</div></div>'
 
@@ -2988,16 +3004,23 @@ function cargarChecklistLinea(linea){
   var tbody=document.getElementById('ck-linea-tbody');
   var titulo=document.getElementById('ck-linea-titulo');
   if(!cont||!tbody)return;
-  // Normalizar linea para Cafe soluble
+  // Traducir el nombre OFICIAL de línea (equipos reemplazados) a la llave del checklist
+  var ALIAS_CK={
+    'Cafet. Superautomática':'Superautomatica','Cafet. Superautomatica':'Superautomatica',
+    'Cafeteras percolador':'Filtrado','Bunn':'Filtrado',
+    'Cafet. Semiautomática':'Semiautomatica','Cafet. Semiautomatica':'Semiautomatica',
+    'Molinos':'Molino','Cafeteras Vending':'Cafe soluble','Necta':'Cafe soluble'
+  };
   var lin=linea||'';
   if(lin.startsWith('Caf')&&lin.toLowerCase().includes('soluble'))lin='Cafe soluble';
+  if(ALIAS_CK[lin])lin=ALIAS_CK[lin];
   var items=CHECKLIST_LINEA[lin];
   if(!items||!items.length){
     cont.style.display='none';
     if(msg)msg.style.display='block';
     return;
   }
-  if(titulo)titulo.textContent='Componentes revisados — '+lin+' ('+items.length+' componentes)';
+  if(titulo)titulo.textContent='Componentes revisados — '+(linea||lin)+' ('+items.length+' componentes)';
   tbody.innerHTML=items.map(function(item,i){
     return'<tr style="border-bottom:1px solid #e8eaed">'
       +'<td style="padding:6px 8px;font-size:12px">'+(i+1)+'. '+item+'</td>'
@@ -3593,8 +3616,6 @@ function asignarEventosDashboard(){
     'db-acc-scan':function(){openScanner();},
     'db-acc-orden':function(){openFormOrden();},
     'db-acc-qr':function(){switchView('qr');},
-    'db-acc-rep':function(){switchView('reportes');},
-    'db-acc-mov':function(){switchView('movimientos');},
     'db-acc-etiq':function(){switchView('etiquetas');}
   };
   Object.entries(ids).forEach(function(e){

@@ -181,6 +181,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 </div></div>
 
 <div class="toast" id="toast"></div>
+<div id="conn-banner" style="position:fixed;left:0;right:0;top:0;z-index:600;background:#ba1a1a;color:#fff;font-size:12px;font-weight:700;text-align:center;padding:7px;display:none">Sin conexión — puedes seguir capturando, se guardará al reconectar</div>
 
 <script>
 // ══════════ CONFIG FIREBASE ══════════
@@ -195,6 +196,24 @@ var firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 var auth = firebase.auth();
 var db = firebase.firestore();
+// Caché local: la app abre más rápido y gasta menos lecturas en campo
+try{ db.enablePersistence({synchronizeTabs:true}).catch(function(e){ console.warn('persistencia:',e.code); }); }catch(e){}
+
+// ══════════ INDICADOR DE CONEXIÓN (mala señal / offline) ══════════
+function actualizarConexion(){
+  var b=document.getElementById('conn-banner'); if(!b)return;
+  if(navigator.onLine){
+    if(b.style.display==='block'){
+      b.style.background='#154212'; b.textContent='✓ Reconectado';
+      setTimeout(function(){ b.style.display='none'; b.style.background='#ba1a1a'; b.textContent='Sin conexión — puedes seguir capturando, se guardará al reconectar'; },2200);
+    }
+  } else {
+    b.style.display='block'; b.style.background='#ba1a1a';
+    b.textContent='Sin conexión — puedes seguir capturando, se guardará al reconectar';
+  }
+}
+window.addEventListener('online', actualizarConexion);
+window.addEventListener('offline', actualizarConexion);
 
 // ══════════ ESTADO ══════════
 var CUR = null;         // {uid,email,nombre,rol,centro}
@@ -283,6 +302,7 @@ auth.onAuthStateChanged(function(user){
 function arrancarApp(){
   $('login').style.display='none';
   $('app').style.display='block';
+  actualizarConexion();
   $('tb-sub').textContent = CUR.nombre||CUR.email;
   $('tb-centro').textContent = MI_CENTRO || (CUR.rol==='director'?'TODOS':'—');
   $('pf-nombre').textContent = CUR.nombre||'—';
@@ -313,9 +333,18 @@ function nav(v){
 }
 
 // ══════════ INICIO ══════════
+var _cfgGeneral=null;
 function cargarInicio(){
-  // KPIs acotados: contar equipos del centro (limit para no leer de más) y órdenes abiertas
-  queryMisEquipos().limit(1000).get().then(function(s){ $('k-equipos').textContent = s.size>=1000?'1000+':s.size; }).catch(function(){ $('k-equipos').textContent='—'; });
+  // KPI de equipos: 1 sola lectura (config/general precalculado) en vez de leer 1000 docs
+  if(_cfgGeneral){
+    $('k-equipos').textContent = (_cfgGeneral.porCentro&&_cfgGeneral.porCentro[MI_CENTRO])||'—';
+  } else {
+    db.collection('config').doc('general').get().then(function(d){
+      _cfgGeneral = d.exists?d.data():{};
+      var n=(_cfgGeneral.porCentro&&_cfgGeneral.porCentro[MI_CENTRO]);
+      $('k-equipos').textContent = (n||n===0)?n:'—';
+    }).catch(function(){ $('k-equipos').textContent='—'; });
+  }
   var qo = db.collection('ordenes');
   qo = MI_CENTRO ? qo.where('centro','==',MI_CENTRO) : qo.where('tecnicoUid','==',CUR.uid);
   qo.where('estado','==','pendiente').limit(50).get().then(function(s){
@@ -365,19 +394,20 @@ var _eqFin=false;        // ya no hay más
 var _eqFiltro='todos';   // todos | cliente | bodega
 var _eqAbierto={};       // grupos expandidos
 var _eqCargando=false;
-var EQ_PAGINA=50;        // cuántos trae por tanda (protege la cuota)
+var EQ_PAGINA=25;        // tanda chica: aparece rápido y protege la cuota
 
 function cargarEquiposCentro(reset){
   if(_eqCargando)return;
-  if(reset){ _eqDocs=[]; _eqLast=null; _eqFin=false; _eqAbierto={}; $('eq-list').innerHTML='<div class="spin"></div>'; }
+  if(reset){ _eqDocs=[]; _eqLast=null; _eqFin=false; _eqAbierto={}; $('eq-list').innerHTML='<div class="spin"></div>'; $('eq-mas').innerHTML=''; }
   if(_eqFin)return;
   _eqCargando=true;
-  $('eq-mas').innerHTML='<div class="spin" style="margin:14px auto"></div>';
+  if(!reset)$('eq-mas').innerHTML='<div class="spin" style="margin:14px auto"></div>';
   var q=db.collection('equipos');
   if(MI_CENTRO) q=q.where('centro','==',MI_CENTRO);
   q=q.limit(EQ_PAGINA);
   if(_eqLast) q=q.startAfter(_eqLast);
-  q.get().then(function(s){
+  var tOut=new Promise(function(_,rej){setTimeout(function(){rej(new Error('__timeout__'));},15000);});
+  Promise.race([q.get(),tOut]).then(function(s){
     _eqCargando=false;
     if(s.docs.length<EQ_PAGINA)_eqFin=true;
     if(s.docs.length)_eqLast=s.docs[s.docs.length-1];
@@ -385,8 +415,9 @@ function cargarEquiposCentro(reset){
     renderListaEquipos();
   }).catch(function(e){
     _eqCargando=false;
-    $('eq-list').innerHTML='<div style="color:var(--error);padding:16px;font-size:13px">'+esc(e.message)+'</div>';
-    $('eq-mas').innerHTML='';
+    var msg = e.message==='__timeout__' ? 'La conexión está lenta y no respondió. Toca para reintentar.' : esc(e.message);
+    if(!_eqDocs.length) $('eq-list').innerHTML='<div style="text-align:center;color:var(--error);padding:20px;font-size:13px">'+msg+'</div>';
+    $('eq-mas').innerHTML='<button class="btn" style="width:100%" onclick="cargarEquiposCentro('+(_eqDocs.length?'false':'true')+')">Reintentar</button>';
   });
 }
 
@@ -447,7 +478,7 @@ function renderListaEquipos(){
   // Botón cargar más
   $('eq-mas').innerHTML = _eqFin
     ? '<div style="text-align:center;font-size:11px;color:var(--muted);padding:8px">Ya viste todos los equipos de tu centro.</div>'
-    : '<button class="btn" style="width:100%" onclick="cargarEquiposCentro(false)">Cargar 50 más</button>';
+    : '<button class="btn" style="width:100%" onclick="cargarEquiposCentro(false)">Cargar 25 más</button>';
 }
 function toggleGrupoEq(k){ _eqAbierto[k]=!( _eqAbierto[k] ); renderListaEquipos(); }
 
