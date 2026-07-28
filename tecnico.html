@@ -411,6 +411,15 @@ function abrirPorActivo(af){
 }
 
 // ══════════ EQUIPOS: lista progresiva de MI CENTRO, agrupada por cliente ══════════
+var _almMap={}, _almCargado=false;
+function cargarAlmacenesCentro(){
+  if(_almCargado||!MI_CENTRO)return;
+  _almCargado=true;
+  db.collection('almacenes').where('centro','==',MI_CENTRO).limit(500).get().then(function(s){
+    s.docs.forEach(function(d){ var a=d.data(); if(a.codigo)_almMap[a.codigo]=a.nombre||a.codigo; });
+    if($('v-equipos')&&$('v-equipos').classList.contains('on')&&_eqDocs.length)renderListaEquipos();
+  }).catch(function(){ _almCargado=false; });
+}
 var _eqDocs=[];          // equipos ya cargados (acumulados)
 var _eqLast=null;        // cursor de paginación
 var _eqFin=false;        // ya no hay más
@@ -421,7 +430,7 @@ var EQ_PAGINA=25;        // tanda chica: aparece rápido y protege la cuota
 
 function cargarEquiposCentro(reset){
   if(_eqCargando)return;
-  if(reset){ _eqDocs=[]; _eqLast=null; _eqFin=false; _eqAbierto={}; $('eq-list').innerHTML='<div class="spin"></div>'; $('eq-mas').innerHTML=''; }
+  if(reset){ _eqDocs=[]; _eqLast=null; _eqFin=false; _eqAbierto={}; $('eq-list').innerHTML='<div class="spin"></div>'; $('eq-mas').innerHTML=''; cargarAlmacenesCentro(); }
   if(_eqFin)return;
   _eqCargando=true;
   if(!reset)$('eq-mas').innerHTML='<div class="spin" style="margin:14px auto"></div>';
@@ -468,40 +477,52 @@ function eqVisibles(){
 function renderListaEquipos(){
   var arr=eqVisibles();
   var info=$('eq-info');
-  if(info) info.textContent = _eqDocs.length+' equipos cargados de '+(MI_CENTRO||'tu centro')+(arr.length!==_eqDocs.length?(' · '+arr.length+' coinciden'):'');
+  if(info) info.textContent = _eqDocs.length+' equipos cargados de '+(MI_CENTRO||'tu centro')+(arr.length!==_eqDocs.length?(' \u00b7 '+arr.length+' coinciden'):'');
   if(!arr.length){
     $('eq-list').innerHTML='<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">Sin coincidencias en lo cargado.<br>Toca <b>Ir</b> para buscar un activo o serie exacta en todo tu centro.</div>';
   } else {
-    // Agrupar por cliente (o Bodega)
     var g={};
     arr.forEach(function(e){
-      var k=(e.clienteNombre && String(e.clienteNombre).trim()) ? e.clienteNombre : '<i class="ti ti-package" style="vertical-align:-2px"></i> Bodega';
-      (g[k]=g[k]||[]).push(e);
+      var conCli = e.clienteNombre && String(e.clienteNombre).trim();
+      var key = conCli ? e.clienteNombre : '__bodega__';
+      if(!g[key]) g[key]={items:[], alm:{}, esBodega:!conCli, cliente:conCli?e.clienteNombre:''};
+      g[key].items.push(e);
+      if(e.almacen) g[key].alm[e.almacen]=true;
     });
     var keys=Object.keys(g).sort();
-    var autoAbrir = keys.length<=2;   // si son pocos grupos, ábrelos solos
+    var autoAbrir = keys.length<=2;
     $('eq-list').innerHTML = keys.map(function(k){
-      var lista=g[k];
+      var grp=g[k];
+      var lista=grp.items;
       var abierto = _eqAbierto[k] || autoAbrir;
+      var almNames = Object.keys(grp.alm).map(function(code){ return _almMap[code]||code; });
+      var almTxt = almNames.length ? ' ('+almNames.map(esc).join(', ')+')' : '';
+      var chevron = abierto
+        ? '<i class="ti ti-chevron-down" style="font-size:14px;vertical-align:-1px"></i> '
+        : '<i class="ti ti-chevron-right" style="font-size:14px;vertical-align:-1px"></i> ';
+      var etiqueta = grp.esBodega
+        ? '<i class="ti ti-package" style="vertical-align:-2px"></i> Bodega'
+        : esc(grp.cliente);
+      var keyAttr = k.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
       return '<div class="clay" style="margin-bottom:10px;overflow:hidden">'
-        +'<div onclick="toggleGrupoEq(\''+esc(k).replace(/'/g,"\\'")+'\')" style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer">'
-          +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(abierto?'<i class=\'ti ti-chevron-down\' style=\'font-size:14px;vertical-align:-1px\'></i> ':'<i class=\'ti ti-chevron-right\' style=\'font-size:14px;vertical-align:-1px\'></i> ')+esc(k)+'</div></div>'
+        +'<div onclick="toggleGrupoEq(\''+keyAttr+'\')" style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer">'
+          +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+chevron+etiqueta
+            +'<span style="color:var(--muted);font-weight:400">'+almTxt+'</span></div></div>'
           +'<span class="chip chip-c">'+lista.length+'</span>'
         +'</div>'
         +(abierto?('<div style="padding:0 10px 10px">'+lista.map(function(e){
             return '<div onclick="verEquipo(\''+e.id+'\')" style="padding:9px 10px;border-top:1px solid var(--border);cursor:pointer">'
               +'<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:600;font-size:13px">'+esc(e.modelo||'Equipo')+'</span>'
               +'<span style="font-family:monospace;font-weight:700;color:var(--green);font-size:12px">'+esc(e.activoFijo||'')+'</span></div>'
-              +'<div style="font-size:11px;color:var(--muted);margin-top:2px">'+esc(e.linea||'')+' · Serie '+esc(e.serie||'—')+'</div>'
+              +'<div style="font-size:11px;color:var(--muted);margin-top:2px">'+esc(e.linea||'')+' \u00b7 Serie '+esc(e.serie||'\u2014')+'</div>'
               +'</div>';
           }).join('')+'</div>'):'')
         +'</div>';
     }).join('');
   }
-  // Botón cargar más
   $('eq-mas').innerHTML = _eqFin
     ? '<div style="text-align:center;font-size:11px;color:var(--muted);padding:8px">Ya viste todos los equipos de tu centro.</div>'
-    : '<button class="btn" style="width:100%" onclick="cargarEquiposCentro(false)">Cargar 25 más</button>';
+    : '<button class="btn" style="width:100%" onclick="cargarEquiposCentro(false)">Cargar 25 m\u00e1s</button>';
 }
 function toggleGrupoEq(k){ _eqAbierto[k]=!( _eqAbierto[k] ); renderListaEquipos(); }
 
