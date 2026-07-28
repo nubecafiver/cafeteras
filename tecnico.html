@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>CAFIVER Técnico</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600&family=Hanken+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -49,7 +50,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 .bnav button .ic{font-size:22px;line-height:1}
 .bnav button.on{color:var(--green)}
 .bnav button.scan{margin-top:-32px;color:var(--green);font-size:11px;font-weight:600}
-.bnav button.scan .ring{width:60px;height:60px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;color:#fff;font-size:25px;border:4px solid var(--bg);box-shadow:0 5px 14px rgba(62,90,64,.32)}
+.bnav button.scan .ring{width:58px;height:58px;border-radius:19px;background:var(--green);display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px;border:4px solid var(--bg);box-shadow:0 5px 14px rgba(62,90,64,.32)}
 /* Login */
 #login{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center;background:var(--bg)}
 #login img{width:88px;height:88px;border-radius:24px;object-fit:cover;box-shadow:0 8px 26px rgba(62,90,64,.18);margin-bottom:20px}
@@ -117,9 +118,9 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
       </div>
     </div>
     <div style="display:flex;gap:11px;margin-bottom:22px">
-      <div class="btn" onclick="openScan()" style="flex:1;background:var(--green);color:#fff;border-color:var(--green);flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><span style="font-size:22px">⬡</span><span style="font-size:12px;font-weight:600">Escanear</span></div>
-      <div class="btn" onclick="nuevaOrden()" style="flex:1;flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><span style="font-size:22px;color:var(--green)">📋</span><span style="font-size:12px;font-weight:600">Nueva orden</span></div>
-      <div class="btn" onclick="nav('equipos')" style="flex:1;flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><span style="font-size:22px;color:var(--green)">🔍</span><span style="font-size:12px;font-weight:600">Buscar</span></div>
+      <div class="btn" onclick="openScan()" style="flex:1;background:var(--green);color:#fff;border-color:var(--green);flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><i class="ti ti-qrcode" style="font-size:22px"></i><span style="font-size:12px;font-weight:600">Escanear</span></div>
+      <div class="btn" onclick="nuevaOrden()" style="flex:1;flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><i class="ti ti-file-invoice" style="font-size:22px;color:var(--green)"></i><span style="font-size:12px;font-weight:600">Nueva orden</span></div>
+      <div class="btn" onclick="nav('equipos')" style="flex:1;flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><i class="ti ti-search" style="font-size:22px;color:var(--green)"></i><span style="font-size:12px;font-weight:600">Buscar</span></div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <span style="font-size:15px;font-weight:600;color:var(--text)">Pendientes de servicio</span>
@@ -146,7 +147,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 
   <!-- ORDENES -->
   <div class="view" id="v-ordenes">
-    <button class="btn btn-green" style="width:100%;margin-bottom:14px" onclick="nuevaOrden()">＋ Nueva orden de servicio</button>
+    <button class="btn btn-green" style="width:100%;margin-bottom:14px" onclick="nuevaOrden()"><i class="ti ti-plus" style="vertical-align:-2px"></i> Nueva orden de servicio</button>
     <div class="serif" style="font-size:16px;color:var(--green);margin-bottom:10px">Mis órdenes</div>
     <div id="ord-list"><div class="spin"></div></div>
   </div>
@@ -170,11 +171,11 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 
   <!-- BOTTOM NAV -->
   <div class="bnav">
-    <button class="on" data-v="inicio" onclick="nav('inicio')"><span class="ic">🏠</span>Inicio</button>
-    <button data-v="equipos" onclick="nav('equipos')"><span class="ic">☕</span>Equipos</button>
-    <button class="scan" onclick="openScan()"><span class="ring">📷</span><span style="margin-top:3px">Escanear</span></button>
-    <button data-v="ordenes" onclick="nav('ordenes')"><span class="ic">📋</span>Órdenes</button>
-    <button data-v="perfil" onclick="nav('perfil')"><span class="ic">👤</span>Perfil</button>
+    <button class="on" data-v="inicio" onclick="nav('inicio')"><span class="ic"><i class="ti ti-smart-home"></i></span>Inicio</button>
+    <button data-v="equipos" onclick="nav('equipos')"><span class="ic"><i class="ti ti-coffee"></i></span>Equipos</button>
+    <button class="scan" onclick="openScan()"><span class="ring"><i class="ti ti-qrcode"></i></span><span style="margin-top:3px">Escanear</span></button>
+    <button data-v="ordenes" onclick="nav('ordenes')"><span class="ic"><i class="ti ti-file-invoice"></i></span>Órdenes</button>
+    <button data-v="perfil" onclick="nav('perfil')"><span class="ic"><i class="ti ti-user-circle"></i></span>Perfil</button>
   </div>
 </div>
 
@@ -184,14 +185,14 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
   <div class="scan-frame"></div>
   <div class="scan-topbar">
     <span style="font-weight:700">Escanea el QR de la cafetera</span>
-    <button class="btn" style="padding:8px 14px" onclick="closeScan()">✕ Cerrar</button>
+    <button class="btn" style="padding:8px 14px" onclick="closeScan()"><i class="ti ti-x"></i> Cerrar</button>
   </div>
   <div class="scan-hint">Centra el código QR en el recuadro</div>
 </div>
 
 <!-- SHEET: FICHA / ORDEN -->
 <div class="sheet" id="sheet"><div class="sheet-card">
-  <div class="sheet-hd"><div class="serif" id="sheet-title" style="font-size:17px;color:var(--green)">—</div><button class="btn" style="padding:7px 12px" onclick="closeSheet()">✕</button></div>
+  <div class="sheet-hd"><div class="serif" id="sheet-title" style="font-size:17px;color:var(--green)">—</div><button class="btn" style="padding:7px 12px" onclick="closeSheet()"><i class="ti ti-x"></i></button></div>
   <div class="sheet-body" id="sheet-body"></div>
   <div class="sheet-ft" id="sheet-ft"></div>
 </div></div>
@@ -474,7 +475,7 @@ function renderListaEquipos(){
     // Agrupar por cliente (o Bodega)
     var g={};
     arr.forEach(function(e){
-      var k=(e.clienteNombre && String(e.clienteNombre).trim()) ? e.clienteNombre : '📦 Bodega';
+      var k=(e.clienteNombre && String(e.clienteNombre).trim()) ? e.clienteNombre : '<i class="ti ti-package" style="vertical-align:-2px"></i> Bodega';
       (g[k]=g[k]||[]).push(e);
     });
     var keys=Object.keys(g).sort();
@@ -484,7 +485,7 @@ function renderListaEquipos(){
       var abierto = _eqAbierto[k] || autoAbrir;
       return '<div class="clay" style="margin-bottom:10px;overflow:hidden">'
         +'<div onclick="toggleGrupoEq(\''+esc(k).replace(/'/g,"\\'")+'\')" style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer">'
-          +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(abierto?'▾ ':'▸ ')+esc(k)+'</div></div>'
+          +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(abierto?'<i class=\'ti ti-chevron-down\' style=\'font-size:14px;vertical-align:-1px\'></i> ':'<i class=\'ti ti-chevron-right\' style=\'font-size:14px;vertical-align:-1px\'></i> ')+esc(k)+'</div></div>'
           +'<span class="chip chip-c">'+lista.length+'</span>'
         +'</div>'
         +(abierto?('<div style="padding:0 10px 10px">'+lista.map(function(e){
@@ -545,7 +546,7 @@ function abrirFichaEquipo(){
     +row('Activo Fijo', e.activoFijo)+row('Serie', e.serie||'—')+row('Modelo', e.modelo||'—')
     +row('Línea', e.linea||'—')+row('Centro', centroNombre(e.centro))+row('Cliente', e.clienteNombre||'Bodega')
     +'</div>';
-  $('sheet-ft').innerHTML = '<button class="btn btn-green" onclick="nuevaOrdenDesdeEquipo()">📋 Levantar orden</button>';
+  $('sheet-ft').innerHTML = '<button class="btn btn-green" onclick="nuevaOrdenDesdeEquipo()"><i class="ti ti-clipboard-plus" style="vertical-align:-2px"></i> Levantar orden</button>';
   openSheet();
 }
 function row(k,v){return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--muted)">'+k+'</span><span style="font-size:13px;font-weight:600;text-align:right">'+esc(v)+'</span></div>';}
@@ -581,7 +582,7 @@ function verOrden(id){
       +'</div>';
     var esMia = o.tecnicoUid===CUR.uid;
     if(o.estado!=='terminado' && esMia){
-      $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cerrar</button><button class="btn btn-green" onclick="abrirCierre()">✍️ Firmar y cerrar</button>';
+      $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cerrar</button><button class="btn btn-green" onclick="abrirCierre()"><i class="ti ti-signature" style="vertical-align:-2px"></i> Firmar y cerrar</button>';
     } else {
       $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cerrar</button>';
     }
@@ -624,13 +625,13 @@ function mostrarCompartir(o){
   $('sheet-title').textContent='Orden cerrada · '+(o.folio||'');
   $('sheet-body').innerHTML=
     '<div class="clay card-pad" style="text-align:center;margin-bottom:14px">'
-    +'<div style="font-size:34px">✅</div>'
+    +'<div style="font-size:40px;color:var(--green)"><i class="ti ti-circle-check"></i></div>'
     +'<div class="serif" style="font-size:18px;color:var(--green);margin-top:4px">Orden terminada</div>'
     +'<div style="font-size:12px;color:var(--text2);margin-top:4px">'+esc(o.folio||'')+' · '+esc(o.cliente||'')+'</div>'
     +'</div>'
     +'<div style="font-size:13px;color:var(--text2);margin-bottom:10px">Comparte el comprobante con el cliente:</div>'
     +'<pre style="white-space:pre-wrap;font-family:inherit;font-size:12px;background:var(--surface2);border-radius:12px;padding:12px;box-shadow:inset 2px 2px 5px var(--clayD),inset -2px -2px 5px var(--clayL);color:var(--text2)">'+esc(resumenOrdenTexto(o))+'</pre>';
-  $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Listo</button><button class="btn btn-green" onclick="compartirOrden()">📤 Compartir</button>';
+  $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Listo</button><button class="btn btn-green" onclick="compartirOrden()"><i class="ti ti-share" style="vertical-align:-2px"></i> Compartir</button>';
 }
 function compartirOrden(){
   var o=_ordCerrar; if(!o)return;
@@ -706,7 +707,7 @@ function abrirFormOrden(){
     +'<div class="frow"><label>Refacciones</label><input class="fld" id="o-ref" type="number" inputmode="decimal" value="0" oninput="calcTotal()"></div></div>'
     +'<div class="frow"><label>Viáticos</label><input class="fld" id="o-viat" type="number" inputmode="decimal" value="0" oninput="calcTotal()"></div>'
     +'<div class="clay card-pad" style="text-align:center;margin-bottom:8px"><span class="lbl">Total</span><div class="num" style="font-size:24px;margin-top:3px" id="o-total">$0.00</div></div>'
-    +'<div id="o-geo" style="font-size:11px;color:var(--muted);text-align:center;margin-top:4px">📍 Registrando ubicación...</div>';
+    +'<div id="o-geo" style="font-size:11px;color:var(--muted);text-align:center;margin-top:4px"><i class="ti ti-map-pin"></i> Registrando ubicación...</div>';
   $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn btn-green" onclick="guardarOrden()">Guardar orden</button>';
   openSheet();
   $('o-formato').value=_ordFormato;
@@ -777,10 +778,10 @@ function capturarUbicacion(){
   if(!navigator.geolocation){ if(el)el.textContent=''; return; }
   navigator.geolocation.getCurrentPosition(function(pos){
     _geoLat=pos.coords.latitude; _geoLng=pos.coords.longitude;
-    if(el)el.innerHTML='📍 Ubicación registrada';
+    if(el)el.innerHTML='<i class="ti ti-map-pin"></i> Ubicación registrada';
     verificarMovimiento();   // comparar con la última orden de este equipo
   },function(err){
-    if(el)el.textContent='📍 Ubicación no disponible (se guardará sin ella)';
+    if(el)el.textContent='<i class="ti ti-map-pin-off"></i> Ubicación no disponible (se guardará sin ella)';
   },{enableHighAccuracy:true,timeout:12000,maximumAge:30000});
 }
 
@@ -808,7 +809,7 @@ function verificarMovimiento(){
     var dist=distanciaMetros(ult.lat,ult.lng,_geoLat,_geoLng);
     var el=$('o-geo');
     if(dist>100){
-      if(el)el.innerHTML='<span style="color:var(--amber);font-weight:700">⚠ El equipo parece haberse movido '+Math.round(dist)+' m de su última ubicación</span>';
+      if(el)el.innerHTML='<span style="color:var(--amber);font-weight:700"><i class="ti ti-alert-triangle"></i> El equipo parece haberse movido '+Math.round(dist)+' m de su última ubicación</span>';
       _geoMovido=Math.round(dist);
     } else {
       _geoMovido=0;
