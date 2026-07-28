@@ -497,7 +497,6 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
     <button class="tnav"    id="tnav-clientes"    onclick="switchView('clientes')">   <span>🏨</span><span class="tnav-txt"> Clientes</span></button>
     <button class="tnav"    id="tnav-directorio"  onclick="switchView('directorio')"> <span>📇</span><span class="tnav-txt"> Directorio</span></button>
     <button class="tnav"    id="tnav-ordenes"     onclick="switchView('ordenes')">    <span>📋</span><span class="tnav-txt"> Órdenes</span></button>
-    <button class="tnav"    id="tnav-rutas"       onclick="switchView('rutas')">      <span>🗺</span><span class="tnav-txt"> Rutas</span></button>
     <button class="tnav"    id="tnav-programacion" onclick="switchView('programacion')"><span>🗓</span><span class="tnav-txt"> Programación</span></button>
     <button class="tnav"    id="tnav-qr"          onclick="switchView('qr')">         <span>⬡</span><span class="tnav-txt"> QR</span></button>
     <div class="topbar-right">
@@ -523,6 +522,29 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
   <div id="view-ordenes"     class="view-wrap hidden"></div>
   <div id="view-rutas"       class="view-wrap hidden"></div>
   <div id="view-programacion" class="view-wrap hidden"></div>
+  <div id="prog-modal" style="display:none;position:fixed;inset:0;background:rgba(30,33,31,.45);z-index:900;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:20px;max-width:760px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid #EAECE9">
+      <div style="padding:16px 20px;border-bottom:1px solid #EAECE9;display:flex;justify-content:space-between;align-items:center">
+        <span id="prog-modal-title" style="font-family:'Source Serif 4',serif;font-size:17px;color:#1E211F">Asignar clientes</span>
+        <button class="btn btn-sm" onclick="progCerrarModal()">✕ Cerrar</button>
+      </div>
+      <div style="flex:1;overflow:auto;padding:18px 20px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div style="font-weight:600;color:#1E211F;margin-bottom:10px">Buscar cliente</div>
+          <div style="display:flex;gap:8px;margin-bottom:10px"><input class="fi-sm" id="ruta-q" placeholder="Nombre del cliente..." style="flex:1" onkeydown="if(event.key==='Enter')rutaBuscarCliente()"><button class="btn btn-blue btn-sm" onclick="rutaBuscarCliente()">Buscar</button></div>
+          <div id="ruta-result" style="max-height:360px;overflow:auto"></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-weight:600;color:#1E211F">Ruta armada</span><span id="ruta-count" class="chip chip-c" style="background:#EDF1ED;color:#3E5A40;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">0</span></div>
+          <div id="ruta-lista"></div>
+        </div>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid #EAECE9;display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn" onclick="progCerrarModal()">Cancelar</button>
+        <button class="btn btn-blue" onclick="rutaGuardar()">💾 Guardar ruta</button>
+      </div>
+    </div>
+  </div>
   <div id="view-preventivos" class="view-wrap hidden"></div>
   <div id="view-qr"          class="hidden" style="flex:1;overflow:auto;background:#eef2f7"></div>
   <div id="view-reportes"    class="view-wrap hidden"></div>
@@ -1553,8 +1575,7 @@ function rutaBuscarCliente(){
   var variantes=[q,q.toUpperCase(),q.charAt(0).toUpperCase()+q.slice(1).toLowerCase()], visto={};
   variantes.forEach(function(v){ if(visto[v])return; visto[v]=true;
     var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
-    var qq=col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(120);
-    if(_rutaEdit.centro) qq=col.where('centro','==',_rutaEdit.centro).where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(120);
+    var qq=col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(150);
     proms.push(qq.get());
   });
   Promise.all(proms).then(function(snaps){
@@ -1578,7 +1599,7 @@ function rutaBuscarCliente(){
 function rutaAddCliente(nombre,num){
   if(_rutaEdit.clientes.some(function(x){return x.clienteNombre===nombre;}))return;
   _rutaEdit.clientes.push({clienteNombre:nombre,clienteNum:num||'',nota:'',tipo:'preventivo',visitado:false});
-  renderRutas();
+  progRenderLista(); rutaBuscarCliente();
 }
 function rutaListaHTML(){
   var e=_rutaEdit;
@@ -1593,7 +1614,7 @@ function rutaListaHTML(){
       +'</div></div>';
   }).join('');
 }
-function rutaDelCliente(i){ _rutaEdit.clientes.splice(i,1); renderRutas(); }
+function rutaDelCliente(i){ _rutaEdit.clientes.splice(i,1); progRenderLista(); rutaBuscarCliente(); }
 
 function rutaGuardar(){
   var e=_rutaEdit;
@@ -1605,8 +1626,10 @@ function rutaGuardar(){
     actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
   };
   db.collection('rutas').doc(id).set(data,{merge:true}).then(function(){
-    alert('✅ Ruta guardada para '+e.tecnicoNombre+' ('+e.fecha+').');
-    rutaCargarRecientes();
+    _progRutas[id]=data;
+    if(typeof progCerrarModal==='function')progCerrarModal();
+    if(curView==='programacion')cargarProgramacion();
+    if(typeof toast==='function')toast('Ruta guardada para '+e.tecnicoNombre); else alert('Ruta guardada para '+e.tecnicoNombre);
   }).catch(function(err){ alert('Error al guardar: '+err.message); });
 }
 
@@ -1671,11 +1694,24 @@ function cargarProgramacion(){
     if(board)board.innerHTML=tecs.map(progFilaTecnico).join('');
   }).catch(function(){});
 }
-// Reutiliza la sección Rutas (uno a uno) para asignar desde el tablero
+// Abrir la ventana de asignación DENTRO de Programación (sin cambiar de sección)
 function progAsignar(uid){
-  _rutaEdit={tecnicoUid:'',tecnicoNombre:'',centro:'',fecha:_progFecha,clientes:[]};
-  switchView('rutas');
-  setTimeout(function(){ rutaSelTecnico(uid); },150);
+  var t=_tecnicos.find(function(x){return x.uid===uid;});
+  if(!t)return;
+  _rutaEdit={tecnicoUid:uid, tecnicoNombre:(t.nombre||t.email), centro:(t.centro||''), fecha:_progFecha, clientes:[]};
+  document.getElementById('prog-modal-title').textContent='Asignar clientes · '+(t.nombre||t.email)+' · '+_progFecha;
+  document.getElementById('ruta-result').innerHTML='<div style="color:#9aa0a6;font-size:12px;padding:8px">Busca un cliente para agregarlo.</div>';
+  // cargar ruta existente de ese día
+  db.collection('rutas').doc(uid+'_'+_progFecha).get().then(function(d){
+    if(d.exists && d.data().clientes) _rutaEdit.clientes=d.data().clientes;
+    progRenderLista();
+  }).catch(function(){ progRenderLista(); });
+  document.getElementById('prog-modal').style.display='flex';
+}
+function progCerrarModal(){ document.getElementById('prog-modal').style.display='none'; }
+function progRenderLista(){
+  var l=document.getElementById('ruta-lista'); if(l)l.innerHTML=rutaListaHTML();
+  var c=document.getElementById('ruta-count'); if(c)c.textContent=_rutaEdit.clientes.length;
 }
 
 function rutaCargarRecientes(){
