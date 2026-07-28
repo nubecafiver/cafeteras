@@ -11,68 +11,69 @@
 <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 <style>
 :root{
-  --bg:#fff8f2; --surface:#fff8f2; --surface2:#f4ede6; --low:#faf2eb;
-  --green:#154212; --green2:#002b02; --greenSoft:#9dd090;
-  --amber:#904d00; --amber2:#fca558; --error:#ba1a1a;
-  --text:#1e1b17; --text2:#42493e; --muted:#72796e; --border:#dcd5cc;
-  --clayL:#ffffff; --clayD:#e5e2d9;
+  --bg:#EEF1EF; --surface:#ffffff; --surface2:#F5F7F5; --low:#ffffff;
+  --green:#3E5A40; --green2:#2F4A31; --greenSoft:#EDF1ED;
+  --amber:#8A6D12; --amber2:#C9A227; --gold:#C9A227; --error:#B4453A;
+  --text:#1E211F; --text2:#6B726C; --muted:#A0A6A1;
+  --border:#EAECE9; --line:#EFF1EE;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{font-family:'Hanken Grotesk',sans-serif;background:var(--bg);color:var(--text);overscroll-behavior:none}
+body{font-family:'Hanken Grotesk',sans-serif;background:var(--bg);color:var(--text);overscroll-behavior:none;-webkit-font-smoothing:antialiased}
 .serif{font-family:'Source Serif 4',serif}
-.clay{background:var(--surface);border-radius:18px;box-shadow:-5px -5px 10px var(--clayL),5px 5px 14px var(--clayD)}
-.clay-inset{background:var(--surface2);box-shadow:inset 2px 2px 5px var(--clayD),inset -2px -2px 5px var(--clayL)}
-.lbl{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
-.num{font-family:'Source Serif 4',serif;color:var(--green);line-height:1}
+/* Tarjeta Salvia: blanca, esquinas suaves, línea tenue + sombra muy sutil */
+.clay{background:var(--surface);border-radius:20px;border:1px solid var(--border);box-shadow:0 1px 2px rgba(30,33,31,.03)}
+.clay-inset{background:var(--surface2);border-radius:14px;border:1px solid var(--border)}
+.lbl{font-size:11px;font-weight:700;letter-spacing:.07em;color:var(--muted);text-transform:uppercase}
+.num{font-family:'Source Serif 4',serif;color:var(--text);line-height:1}
 input,select,textarea,button{font-family:inherit;font-size:16px}
-.fld{width:100%;padding:12px 14px;border:none;border-radius:12px;background:var(--surface2);box-shadow:inset 2px 2px 5px var(--clayD),inset -2px -2px 5px var(--clayL);color:var(--text);outline:none}
-.fld:focus{box-shadow:inset 2px 2px 5px var(--clayD),inset -2px -2px 5px var(--clayL),0 0 0 2px rgba(21,66,18,.25)}
-.btn{border:none;border-radius:14px;padding:13px 16px;font-weight:700;font-size:15px;cursor:pointer;background:var(--surface);color:var(--text);box-shadow:-3px -3px 6px var(--clayL),3px 3px 8px var(--clayD)}
-.btn:active{box-shadow:inset 2px 2px 6px var(--clayD),inset -2px -2px 6px var(--clayL)}
-.btn-green{background:var(--green);color:#fff}
-.btn-amber{background:var(--amber2);color:#713b00}
-.chip{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;padding:4px 9px;border-radius:999px}
-.chip-c{background:rgba(21,66,18,.12);color:var(--green)}
-.chip-b{background:rgba(144,77,0,.14);color:var(--amber)}
-.chip-r{background:rgba(186,26,26,.12);color:var(--error)}
+.fld{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:13px;background:#fff;color:var(--text);outline:none;transition:border-color .15s,box-shadow .15s}
+.fld:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(62,90,64,.10)}
+.btn{border:1px solid var(--border);border-radius:14px;padding:13px 16px;font-weight:600;font-size:15px;cursor:pointer;background:#fff;color:var(--text);transition:background .15s,transform .1s}
+.btn:active{transform:scale(.985)}
+.btn-green{background:var(--green);color:#fff;border-color:var(--green)}
+.btn-amber{background:var(--amber2);color:#3d3208;border-color:var(--amber2)}
+.chip{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.03em;padding:4px 9px;border-radius:20px}
+.chip-c{background:var(--greenSoft);color:var(--green)}
+.chip-b{background:#F6F0DD;color:var(--amber)}
+.chip-r{background:#F6E6E4;color:var(--error)}
 /* App shell */
-#app{display:none;min-height:100vh;padding-bottom:76px}
-.topbar{display:flex;align-items:center;gap:10px;padding:14px 16px 10px}
-.topbar img{width:38px;height:38px;border-radius:50%;object-fit:cover}
-.view{padding:0 16px 20px;display:none}
+#app{display:none;min-height:100vh;padding-bottom:84px;background:var(--bg)}
+.topbar{display:flex;align-items:center;gap:11px;padding:20px 18px 14px}
+.topbar img{width:40px;height:40px;border-radius:50%;object-fit:cover}
+.view{padding:0 18px 20px;display:none}
 .view.on{display:block}
-.card-pad{padding:15px 16px}
-/* Bottom nav */
-.bnav{position:fixed;left:0;right:0;bottom:0;background:var(--low);box-shadow:0 -3px 14px rgba(21,66,18,.08);display:flex;justify-content:space-around;padding:8px 6px 10px;z-index:100}
-.bnav button{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text2);font-size:10px;font-weight:700;letter-spacing:.03em;cursor:pointer;flex:1}
-.bnav button .ic{font-size:20px;line-height:1}
+.card-pad{padding:16px 17px}
+/* Bottom nav: barra blanca con línea tenue arriba */
+.bnav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--border);display:flex;justify-content:space-around;align-items:center;padding:11px 8px 15px;z-index:100}
+.bnav button{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.02em;cursor:pointer;flex:1}
+.bnav button .ic{font-size:22px;line-height:1}
 .bnav button.on{color:var(--green)}
-.bnav button.scan{margin-top:-30px}
-.bnav button.scan .ring{width:66px;height:66px;border-radius:50%;background:var(--amber2);display:flex;align-items:center;justify-content:center;color:#713b00;font-size:26px;box-shadow:-3px -3px 8px var(--clayL),5px 5px 13px var(--clayD),0 0 0 5px var(--bg)}
-.bnav button.scan{color:var(--amber);font-size:11px}
+.bnav button.scan{margin-top:-32px;color:var(--green);font-size:11px;font-weight:600}
+.bnav button.scan .ring{width:60px;height:60px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;color:#fff;font-size:25px;border:4px solid var(--bg);box-shadow:0 5px 14px rgba(62,90,64,.32)}
 /* Login */
-#login{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center}
-#login img{width:96px;height:96px;border-radius:50%;object-fit:cover;box-shadow:0 6px 24px rgba(21,66,18,.25);margin-bottom:18px}
+#login{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center;background:var(--bg)}
+#login img{width:88px;height:88px;border-radius:24px;object-fit:cover;box-shadow:0 8px 26px rgba(62,90,64,.18);margin-bottom:20px}
 /* Modal / sheet */
-.sheet{position:fixed;inset:0;background:rgba(30,27,23,.5);display:none;align-items:flex-end;z-index:300}
+.sheet{position:fixed;inset:0;background:rgba(30,33,31,.42);display:none;align-items:flex-end;z-index:300}
 .sheet.on{display:flex}
-.sheet-card{background:var(--bg);width:100%;max-height:94vh;border-radius:22px 22px 0 0;display:flex;flex-direction:column;overflow:hidden}
-.sheet-hd{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
-.sheet-body{flex:1;overflow-y:auto;padding:14px 16px;-webkit-overflow-scrolling:touch}
-.sheet-ft{padding:10px 16px;display:flex;gap:8px;border-top:1px solid var(--border)}
-.sheet-ft .btn{flex:1;justify-content:center}
-.frow{margin-bottom:12px}
-.frow label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sheet-card{background:var(--bg);width:100%;max-height:94vh;border-radius:26px 26px 0 0;display:flex;flex-direction:column;overflow:hidden}
+.sheet-hd{padding:16px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:#fff}
+.sheet-body{flex:1;overflow-y:auto;padding:16px 18px;-webkit-overflow-scrolling:touch}
+.sheet-ft{padding:12px 18px;display:flex;gap:10px;border-top:1px solid var(--border);background:#fff}
+.sheet-ft .btn{flex:1;justify-content:center;text-align:center}
+.frow{margin-bottom:13px}
+.frow label{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+/* Escáner (pantalla completa, fondo negro) */
 #scanWrap{position:fixed;inset:0;background:#000;display:none;z-index:400}
 #scanVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .scan-topbar{position:absolute;top:0;left:0;right:0;padding:16px;display:flex;justify-content:space-between;align-items:center;z-index:3;color:#fff;background:linear-gradient(rgba(0,0,0,.55),transparent)}
 .scan-frame{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:66vw;max-width:280px;height:66vw;max-height:280px;border:3px solid rgba(255,255,255,.9);border-radius:20px;box-shadow:0 0 0 100vmax rgba(0,0,0,.45);z-index:2}
 .scan-hint{position:absolute;bottom:40px;left:0;right:0;text-align:center;color:#fff;font-size:14px;z-index:3;text-shadow:0 1px 3px rgba(0,0,0,.7)}
 #sigcv{width:100%;height:160px;border-radius:12px;background:#fff;touch-action:none;border:1px solid var(--border)}
-.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--green);color:#fff;padding:11px 18px;border-radius:12px;font-size:13px;font-weight:600;z-index:500;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90%;text-align:center}
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:var(--green);color:#fff;padding:11px 18px;border-radius:14px;font-size:13px;font-weight:600;z-index:500;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90%;text-align:center;box-shadow:0 6px 18px rgba(62,90,64,.25)}
 .toast.on{opacity:1}
-.spin{width:26px;height:26px;border:3px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:sp 1s linear infinite;margin:30px auto}
+.spin{width:26px;height:26px;border:2.5px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:sp 1s linear infinite;margin:30px auto}
 @keyframes sp{to{transform:rotate(360deg)}}
 </style>
 </head>
@@ -104,11 +105,26 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 
   <!-- INICIO -->
   <div class="view on" id="v-inicio">
-    <div class="g2" style="margin-bottom:12px">
-      <div class="clay card-pad"><div class="lbl">Mis equipos</div><div class="num" style="font-size:26px;margin-top:5px" id="k-equipos">—</div></div>
-      <div class="clay card-pad"><div class="lbl">Órdenes abiertas</div><div class="num" style="font-size:26px;margin-top:5px;color:var(--amber)" id="k-abiertas">—</div></div>
+    <div style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:2px">Equipos a mi cargo</div>
+      <div class="num" style="font-size:44px;letter-spacing:-1px" id="k-equipos">—</div>
     </div>
-    <div class="serif" style="font-size:16px;color:var(--green);margin-bottom:10px">Pendientes de servicio</div>
+    <div class="clay card-pad" style="margin-bottom:18px">
+      <div style="display:flex;justify-content:space-around;text-align:center">
+        <div><div class="num" style="font-size:22px;color:var(--amber)" id="k-abiertas">—</div><div style="font-size:11px;color:var(--muted);margin-top:3px">Órdenes abiertas</div></div>
+        <div style="width:1px;background:var(--border)"></div>
+        <div><div class="num" style="font-size:22px" id="k-hoy">—</div><div style="font-size:11px;color:var(--muted);margin-top:3px">Atendidos hoy</div></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:11px;margin-bottom:22px">
+      <div class="btn" onclick="openScan()" style="flex:1;background:var(--green);color:#fff;border-color:var(--green);flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><span style="font-size:22px">⬡</span><span style="font-size:12px;font-weight:600">Escanear</span></div>
+      <div class="btn" onclick="nuevaOrden()" style="flex:1;flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><span style="font-size:22px;color:var(--green)">📋</span><span style="font-size:12px;font-weight:600">Nueva orden</span></div>
+      <div class="btn" onclick="nav('equipos')" style="flex:1;flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><span style="font-size:22px;color:var(--green)">🔍</span><span style="font-size:12px;font-weight:600">Buscar</span></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-size:15px;font-weight:600;color:var(--text)">Pendientes de servicio</span>
+      <span style="font-size:12px;color:var(--green);font-weight:600" onclick="nav('ordenes')">Ver todos</span>
+    </div>
     <div id="pendientes"><div class="spin"></div></div>
   </div>
 
@@ -181,7 +197,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 </div></div>
 
 <div class="toast" id="toast"></div>
-<div id="conn-banner" style="position:fixed;left:0;right:0;top:0;z-index:600;background:#ba1a1a;color:#fff;font-size:12px;font-weight:700;text-align:center;padding:7px;display:none">Sin conexión — puedes seguir capturando, se guardará al reconectar</div>
+<div id="conn-banner" style="position:fixed;left:0;right:0;top:0;z-index:600;background:#B4453A;color:#fff;font-size:12px;font-weight:700;text-align:center;padding:7px;display:none">Sin conexión — puedes seguir capturando, se guardará al reconectar</div>
 
 <script>
 // ══════════ CONFIG FIREBASE ══════════
@@ -204,11 +220,11 @@ function actualizarConexion(){
   var b=document.getElementById('conn-banner'); if(!b)return;
   if(navigator.onLine){
     if(b.style.display==='block'){
-      b.style.background='#154212'; b.textContent='✓ Reconectado';
-      setTimeout(function(){ b.style.display='none'; b.style.background='#ba1a1a'; b.textContent='Sin conexión — puedes seguir capturando, se guardará al reconectar'; },2200);
+      b.style.background='#3E5A40'; b.textContent='✓ Reconectado';
+      setTimeout(function(){ b.style.display='none'; b.style.background='#B4453A'; b.textContent='Sin conexión — puedes seguir capturando, se guardará al reconectar'; },2200);
     }
   } else {
-    b.style.display='block'; b.style.background='#ba1a1a';
+    b.style.display='block'; b.style.background='#B4453A';
     b.textContent='Sin conexión — puedes seguir capturando, se guardará al reconectar';
   }
 }
@@ -336,13 +352,13 @@ function nav(v){
 var _cfgGeneral=null;
 function cargarInicio(){
   // KPI de equipos: 1 sola lectura (config/general precalculado) en vez de leer 1000 docs
+  function fmtN(n){ return (n||n===0)?Number(n).toLocaleString('es-MX'):'—'; }
   if(_cfgGeneral){
-    $('k-equipos').textContent = (_cfgGeneral.porCentro&&_cfgGeneral.porCentro[MI_CENTRO])||'—';
+    $('k-equipos').textContent = fmtN(_cfgGeneral.porCentro&&_cfgGeneral.porCentro[MI_CENTRO]);
   } else {
     db.collection('config').doc('general').get().then(function(d){
       _cfgGeneral = d.exists?d.data():{};
-      var n=(_cfgGeneral.porCentro&&_cfgGeneral.porCentro[MI_CENTRO]);
-      $('k-equipos').textContent = (n||n===0)?n:'—';
+      $('k-equipos').textContent = fmtN(_cfgGeneral.porCentro&&_cfgGeneral.porCentro[MI_CENTRO]);
     }).catch(function(){ $('k-equipos').textContent='—'; });
   }
   var qo = db.collection('ordenes');
@@ -352,6 +368,12 @@ function cargarInicio(){
     var arr=s.docs.map(function(d){return {id:d.id,...d.data()};});
     renderPendientes(arr);
   }).catch(function(e){ $('k-abiertas').textContent='—'; $('pendientes').innerHTML='<div style="color:var(--muted);font-size:13px">No se pudieron cargar pendientes.</div>'; });
+  // Atendidos hoy (órdenes que YO cerré hoy) — consulta chica
+  var hoy0=new Date(); hoy0.setHours(0,0,0,0);
+  db.collection('ordenes').where('tecnicoUid','==',CUR.uid).where('estado','==','terminado').limit(50).get().then(function(s){
+    var n=0; s.docs.forEach(function(d){ var o=d.data(); var t=(o.cerradoEn&&o.cerradoEn.seconds)||(o.creadoEn&&o.creadoEn.seconds); if(t&&t*1000>=hoy0.getTime())n++; });
+    var el=$('k-hoy'); if(el)el.textContent=n;
+  }).catch(function(){ var el=$('k-hoy'); if(el)el.textContent='—'; });
 }
 function renderPendientes(arr){
   if(!arr.length){ $('pendientes').innerHTML='<div class="clay card-pad" style="text-align:center;color:var(--muted);font-size:13px">Sin pendientes. ¡Buen trabajo!</div>'; return; }
@@ -684,9 +706,7 @@ function abrirFormOrden(){
     +'<div class="frow"><label>Refacciones</label><input class="fld" id="o-ref" type="number" inputmode="decimal" value="0" oninput="calcTotal()"></div></div>'
     +'<div class="frow"><label>Viáticos</label><input class="fld" id="o-viat" type="number" inputmode="decimal" value="0" oninput="calcTotal()"></div>'
     +'<div class="clay card-pad" style="text-align:center;margin-bottom:8px"><span class="lbl">Total</span><div class="num" style="font-size:24px;margin-top:3px" id="o-total">$0.00</div></div>'
-    +'<div class="serif" style="font-size:15px;color:var(--green);margin:14px 0 8px">Ubicación</div>'
-    +'<button class="btn" style="width:100%" onclick="capturarUbicacion()">📍 &nbsp;Capturar mi ubicación</button>'
-    +'<div id="o-geo" style="font-size:12px;color:var(--muted);text-align:center;margin-top:6px">—</div>';
+    +'<div id="o-geo" style="font-size:11px;color:var(--muted);text-align:center;margin-top:4px">📍 Registrando ubicación...</div>';
   $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn btn-green" onclick="guardarOrden()">Guardar orden</button>';
   openSheet();
   $('o-formato').value=_ordFormato;
@@ -721,8 +741,8 @@ function renderLineaForm(){
     +items.map(function(it,i){
       return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">'
         +'<span style="font-size:12px;flex:1">'+(i+1)+'. '+esc(it)+'</span>'
-        +'<label style="font-size:10px;font-weight:700;color:var(--green)"><input type="checkbox" class="ckl-p" data-i="'+esc(it)+'" style="width:18px;height:18px;accent-color:#154212;vertical-align:middle"> Prev</label>'
-        +'<label style="font-size:10px;font-weight:700;color:var(--error)"><input type="checkbox" class="ckl-c" data-i="'+esc(it)+'" style="width:18px;height:18px;accent-color:#ba1a1a;vertical-align:middle"> Corr</label>'
+        +'<label style="font-size:10px;font-weight:700;color:var(--green)"><input type="checkbox" class="ckl-p" data-i="'+esc(it)+'" style="width:18px;height:18px;accent-color:#3E5A40;vertical-align:middle"> Prev</label>'
+        +'<label style="font-size:10px;font-weight:700;color:var(--error)"><input type="checkbox" class="ckl-c" data-i="'+esc(it)+'" style="width:18px;height:18px;accent-color:#B4453A;vertical-align:middle"> Corr</label>'
         +'</div>';
     }).join('')+'</div>';
 }
@@ -735,8 +755,8 @@ function renderBrillanteForm(){
         +'<div style="font-size:12px;font-weight:600">'+it.n+'. '+esc(it.punto)+'</div>'
         +'<div style="font-size:10px;color:var(--amber);margin-bottom:5px">Ref: '+esc(it.ref)+'</div>'
         +'<div style="display:flex;align-items:center;gap:12px">'
-        +'<label style="font-size:11px;font-weight:700;color:var(--green)"><input type="radio" name="brz-'+it.n+'" value="C" style="accent-color:#154212"> C</label>'
-        +'<label style="font-size:11px;font-weight:700;color:var(--error)"><input type="radio" name="brz-'+it.n+'" value="NC" style="accent-color:#ba1a1a"> NC</label>'
+        +'<label style="font-size:11px;font-weight:700;color:var(--green)"><input type="radio" name="brz-'+it.n+'" value="C" style="accent-color:#3E5A40"> C</label>'
+        +'<label style="font-size:11px;font-weight:700;color:var(--error)"><input type="radio" name="brz-'+it.n+'" value="NC" style="accent-color:#B4453A"> NC</label>'
         +'<input class="fld brz-l" data-n="'+it.n+'" placeholder="Lectura/dato" style="flex:1;padding:7px 10px;font-size:13px">'
         +'</div></div>';
     });
@@ -753,22 +773,56 @@ function calcTotal(){
 // ══════════ GEOLOCALIZACIÓN ══════════
 var _geoLat=null, _geoLng=null;
 function capturarUbicacion(){
-  var el=$('o-geo'); if(el)el.textContent='Obteniendo ubicación...';
-  if(!navigator.geolocation){ if(el)el.textContent='Este dispositivo no da ubicación.'; return; }
+  var el=$('o-geo');
+  if(!navigator.geolocation){ if(el)el.textContent=''; return; }
   navigator.geolocation.getCurrentPosition(function(pos){
     _geoLat=pos.coords.latitude; _geoLng=pos.coords.longitude;
-    if(el)el.innerHTML='📍 Ubicación capturada ('+_geoLat.toFixed(5)+', '+_geoLng.toFixed(5)+')';
+    if(el)el.innerHTML='📍 Ubicación registrada';
+    verificarMovimiento();   // comparar con la última orden de este equipo
   },function(err){
-    if(el)el.textContent='No se pudo obtener ubicación (permiso denegado o sin señal).';
-  },{enableHighAccuracy:true,timeout:10000,maximumAge:0});
+    if(el)el.textContent='📍 Ubicación no disponible (se guardará sin ella)';
+  },{enableHighAccuracy:true,timeout:12000,maximumAge:30000});
 }
+
+// Distancia entre dos coordenadas en metros (Haversine)
+function distanciaMetros(la1,lo1,la2,lo2){
+  var R=6371000, rad=Math.PI/180;
+  var dLa=(la2-la1)*rad, dLo=(lo2-lo1)*rad;
+  var a=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*rad)*Math.cos(la2*rad)*Math.sin(dLo/2)*Math.sin(dLo/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+// Compara la ubicación actual con la última orden GEOLOCALIZADA de este equipo
+function verificarMovimiento(){
+  if(_geoLat==null||!_ordEquipo||!_ordEquipo.activoFijo)return;
+  var af=parseInt(_ordEquipo.activoFijo)||_ordEquipo.activoFijo;
+  db.collection('ordenes').where('activoFijo','==',af).limit(10).get().then(function(s){
+    var ult=null;
+    s.docs.forEach(function(d){
+      var o=d.data();
+      if(o.lat!=null&&o.lng!=null){
+        var t=(o.cerradoEn&&o.cerradoEn.seconds)||(o.creadoEn&&o.creadoEn.seconds)||0;
+        if(!ult||t>ult.t) ult={lat:o.lat,lng:o.lng,t:t};
+      }
+    });
+    if(!ult)return;
+    var dist=distanciaMetros(ult.lat,ult.lng,_geoLat,_geoLng);
+    var el=$('o-geo');
+    if(dist>100){
+      if(el)el.innerHTML='<span style="color:var(--amber);font-weight:700">⚠ El equipo parece haberse movido '+Math.round(dist)+' m de su última ubicación</span>';
+      _geoMovido=Math.round(dist);
+    } else {
+      _geoMovido=0;
+    }
+  }).catch(function(){});
+}
+var _geoMovido=0;
 
 // ══════════ FIRMAS (canvas táctil) ══════════
 var _sig={};
 function initFirmas(){ ['cli','tec'].forEach(function(w){ setupCanvas('sig-'+w,w); }); }
 function setupCanvas(id,key){
   var cv=$(id); if(!cv)return; var ctx=cv.getContext('2d');
-  ctx.lineWidth=2.5;ctx.lineCap='round';ctx.strokeStyle='#154212';
+  ctx.lineWidth=2.5;ctx.lineCap='round';ctx.strokeStyle='#3E5A40';
   _sig[key]={cv:cv,ctx:ctx,drawing:false,dirty:false};
   function pos(ev){var r=cv.getBoundingClientRect();var t=ev.touches?ev.touches[0]:ev;return{x:(t.clientX-r.left)*(cv.width/r.width),y:(t.clientY-r.top)*(cv.height/r.height)};}
   function start(ev){ev.preventDefault();_sig[key].drawing=true;_sig[key].dirty=true;var p=pos(ev);ctx.beginPath();ctx.moveTo(p.x,p.y);}
@@ -811,7 +865,7 @@ function guardarOrden(){
     descripcion:$('o-desc').value,
     formato:_ordFormato, checklistLinea:ckLinea, brillante:brillante,
     costoManoObra:mo, costoRefacciones:ref, costoViaticos:viat, costoTotal:mo+ref+viat,
-    lat:_geoLat, lng:_geoLng,
+    lat:_geoLat, lng:_geoLng, movidoMetros:_geoMovido||0,
     estado:'pendiente', firmado:false, origen:'app_tecnico',
     creadoEn:firebase.firestore.FieldValue.serverTimestamp()
   };
