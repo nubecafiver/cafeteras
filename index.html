@@ -1491,7 +1491,7 @@ function switchView(v){
 }
 
 // ══════════════════════════ RUTAS (el jefe arma la ruta del técnico) ══════════════════════════
-var _tecnicos=[];             // usuarios rol tecnico
+var _tecnicos=[], _usuariosTotal=0;             // usuarios rol tecnico
 var _rutaEdit=null;           // {tecnicoUid,tecnicoNombre,centro,fecha,clientes:[{clienteNombre,clienteNum,nota,tipo,visitado}]}
 var _rutasRecientes=[];
 
@@ -1540,11 +1540,35 @@ function renderRutas(){
 }
 
 function rutaCargarTecnicos(){
-  db.collection('usuarios').where('rol','==','tecnico').limit(100).get().then(function(s){
-    _tecnicos=s.docs.map(function(d){return {uid:d.id,...d.data()};});
+  // Leer todos los usuarios y filtrar por rol del lado del cliente (evita problemas de mayúsculas/acentos)
+  db.collection('usuarios').limit(300).get().then(function(s){
+    var todos=s.docs.map(function(d){return {uid:d.id,...d.data()};});
+    _usuariosTotal=todos.length;
+    _tecnicos=todos.filter(function(u){
+      var r=(u.rol||'').toString().toLowerCase();
+      return r.indexOf('tecnic')>=0 || r.indexOf('técnic')>=0;
+    });
     _tecnicos.sort(function(a,b){return (a.nombre||'').localeCompare(b.nombre||'');});
-    if(curView==='rutas')renderRutas();
-  }).catch(function(e){ console.warn('tecnicos:',e.message); });
+    console.log('Usuarios:',todos.length,'· Técnicos:',_tecnicos.length);
+    if(!_tecnicos.length && todos.length){
+      // hay usuarios pero ninguno con rol técnico: mostrar aviso útil
+      var w=document.getElementById('view-programacion');
+      if(w&&curView==='programacion'){
+        var box=document.createElement('div'); 
+      }
+    }
+    if(curView==='programacion')renderProgramacion();
+  }).catch(function(e){
+    console.error('Error leyendo usuarios:',e);
+    var w=document.getElementById('view-programacion');
+    if(w&&curView==='programacion'){
+      w.innerHTML='<div class="tbl-box" style="max-width:700px;margin:20px auto;padding:30px;text-align:center">'
+        +'<div style="color:#b00;font-weight:600;margin-bottom:8px">No se pudo leer la lista de técnicos</div>'
+        +'<div style="font-size:13px;color:#6B726C">'+esc(e.message)+(e.code?(' ['+e.code+']'):'')+'</div>'
+        +'<div style="font-size:12px;color:#9aa0a6;margin-top:10px">Si dice <b>permission-denied</b>, las reglas de Firestore están bloqueando leer la colección usuarios. Revisa la consola (F12) para el detalle.</div>'
+        +'</div>';
+    }
+  });
 }
 
 function rutaSelTecnico(uid){
@@ -1657,7 +1681,7 @@ function renderProgramacion(){
     +'</div>'
     +(tecs.length
       ? '<div id="prog-board">'+tecs.map(progFilaTecnico).join('')+'</div>'
-      : '<div class="tbl-box" style="padding:40px;text-align:center;color:var(--cf-text2)">No hay técnicos en este centro. Da de alta técnicos con el script (rol tecnico, centro '+esc(_progCentro||'')+').</div>')
+      : '<div class="tbl-box" style="padding:40px;text-align:center;color:var(--cf-text2)">'+(_usuariosTotal===0?'Aún no se cargan usuarios, o la colección usuarios está vacía.':(_tecnicos.length===0?('Hay '+_usuariosTotal+' usuarios, pero ninguno con rol <b>tecnico</b>. Revisa con: node cafiver-alta-tecnico.js --listar'):('No hay técnicos en el centro '+esc(_progCentro||'')+'. Prueba otro centro arriba.')))+'</div>')
     +'</div>';
   cargarProgramacion();
 }
