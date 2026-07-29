@@ -1001,25 +1001,17 @@ function quitarFoto(i){ _fotos.splice(i,1); renderFotos(); }
 function subirFotos(folio, cb){
   if(!_fotos.length){ cb([]); return; }
   var urls=[], pend=_fotos.length, err=null;
-  var BUCKET='cafeteras-90e78.firebasestorage.app';
   _fotos.forEach(function(f,i){
     var ref=storage.ref('ordenes/'+folio+'/foto_'+(i+1)+'_'+Date.now()+'.jpg');
     ref.putString(f.dataUrl,'data_url').then(function(snap){
-      // Construir la URL completa a mano (getDownloadURL a veces la devuelve cortada con el bucket .firebasestorage.app)
-      var md=snap.metadata||{};
-      var token=md.downloadTokens || (md.customMetadata&&md.customMetadata.firebaseStorageDownloadTokens);
-      if(token){
-        urls[i]='https://firebasestorage.googleapis.com/v0/b/'+BUCKET+'/o/'+encodeURIComponent(ref.fullPath)+'?alt=media&token='+String(token).split(',')[0];
-        if(--pend===0)cb(urls,err);
-      } else {
-        // respaldo: intentar getDownloadURL; si viene cortada, la completamos con getMetadata
-        snap.ref.getMetadata().then(function(m){
-          var t=m.downloadTokens||(m.customMetadata&&m.customMetadata.firebaseStorageDownloadTokens);
-          if(t){ urls[i]='https://firebasestorage.googleapis.com/v0/b/'+BUCKET+'/o/'+encodeURIComponent(ref.fullPath)+'?alt=media&token='+String(t).split(',')[0]; }
-          if(--pend===0)cb(urls.filter(Boolean),err);
-        }).catch(function(){ snap.ref.getDownloadURL().then(function(u){urls[i]=u;if(--pend===0)cb(urls.filter(Boolean),err);}).catch(function(e){err=e;if(--pend===0)cb(urls.filter(Boolean),err);}); });
-      }
-    }).catch(function(e){ err=e; if(--pend===0)cb(urls.filter(Boolean),err); });
+      return snap.ref.getDownloadURL();
+    }).then(function(url){
+      urls[i]=url;
+      if(--pend===0) cb(urls.filter(Boolean), err);
+    }).catch(function(e){
+      err=e; console.error('subirFoto',i,e);
+      if(--pend===0) cb(urls.filter(Boolean), err);
+    });
   });
 }
 
@@ -1060,7 +1052,7 @@ function guardarOrden(){
   };
   $('sheet-ft').innerHTML='<button class="btn" disabled>Subiendo fotos...</button>';
   subirFotos(data.folio, function(urls, err){
-    if(err && !urls.length){ toast('No se pudieron subir las fotos: '+(err.message||'')); abrirFormOrden(); return; }
+    if(!urls.length){ toast('No se pudo subir la foto, intenta de nuevo'+(err&&err.message?(': '+err.message):'')); abrirFormOrden(); return; }
     data.fotos=urls;
     $('sheet-ft').innerHTML='<button class="btn" disabled>Guardando...</button>';
     db.collection('ordenes').add(data).then(function(){
