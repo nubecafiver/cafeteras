@@ -81,6 +81,40 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 .toast.on{opacity:1}
 .spin{width:26px;height:26px;border:2.5px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:sp 1s linear infinite;margin:30px auto}
 @keyframes sp{to{transform:rotate(360deg)}}
+
+/* ══════════ ACABADO PRO (experiencia tipo GBM) ══════════ */
+/* Transición al cambiar de pantalla */
+.view.on{animation:viewIn .34s cubic-bezier(.22,.61,.36,1)}
+@keyframes viewIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+/* Feedback al tocar botones, chips y tarjetas */
+.btn,.bnav button,.chip,.fld{transition:transform .12s ease,background .18s ease,color .18s ease,box-shadow .18s ease,border-color .15s ease}
+.btn:active{transform:scale(.96)}
+.clay{transition:transform .14s ease,box-shadow .22s ease,opacity .2s ease}
+.clay[onclick]:active{transform:scale(.985)}
+/* Ventana emergente (sheet): deslizar suave hacia arriba */
+.sheet{transition:opacity .28s ease}
+.sheet.on .sheet-card{animation:sheetUp .36s cubic-bezier(.22,.61,.36,1)}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
+/* Ícono activo del menú: pequeño 'pop' */
+.bnav button.on .ic i{display:inline-block;animation:pop .32s ease}
+@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.22)}100%{transform:scale(1)}}
+.bnav button.scan .ring{transition:transform .15s ease,box-shadow .2s ease}
+.bnav button.scan:active .ring{transform:scale(.92)}
+/* Toast más suave */
+.toast{transition:opacity .3s ease,transform .3s ease}
+.toast:not(.on){transform:translateX(-50%) translateY(8px)}
+/* Esqueleto de carga (shimmer) */
+.sk{background:linear-gradient(90deg,#EAEDEA 25%,#F4F7F4 37%,#EAEDEA 63%);background-size:400% 100%;animation:sk 1.4s ease infinite;border-radius:12px}
+@keyframes sk{0%{background-position:100% 0}100%{background-position:-100% 0}}
+.sk-card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:15px;margin-bottom:10px}
+.sk-line{height:12px;margin-bottom:8px}
+/* Números: transición de color */
+.num{transition:color .2s ease}
+/* Scroll más suave */
+.sheet-body,#app{scroll-behavior:smooth}
+/* Entrada de la lista (contenedor) al primer render */
+.list-in{animation:listIn .4s ease}
+@keyframes listIn{from{opacity:0}to{opacity:1}}
 </style>
 </head>
 <body>
@@ -126,11 +160,12 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
       <div class="btn" onclick="nuevaOrden()" style="flex:1;background:var(--green);color:#fff;border-color:var(--green);flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><i class="ti ti-file-invoice" style="font-size:22px"></i><span style="font-size:12px;font-weight:600">Nueva orden</span></div>
       <div class="btn" onclick="nav('equipos')" style="flex:1;flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><i class="ti ti-search" style="font-size:22px;color:var(--green)"></i><span style="font-size:12px;font-weight:600">Buscar equipo</span></div>
     </div>
+    <div id="ruta-hoy" style="margin-bottom:22px"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <span style="font-size:15px;font-weight:600;color:var(--text)">Pendientes de servicio</span>
       <span style="font-size:12px;color:var(--green);font-weight:600" onclick="nav('ordenes')">Ver todos</span>
     </div>
-    <div id="pendientes"><div class="spin"></div></div>
+    <div id="pendientes"><div class="sk-card"><div class="sk sk-line" style="width:60%"></div><div class="sk sk-line" style="width:40%"></div></div></div>
   </div>
 
   <!-- EQUIPOS -->
@@ -278,6 +313,7 @@ var CHECKLIST_BRILLANTE = {
 
 // ══════════ HELPERS ══════════
 function $(id){return document.getElementById(id);}
+function skel(n){var s='';for(var i=0;i<(n||3);i++){s+='<div class="sk-card"><div class="sk sk-line" style="width:60%"></div><div class="sk sk-line" style="width:40%"></div><div class="sk sk-line" style="width:80%;margin-bottom:0"></div></div>';}return s;}
 function toast(m){var t=$('toast');t.textContent=m;t.classList.add('on');setTimeout(function(){t.classList.remove('on');},2600);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function fmt$(n){return '$'+(Number(n)||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
@@ -356,6 +392,7 @@ function nav(v){
 // ══════════ INICIO ══════════
 var _cfgGeneral=null;
 function cargarInicio(){
+  cargarRutaHoy();
   // KPI de equipos: 1 sola lectura (config/general precalculado) en vez de leer 1000 docs
   function fmtN(n){ return (n||n===0)?Number(n).toLocaleString('es-MX'):'—'; }
   if(_cfgGeneral){
@@ -380,6 +417,59 @@ function cargarInicio(){
     var el=$('k-hoy'); if(el)el.textContent=n;
   }).catch(function(){ var el=$('k-hoy'); if(el)el.textContent='—'; });
 }
+// ══════════ MI RUTA DE HOY (asignada por el jefe) ══════════
+var _rutaHoy=null, _rutaHoyId=null;
+function cargarRutaHoy(){
+  var box=$('ruta-hoy'); if(!box)return;
+  var hoy=new Date().toISOString().slice(0,10);
+  _rutaHoyId=CUR.uid+'_'+hoy;
+  db.collection('rutas').doc(_rutaHoyId).get().then(function(d){
+    if(!d.exists||!(d.data().clientes||[]).length){ _rutaHoy=null; box.innerHTML=''; return; }
+    _rutaHoy=d.data();
+    renderRutaHoy();
+  }).catch(function(){ box.innerHTML=''; });
+}
+function renderRutaHoy(){
+  var box=$('ruta-hoy'); if(!box||!_rutaHoy)return;
+  var cl=_rutaHoy.clientes||[];
+  var vis=cl.filter(function(c){return c.visitado;}).length;
+  box.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+    +'<span style="font-size:15px;font-weight:600;color:var(--text)"><i class="ti ti-map-2" style="vertical-align:-2px;color:var(--green)"></i> Mi ruta de hoy</span>'
+    +'<span class="chip chip-c">'+vis+' / '+cl.length+' visitados</span></div>'
+    +cl.map(function(c,i){
+      var tipoColor = c.tipo==='correctivo'?'chip-r':(c.tipo==='revision'?'chip-b':'chip-c');
+      return '<div class="clay" style="margin-bottom:10px;padding:13px 15px;'+(c.visitado?'opacity:.6':'')+'">'
+        +'<div style="display:flex;justify-content:space-between;align-items:start;gap:8px">'
+        +'<div style="flex:1;min-width:0" onclick="rutaHoyAbrirCliente('+i+')">'
+          +'<div style="font-weight:600;font-size:14px;'+(c.visitado?'text-decoration:line-through':'')+'">'+esc(c.clienteNombre)+'</div>'
+          +(c.nota?'<div style="font-size:12px;color:var(--text2);margin-top:2px">'+esc(c.nota)+'</div>':'')
+          +'<span class="chip '+tipoColor+'" style="margin-top:6px;display:inline-block">'+esc((c.tipo||'preventivo').toUpperCase())+'</span>'
+        +'</div>'
+        +'<button class="btn" style="padding:8px 10px;font-size:12px;white-space:nowrap" onclick="rutaHoyToggle('+i+')">'+(c.visitado?'<i class="ti ti-rotate"></i>':'<i class="ti ti-circle-check"></i> Visité')+'</button>'
+        +'</div></div>';
+    }).join('');
+}
+function rutaHoyToggle(i){
+  if(!_rutaHoy)return;
+  _rutaHoy.clientes[i].visitado=!_rutaHoy.clientes[i].visitado;
+  renderRutaHoy();
+  db.collection('rutas').doc(_rutaHoyId).update({clientes:_rutaHoy.clientes}).catch(function(){});
+}
+function rutaHoyAbrirCliente(i){
+  if(!_rutaHoy)return;
+  var nom=_rutaHoy.clientes[i].clienteNombre;
+  nav('equipos');
+  var inp=$('eq-q'); if(inp){ inp.value=nom; filtrarLocal(); }
+}
+// Al levantar orden de un cliente de la ruta, marcarlo visitado solo
+function marcarClienteVisitadoAuto(clienteNombre){
+  if(!_rutaHoy||!clienteNombre)return;
+  var cambio=false;
+  (_rutaHoy.clientes||[]).forEach(function(c){ if(!c.visitado && c.clienteNombre===clienteNombre){ c.visitado=true; cambio=true; } });
+  if(cambio){ renderRutaHoy(); db.collection('rutas').doc(_rutaHoyId).update({clientes:_rutaHoy.clientes}).catch(function(){}); }
+}
+
 function renderPendientes(arr){
   if(!arr.length){ $('pendientes').innerHTML='<div class="clay card-pad" style="text-align:center;color:var(--muted);font-size:13px">Sin pendientes. ¡Buen trabajo!</div>'; return; }
   $('pendientes').innerHTML = arr.map(function(o){
@@ -434,7 +524,7 @@ var EQ_PAGINA=25;        // tanda chica: aparece rápido y protege la cuota
 
 function cargarEquiposCentro(reset){
   if(_eqCargando)return;
-  if(reset){ _eqDocs=[]; _eqLast=null; _eqFin=false; _eqAbierto={}; $('eq-list').innerHTML='<div class="spin"></div>'; $('eq-mas').innerHTML=''; cargarAlmacenesCentro(); }
+  if(reset){ _eqDocs=[]; _eqLast=null; _eqFin=false; _eqAbierto={}; $('eq-list').innerHTML=skel(4); $('eq-mas').innerHTML=''; cargarAlmacenesCentro(); }
   if(_eqFin)return;
   _eqCargando=true;
   if(!reset)$('eq-mas').innerHTML='<div class="spin" style="margin:14px auto"></div>';
@@ -897,7 +987,7 @@ function guardarOrden(){
   };
   $('sheet-ft').innerHTML='<button class="btn" disabled>Guardando...</button>';
   db.collection('ordenes').add(data).then(function(){
-    toast('✅ Orden '+data.folio+' guardada');
+    toast('✅ Orden '+data.folio+' guardada'); marcarClienteVisitadoAuto(data.cliente);
     closeSheet(); cargarInicio();
   }).catch(function(e){ toast('Error: '+e.message); abrirFormOrden(); });
 }
