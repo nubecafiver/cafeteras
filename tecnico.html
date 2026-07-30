@@ -1001,12 +1001,14 @@ function quitarFoto(i){ _fotos.splice(i,1); renderFotos(); }
 function subirFotos(folio, cb){
   if(!_fotos.length){ cb([]); return; }
   var urls=[], pend=_fotos.length, err=null;
+  var BUCKET='cafeteras-90e78.firebasestorage.app';
   _fotos.forEach(function(f,i){
-    var ref=storage.ref('ordenes/'+folio+'/foto_'+(i+1)+'_'+Date.now()+'.jpg');
-    ref.putString(f.dataUrl,'data_url').then(function(snap){
-      return snap.ref.getDownloadURL();
-    }).then(function(url){
-      urls[i]=url;
+    var path='ordenes/'+folio+'/foto_'+(i+1)+'_'+Date.now()+'.jpg';
+    var ref=storage.ref(path);
+    ref.putString(f.dataUrl,'data_url').then(function(){
+      // Construir el enlace público directo (las reglas de lectura son públicas: if true).
+      // No usamos getDownloadURL porque devuelve la URL cortada con este bucket.
+      urls[i]='https://firebasestorage.googleapis.com/v0/b/'+BUCKET+'/o/'+encodeURIComponent(path)+'?alt=media';
       if(--pend===0) cb(urls.filter(Boolean), err);
     }).catch(function(e){
       err=e; console.error('subirFoto',i,e);
