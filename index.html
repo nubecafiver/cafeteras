@@ -521,6 +521,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
     <button class="tnav"    id="tnav-clientes"    onclick="switchView('clientes')">   <span><i class="ti ti-building-store"></i></span><span class="tnav-txt"> Clientes</span></button>
     <button class="tnav"    id="tnav-directorio"  onclick="switchView('directorio')"> <span><i class="ti ti-address-book"></i></span><span class="tnav-txt"> Directorio</span></button>
     <button class="tnav"    id="tnav-ordenes"     onclick="switchView('ordenes')">    <span><i class="ti ti-file-invoice"></i></span><span class="tnav-txt"> Órdenes</span></button>
+    <button class="tnav"    id="tnav-analisis"    onclick="switchView('analisis')">     <span><i class="ti ti-chart-histogram"></i></span><span class="tnav-txt"> Análisis</span></button>
     <button class="tnav"    id="tnav-programacion" onclick="switchView('programacion')"><span><i class="ti ti-calendar-event"></i></span><span class="tnav-txt"> Programación</span></button>
     <button class="tnav"    id="tnav-qr"          onclick="switchView('qr')">         <span><i class="ti ti-qrcode"></i></span><span class="tnav-txt"> QR</span></button>
     <div class="topbar-right">
@@ -535,6 +536,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
   <div id="view-ordenes"     class="view-wrap hidden"></div>
   <div id="view-rutas"       class="view-wrap hidden"></div>
   <div id="view-programacion" class="view-wrap hidden"></div>
+  <div id="view-analisis" class="view-wrap hidden"></div>
   <div id="prog-modal" style="display:none;position:fixed;inset:0;background:rgba(30,33,31,.45);z-index:900;align-items:center;justify-content:center;padding:20px">
     <div style="background:#fff;border-radius:20px;max-width:760px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid #EAECE9">
       <div style="padding:16px 20px;border-bottom:1px solid #EAECE9;display:flex;justify-content:space-between;align-items:center">
@@ -1489,7 +1491,7 @@ function cargarCatalogosYDatos(){
 // ══ NAVEGACIÓN ══
 function switchView(v){
   curView=v;
-  ['dashboard','equipos','clientes','directorio','ordenes','rutas','programacion','preventivos','qr','reportes','resumen','etiquetas','movimientos'].forEach(function(x){
+  ['dashboard','equipos','clientes','directorio','ordenes','rutas','programacion','analisis','preventivos','qr','reportes','resumen','etiquetas','movimientos'].forEach(function(x){
     var w=document.getElementById('view-'+x);if(w)w.classList.toggle('hidden',x!==v);
     var b=document.getElementById('tnav-'+x);if(b)b.classList.toggle('on',x===v);
   });
@@ -1500,6 +1502,7 @@ function switchView(v){
   if(v==='ordenes')renderOrdenes();
   if(v==='rutas')renderRutas();
   if(v==='programacion')renderProgramacion();
+  if(v==='analisis')renderAnalisis();
   if(v==='preventivos')renderPreventivos();
   if(v==='qr')renderQR();
   if(v==='reportes')renderReportes();
@@ -2908,6 +2911,115 @@ function renderOrdenes(){
       +'</tr>';}).join('')
       :'<tr><td colspan="11" class="empty-state">Sin órdenes para estos filtros</td></tr>')
     +'</tbody></table></div></div>';
+}
+
+// ══════════════════════════ ANÁLISIS DE ÓRDENES ══════════════════════════
+var anFiltros={desde:'',hasta:''};
+function renderAnalisis(){
+  var w=document.getElementById('view-analisis'); if(!w)return;
+  function fechaOrd(o){ return o.creadoEn?(o.creadoEn.toDate?o.creadoEn.toDate():new Date(o.creadoEn)):null; }
+  var data=ordenes.filter(function(o){
+    if(anFiltros.desde||anFiltros.hasta){ var d=fechaOrd(o); if(!d)return false;
+      if(anFiltros.desde && d<new Date(anFiltros.desde+'T00:00:00'))return false;
+      if(anFiltros.hasta && d>new Date(anFiltros.hasta+'T23:59:59'))return false; }
+    return true;
+  });
+  // Agregados
+  var totFact=0, totOrd=data.length, prev=0, corr=0;
+  var porTec={}, porCentro={}, porCliente={}, porMes={};
+  data.forEach(function(o){
+    var v=o.costoTotal||0; totFact+=v;
+    if(o.tipo==='correctivo')corr++; else prev++;
+    var t=o.tecnicoNombre||'Sin asignar'; porTec[t]=porTec[t]||{n:0,f:0}; porTec[t].n++; porTec[t].f+=v;
+    var ce=o.centro||'—'; porCentro[ce]=porCentro[ce]||{n:0,f:0}; porCentro[ce].n++; porCentro[ce].f+=v;
+    var cl=o.cliente||'—'; porCliente[cl]=porCliente[cl]||{n:0,f:0}; porCliente[cl].n++; porCliente[cl].f+=v;
+    var d=fechaOrd(o); if(d){ var mk=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2); porMes[mk]=porMes[mk]||{n:0,f:0}; porMes[mk].n++; porMes[mk].f+=v; }
+  });
+  var ticket=totOrd?totFact/totOrd:0;
+  var nTec=Object.keys(porTec).length;
+
+  function kpi(lbl,val,sub){ return '<div class="tbl-box" style="padding:18px 20px"><div style="font-size:11px;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.06em">'+lbl+'</div><div style="font-family:\'Source Serif 4\',serif;font-size:27px;color:var(--cf-text);margin-top:4px">'+val+'</div>'+(sub?'<div style="font-size:11px;color:var(--cf-text2);margin-top:2px">'+sub+'</div>':'')+'</div>'; }
+
+  // ── Gráfica de barras (por técnico/centro/cliente) ──
+  function barras(obj, max, color){
+    var arr=Object.entries(obj).sort(function(a,b){return b[1].f-a[1].f;}).slice(0,max||8);
+    var mx=Math.max.apply(null,arr.map(function(e){return e[1].f;}).concat([1]));
+    return arr.map(function(e){
+      var pct=Math.round(e[1].f/mx*100);
+      return '<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;gap:8px">'
+        +'<span style="font-size:12px;color:var(--cf-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%">'+esc(e[0])+'</span>'
+        +'<span style="font-size:12px;white-space:nowrap"><b style="color:var(--cf-text)">'+fmt$(e[1].f)+'</b> <span style="color:var(--cf-text2)">· '+e[1].n+' órd</span></span></div>'
+        +'<div style="height:8px;background:#EFEFF0;border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+(color||'#111315')+';border-radius:4px"></div></div></div>';
+    }).join('')||'<div style="color:var(--cf-text2);font-size:12px">Sin datos</div>';
+  }
+
+  // ── Dona preventivo vs correctivo (SVG) ──
+  var tot=prev+corr||1, pP=prev/tot, aP=Math.round(pP*360);
+  function polar(cx,cy,r,ang){ var a=(ang-90)*Math.PI/180; return [cx+r*Math.cos(a),cy+r*Math.sin(a)]; }
+  function arc(cx,cy,r,a0,a1){ var p0=polar(cx,cy,r,a0),p1=polar(cx,cy,r,a1); var large=(a1-a0)>180?1:0; return 'M'+cx+','+cy+' L'+p0[0]+','+p0[1]+' A'+r+','+r+' 0 '+large+' 1 '+p1[0]+','+p1[1]+' Z'; }
+  var dona='<svg viewBox="0 0 120 120" style="width:120px;height:120px">'
+    +'<path d="'+arc(60,60,54,0,aP||0.001)+'" fill="#3E5A40"></path>'
+    +'<path d="'+arc(60,60,54,aP,360)+'" fill="#C9A227"></path>'
+    +'<circle cx="60" cy="60" r="32" fill="#fff"></circle>'
+    +'<text x="60" y="58" text-anchor="middle" style="font-size:15px;font-weight:700;fill:#111315">'+tot+'</text>'
+    +'<text x="60" y="72" text-anchor="middle" style="font-size:8px;fill:#6B6F72">órdenes</text>'
+    +'</svg>';
+
+  // ── Línea de tendencia por mes (SVG) ──
+  var meses=Object.keys(porMes).sort();
+  var lineSvg='';
+  if(meses.length){
+    var vals=meses.map(function(m){return porMes[m].f;});
+    var mxv=Math.max.apply(null,vals.concat([1]));
+    var W=520,H=140,pad=8;
+    var stepX=meses.length>1?(W-2*pad)/(meses.length-1):0;
+    var pts=vals.map(function(v,i){ var x=pad+i*stepX; var y=H-pad-(v/mxv)*(H-2*pad-14); return [x,y]; });
+    var poly=pts.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ');
+    var area='0,'+(H-pad)+' '+poly+' '+(pts[pts.length-1][0].toFixed(1))+','+(H-pad);
+    lineSvg='<svg viewBox="0 0 '+W+' '+(H+18)+'" style="width:100%;height:auto" preserveAspectRatio="none">'
+      +'<polygon points="'+area+'" fill="rgba(62,90,64,.08)"></polygon>'
+      +'<polyline points="'+poly+'" fill="none" stroke="#3E5A40" stroke-width="2.5"></polyline>'
+      +pts.map(function(p,i){return '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="3" fill="#3E5A40"></circle>'
+        +'<text x="'+p[0].toFixed(1)+'" y="'+(H+12)+'" text-anchor="middle" style="font-size:9px;fill:#6B6F72">'+esc(meses[i].slice(2))+'</text>';}).join('')
+      +'</svg>';
+  } else { lineSvg='<div style="color:var(--cf-text2);font-size:12px;padding:20px 0">Sin datos por mes</div>'; }
+
+  w.innerHTML=
+    '<div style="max-width:1300px;margin:0 auto">'
+    // Encabezado + filtros fecha
+    +'<div class="tbl-box" style="padding:18px 22px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:end;flex-wrap:wrap;gap:12px">'
+      +'<div><div style="font-family:\'Source Serif 4\',serif;font-size:20px;color:var(--cf-text)">Análisis de órdenes</div>'
+      +'<div style="font-size:13px;color:var(--cf-text2)">Toda la operación interpretada de un vistazo.</div></div>'
+      +'<div style="display:flex;gap:10px;align-items:end">'
+        +'<div><div style="font-size:12px;color:var(--cf-text2);margin-bottom:5px">Desde</div><input class="fi-sm" type="date" value="'+anFiltros.desde+'" onchange="anFiltros.desde=this.value;renderAnalisis()"></div>'
+        +'<div><div style="font-size:12px;color:var(--cf-text2);margin-bottom:5px">Hasta</div><input class="fi-sm" type="date" value="'+anFiltros.hasta+'" onchange="anFiltros.hasta=this.value;renderAnalisis()"></div>'
+        +((anFiltros.desde||anFiltros.hasta)?'<button class="btn btn-sm" onclick="anFiltros={desde:\'\',hasta:\'\'};renderAnalisis()">Limpiar</button>':'')
+      +'</div>'
+    +'</div>'
+    // KPIs
+    +'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px">'
+      +kpi('Órdenes',totOrd.toLocaleString())
+      +kpi('Facturado',fmt$(totFact))
+      +kpi('Ticket promedio',fmt$(ticket))
+      +kpi('Preventivo / Correctivo',prev+' / '+corr)
+      +kpi('Técnicos activos',nTec)
+    +'</div>'
+    // Fila: tendencia + dona
+    +'<div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">'
+      +'<div class="tbl-box" style="padding:18px 20px"><div style="font-family:\'Source Serif 4\',serif;font-size:15px;color:var(--cf-text);margin-bottom:14px">Facturación por mes</div>'+lineSvg+'</div>'
+      +'<div class="tbl-box" style="padding:18px 20px"><div style="font-family:\'Source Serif 4\',serif;font-size:15px;color:var(--cf-text);margin-bottom:14px">Tipo de servicio</div>'
+        +'<div style="display:flex;align-items:center;gap:16px">'+dona
+        +'<div style="font-size:12px"><div style="margin-bottom:8px"><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#3E5A40;margin-right:6px"></span>Preventivo <b>'+prev+'</b></div>'
+        +'<div><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#C9A227;margin-right:6px"></span>Correctivo <b>'+corr+'</b></div></div>'
+      +'</div></div>'
+    +'</div>'
+    // Fila: por técnico + por centro + por cliente
+    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">'
+      +'<div class="tbl-box" style="padding:18px 20px"><div style="font-family:\'Source Serif 4\',serif;font-size:15px;color:var(--cf-text);margin-bottom:14px">Por técnico</div>'+barras(porTec,8,'#111315')+'</div>'
+      +'<div class="tbl-box" style="padding:18px 20px"><div style="font-family:\'Source Serif 4\',serif;font-size:15px;color:var(--cf-text);margin-bottom:14px">Por centro</div>'+barras(porCentro,8,'#3E5A40')+'</div>'
+      +'<div class="tbl-box" style="padding:18px 20px"><div style="font-family:\'Source Serif 4\',serif;font-size:15px;color:var(--cf-text);margin-bottom:14px">Top clientes</div>'+barras(porCliente,8,'#8A6D12')+'</div>'
+    +'</div>'
+    +'</div>';
 }
 
 // ══ PREVENTIVOS ══
