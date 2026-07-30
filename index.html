@@ -4087,9 +4087,11 @@ function cerrarVerOrden(){ document.getElementById('ord-modal').style.display='n
 function ordLightbox(url){ document.getElementById('ord-lightbox-img').src=url; document.getElementById('ord-lightbox').style.display='flex'; }
 function compartirOrden(ordId){
   var o=ordenes.find(function(x){return x.id===ordId;})||ordenActual; if(!o)return;
-  var txt='CAFIVER — Orden '+o.folio+'\n'+(o.tipo||'')+' · '+(o.cliente||'')+'\nActivo '+o.activoFijo+' · '+(o.modelo||'')+'\nTécnico: '+(o.tecnicoNombre||'')+'\nTotal: '+fmt$(o.costoTotal||0);
-  if(navigator.share){ navigator.share({title:'Orden '+o.folio,text:txt}).catch(function(){}); }
-  else { navigator.clipboard&&navigator.clipboard.writeText(txt); toast('Resumen copiado al portapapeles'); }
+  var link='https://nubecafiver.github.io/cafeteras/orden.html?id='+ordId;
+  var txt='CAFIVER — Comprobante de servicio\nOrden '+o.folio+' · '+(o.cliente||'')+'\nVer comprobante: '+link;
+  if(navigator.share){ navigator.share({title:'Orden '+o.folio,text:txt,url:link}).catch(function(){}); }
+  else if(navigator.clipboard){ navigator.clipboard.writeText(link); toast('Enlace del comprobante copiado'); }
+  else { prompt('Copia el enlace del comprobante:', link); }
 }
 
 function printOrden(ordId){

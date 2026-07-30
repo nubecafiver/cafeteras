@@ -746,18 +746,19 @@ function mostrarCompartir(o){
     +'<div class="serif" style="font-size:18px;color:var(--green);margin-top:4px">Orden terminada</div>'
     +'<div style="font-size:12px;color:var(--text2);margin-top:4px">'+esc(o.folio||'')+' · '+esc(o.cliente||'')+'</div>'
     +'</div>'
-    +'<div style="font-size:13px;color:var(--text2);margin-bottom:10px">Comparte el comprobante con el cliente:</div>'
-    +'<pre style="white-space:pre-wrap;font-family:inherit;font-size:12px;background:var(--surface2);border-radius:12px;padding:12px;box-shadow:inset 2px 2px 5px var(--clayD),inset -2px -2px 5px var(--clayL);color:var(--text2)">'+esc(resumenOrdenTexto(o))+'</pre>';
+    +'<div style="font-size:13px;color:var(--text2);margin-bottom:10px">Comparte el comprobante con el cliente (verá fotos, checklist y firma):</div>'
+    +'<div style="font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px;color:var(--green);word-break:break-all">'+esc('nubecafiver.github.io/cafeteras/orden.html?id='+o.id)+'</div>';
   $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Listo</button><button class="btn btn-green" onclick="compartirOrden()"><i class="ti ti-share" style="vertical-align:-2px"></i> Compartir</button>';
 }
 function compartirOrden(){
   var o=_ordCerrar; if(!o)return;
-  var texto=resumenOrdenTexto(o);
-  var titulo='Orden de servicio '+(o.folio||'')+' - CAFIVER';
+  var link='https://nubecafiver.github.io/cafeteras/orden.html?id='+o.id;
+  var titulo='Comprobante de servicio '+(o.folio||'')+' - CAFIVER';
+  var texto='CAFIVER — Comprobante de servicio\n'+(o.folio||'')+' · '+(o.cliente||'')+'\nVer comprobante: '+link;
   if(navigator.share){
-    navigator.share({title:titulo, text:texto}).catch(function(e){ if(e && e.name!=='AbortError'){ copiarAlPortapapeles(texto); } });
+    navigator.share({title:titulo, text:texto, url:link}).catch(function(e){ if(e && e.name!=='AbortError'){ copiarAlPortapapeles(link); } });
   } else {
-    copiarAlPortapapeles(texto);
+    copiarAlPortapapeles(link);
   }
 }
 function copiarAlPortapapeles(txt){
