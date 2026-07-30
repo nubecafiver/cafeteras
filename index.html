@@ -3916,12 +3916,8 @@ function verOrden(ordId){
         +ordCampo('Fecha servicio',(o.fechaServicio||'—')+(o.horaInicio?(' '+o.horaInicio):''))
       +'</div>'
       // Fotos
-      +'<div style="font-family:\'Source Serif 4\',serif;font-size:15px;color:'+TX+';margin-bottom:10px">Fotos del equipo'+(fotos.length?(' ('+fotos.length+')'):'')+'</div>'
-      +(fotos.length
-        ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:22px">'
-          +fotos.map(function(u){var us=esc(u).replace(/\'/g,"\\\\'");return '<div style="position:relative"><img src="'+esc(u)+'" onclick="ordLightbox(\''+us+'\')" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;border:1px solid '+BD+';cursor:zoom-in"><a href="'+esc(u)+'" target="_blank" style="display:none;width:100%;aspect-ratio:1;border:1px dashed '+BD+';border-radius:12px;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:var(--cf-text2);font-size:11px;text-decoration:none;text-align:center;padding:8px"><i class="ti ti-photo-off" style="font-size:22px"></i>No cargó<br>Abrir foto</a></div>';}).join('')
-          +'</div>'
-        : '<div style="color:'+T2+';font-size:12px;margin-bottom:22px">Esta orden no tiene fotos.</div>')
+      +'<div style="font-family:\'Source Serif 4\',serif;font-size:15px;color:'+TX+';margin-bottom:10px">Fotos del equipo</div>'
+      +'<div id="ord-fotos-box" style="margin-bottom:22px"><div style="color:'+T2+';font-size:12px">Cargando fotos...</div></div>'
       // Costos + Firma
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:22px">'
         +'<div><div style="font-family:\'Source Serif 4\',serif;font-size:15px;color:'+TX+';margin-bottom:8px">Costos</div>'+costos+'</div>'
@@ -3949,6 +3945,30 @@ function verOrden(ordId){
     +'</div>';
   document.getElementById('ord-modal-inner').innerHTML=html;
   document.getElementById('ord-modal').style.display='flex';
+  cargarFotosOrden(o.folio, o.fotos||[]);
+}
+// Lista las fotos reales de la carpeta de la orden en Storage y arma el enlace público correcto (?alt=media)
+function cargarFotosOrden(folio, fallback){
+  var box=document.getElementById('ord-fotos-box'); if(!box)return;
+  var BUCKET='cafeteras-90e78.firebasestorage.app';
+  function pinta(urls){
+    if(!urls.length){ box.innerHTML='<div style="color:var(--cf-text2);font-size:12px">Esta orden no tiene fotos.</div>'; return; }
+    box.innerHTML='<div style="font-size:11px;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">'+urls.length+' foto'+(urls.length>1?'s':'')+'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px">'
+      +urls.map(function(u){return '<img src="'+u+'" onclick="ordLightbox(\''+u.replace(/'/g,"\\'")+'\')" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;border:1px solid var(--cf-border);cursor:zoom-in">';}).join('')
+      +'</div>';
+  }
+  storage.ref('ordenes/'+folio).listAll().then(function(res){
+    if(res.items&&res.items.length){
+      var urls=res.items.map(function(it){ return 'https://firebasestorage.googleapis.com/v0/b/'+BUCKET+'/o/'+encodeURIComponent(it.fullPath)+'?alt=media'; });
+      pinta(urls);
+    } else {
+      pinta((fallback||[]).filter(function(u){return u&&u.indexOf('/o/')>0;}));
+    }
+  }).catch(function(){
+    // si no se puede listar, usar el fallback guardado (solo los que tengan /o/)
+    pinta((fallback||[]).filter(function(u){return u&&u.indexOf('/o/')>0;}));
+  });
 }
 function ordCampo(lbl,val,col){ return '<div><div style="font-size:11px;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.05em">'+lbl+'</div><div style="font-size:14px;font-weight:600;color:'+(col||'var(--cf-text)')+';margin-top:2px">'+esc(String(val))+'</div></div>'; }
 function cerrarVerOrden(){ document.getElementById('ord-modal').style.display='none'; }
