@@ -522,6 +522,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
     <button class="tnav"    id="tnav-directorio"  onclick="switchView('directorio')"> <span><i class="ti ti-address-book"></i></span><span class="tnav-txt"> Directorio</span></button>
     <button class="tnav"    id="tnav-ordenes"     onclick="switchView('ordenes')">    <span><i class="ti ti-file-invoice"></i></span><span class="tnav-txt"> Órdenes</span></button>
     <button class="tnav"    id="tnav-analisis"    onclick="switchView('analisis')">     <span><i class="ti ti-chart-histogram"></i></span><span class="tnav-txt"> Análisis</span></button>
+    <button class="tnav"    id="tnav-auditoria"   onclick="switchView('auditoria')">    <span><i class="ti ti-clipboard-check"></i></span><span class="tnav-txt"> Auditoría</span></button>
     <button class="tnav"    id="tnav-programacion" onclick="switchView('programacion')"><span><i class="ti ti-calendar-event"></i></span><span class="tnav-txt"> Programación</span></button>
     <button class="tnav"    id="tnav-qr"          onclick="switchView('qr')">         <span><i class="ti ti-qrcode"></i></span><span class="tnav-txt"> QR</span></button>
     <div class="topbar-right">
@@ -537,6 +538,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
   <div id="view-rutas"       class="view-wrap hidden"></div>
   <div id="view-programacion" class="view-wrap hidden"></div>
   <div id="view-analisis" class="view-wrap hidden"></div>
+  <div id="view-auditoria" class="view-wrap hidden"></div>
   <div id="prog-modal" style="display:none;position:fixed;inset:0;background:rgba(30,33,31,.45);z-index:900;align-items:center;justify-content:center;padding:20px">
     <div style="background:#fff;border-radius:20px;max-width:760px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid #EAECE9">
       <div style="padding:16px 20px;border-bottom:1px solid #EAECE9;display:flex;justify-content:space-between;align-items:center">
@@ -1491,7 +1493,7 @@ function cargarCatalogosYDatos(){
 // ══ NAVEGACIÓN ══
 function switchView(v){
   curView=v;
-  ['dashboard','equipos','clientes','directorio','ordenes','rutas','programacion','analisis','preventivos','qr','reportes','resumen','etiquetas','movimientos'].forEach(function(x){
+  ['dashboard','equipos','clientes','directorio','ordenes','rutas','programacion','analisis','auditoria','preventivos','qr','reportes','resumen','etiquetas','movimientos'].forEach(function(x){
     var w=document.getElementById('view-'+x);if(w)w.classList.toggle('hidden',x!==v);
     var b=document.getElementById('tnav-'+x);if(b)b.classList.toggle('on',x===v);
   });
@@ -1503,6 +1505,7 @@ function switchView(v){
   if(v==='rutas')renderRutas();
   if(v==='programacion')renderProgramacion();
   if(v==='analisis')renderAnalisis();
+  if(v==='auditoria')renderAuditoria();
   if(v==='preventivos')renderPreventivos();
   if(v==='qr')renderQR();
   if(v==='reportes')renderReportes();
@@ -3020,6 +3023,115 @@ function renderAnalisis(){
       +'<div class="tbl-box" style="padding:18px 20px"><div style="font-family:\'Source Serif 4\',serif;font-size:15px;color:var(--cf-text);margin-bottom:14px">Top clientes</div>'+barras(porCliente,8,'#8A6D12')+'</div>'
     +'</div>'
     +'</div>';
+}
+
+// ══════════════════════════ AUDITORÍA DE ACTIVOS (panel de resultados) ══════════════════════════
+var _auditorias=[], _audCargado=false, _audCentro='';
+function renderAuditoria(){
+  var w=document.getElementById('view-auditoria'); if(!w)return;
+  if(!_audCargado){ cargarAuditorias(); w.innerHTML='<div class="tbl-box" style="padding:40px;text-align:center;color:var(--cf-text2)">Cargando auditorías...</div>'; return; }
+  var data=_auditorias.filter(function(a){ return !_audCentro || a.centro===_audCentro; });
+  // KPIs globales
+  var totCli=data.length, totEq=0, conf=0, noEsta=0, movido=0;
+  var porCentro={};
+  data.forEach(function(a){
+    var items=a.items||[];
+    items.forEach(function(it){ totEq++; if(it.resultado==='existe')conf++; else if(it.resultado==='no')noEsta++; else if(it.resultado==='movido')movido++; });
+    var ce=a.centro||'—'; porCentro[ce]=porCentro[ce]||{cli:0,eq:0,ok:0}; porCentro[ce].cli++; porCentro[ce].eq+=items.length; porCentro[ce].ok+=items.filter(function(x){return x.resultado==='existe';}).length;
+  });
+  var cumpl=totEq?Math.round(conf/totEq*100):0;
+  var centros={}; _auditorias.forEach(function(a){ if(a.centro)centros[a.centro]=1; });
+
+  function kpi(lbl,val,color){ return '<div class="tbl-box" style="padding:18px 20px"><div style="font-size:11px;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.06em">'+lbl+'</div><div style="font-family:\'Source Serif 4\',serif;font-size:27px;color:'+(color||'var(--cf-text)')+';margin-top:4px">'+val+'</div></div>'; }
+
+  w.innerHTML=
+    '<div style="max-width:1300px;margin:0 auto">'
+    +'<div class="tbl-box" style="padding:18px 22px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:end;flex-wrap:wrap;gap:12px">'
+      +'<div><div style="font-family:\'Source Serif 4\',serif;font-size:20px;color:var(--cf-text)">Auditoría de activos</div>'
+      +'<div style="font-size:13px;color:var(--cf-text2)">Verificación física de cafeteras con evidencia.</div></div>'
+      +'<div style="display:flex;gap:10px;align-items:end">'
+        +'<select class="fi-sm" onchange="_audCentro=this.value;renderAuditoria()"><option value="">Todos los centros</option>'
+        +Object.keys(centros).sort().map(function(c){return "<option value=\""+esc(c)+"\""+(_audCentro===c?" selected":"")+">"+esc(c)+"</option>";}).join("")
+        +'</select>'
+        +'<button class="btn btn-sm" onclick="_audCargado=false;renderAuditoria()"><i class="ti ti-refresh"></i> Actualizar</button>'
+      +'</div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px">'
+      +kpi('Clientes auditados',totCli)
+      +kpi('Cumplimiento',cumpl+'%',cumpl>=90?'#3E5A40':(cumpl>=70?'#8A6D12':'#B4453A'))
+      +kpi('Equipos confirmados',conf.toLocaleString())
+      +kpi('No localizados',noEsta.toLocaleString(),noEsta?'#B4453A':'var(--cf-text)')
+      +kpi('Movidos',movido.toLocaleString(),movido?'#8A6D12':'var(--cf-text)')
+    +'</div>'
+    // Cumplimiento por centro
+    +'<div class="tbl-box" style="padding:18px 20px;margin-bottom:16px"><div style="font-family:\'Source Serif 4\',serif;font-size:15px;color:var(--cf-text);margin-bottom:14px">Cumplimiento por centro</div>'
+      +(Object.keys(porCentro).length?Object.entries(porCentro).sort(function(a,b){return b[1].eq-a[1].eq;}).map(function(e){
+        var pc=e[1].eq?Math.round(e[1].ok/e[1].eq*100):0;
+        var col=pc>=90?'#3E5A40':(pc>=70?'#8A6D12':'#B4453A');
+        return '<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px"><span><b>'+esc(e[0])+'</b> · '+e[1].cli+' clientes</span><span style="color:'+col+';font-weight:700">'+pc+'% ('+e[1].ok+'/'+e[1].eq+')</span></div>'
+          +'<div style="height:8px;background:#EFEFF0;border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pc+'%;background:'+col+';border-radius:4px"></div></div></div>';
+      }).join(''):'<div style="color:var(--cf-text2);font-size:12px">Aún no hay auditorías registradas.</div>')
+    +'</div>'
+    // Tabla de auditorías
+    +'<div class="tbl-box"><div class="tbl-hdr"><span class="tbl-hdr-title">Auditorías — '+data.length+'</span></div>'
+    +'<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Centro</th><th>Auditor</th><th>Equipos</th><th>Cumplimiento</th><th></th></tr></thead><tbody>'
+    +(data.length?data.map(function(a){
+       var items=a.items||[]; var ok=items.filter(function(x){return x.resultado==='existe';}).length;
+       var pc=items.length?Math.round(ok/items.length*100):0; var col=pc>=90?'#3E5A40':(pc>=70?'#8A6D12':'#B4453A');
+       return '<tr style="cursor:pointer" onclick="verAuditoria(\''+a.id+'\')"><td style="font-size:12px">'+fmtF(a.fecha||a.creadoEn)+'</td>'
+         +'<td style="font-size:13px;font-weight:600">'+esc(a.clienteNombre||'—')+'</td><td>'+bCe(a.centro)+'</td>'
+         +'<td style="font-size:12px">'+esc(a.auditorNombre||'—')+'</td><td>'+ok+' / '+items.length+'</td>'
+         +'<td><span style="color:'+col+';font-weight:700">'+pc+'%</span></td>'
+         +'<td><button class="icon-btn" onclick="event.stopPropagation();verAuditoria(\''+a.id+'\')" title="Ver"><i class="ti ti-eye"></i></button></td></tr>';
+     }).join(''):'<tr><td colspan="7" class="empty-state">Sin auditorías</td></tr>')
+    +'</tbody></table></div></div>'
+    +'</div>';
+}
+function cargarAuditorias(){
+  db.collection('auditorias').limit(300).get().then(function(s){
+    _auditorias=s.docs.map(function(d){return {id:d.id,...d.data()};});
+    _auditorias.sort(function(a,b){ var fa=(a.creadoEn&&a.creadoEn.seconds)||0, fb=(b.creadoEn&&b.creadoEn.seconds)||0; return fb-fa; });
+    _audCargado=true;
+    if(curView==='auditoria')renderAuditoria();
+  }).catch(function(e){
+    _audCargado=true;
+    var w=document.getElementById('view-auditoria');
+    if(w)w.innerHTML='<div class="tbl-box" style="padding:30px;text-align:center;color:#b00">No se pudieron cargar las auditorías: '+esc(e.message)+'</div>';
+  });
+}
+function verAuditoria(id){
+  var a=_auditorias.find(function(x){return x.id===id;}); if(!a)return;
+  var items=a.items||[]; var ok=items.filter(function(x){return x.resultado==='existe';}).length;
+  var pc=items.length?Math.round(ok/items.length*100):0;
+  var G='var(--cf-green)',TX='var(--cf-text)',T2='var(--cf-text2)',BD='var(--cf-border)';
+  function resBadge(r){ return r==='existe'?'<span style="color:#3E5A40;font-weight:700">✓ Existe</span>':(r==='no'?'<span style="color:#B4453A;font-weight:700">✗ No está</span>':'<span style="color:#8A6D12;font-weight:700">⚠ Movido</span>'); }
+  var mapLink=(a.lat&&a.lng)?('https://www.google.com/maps?q='+a.lat+','+a.lng):'';
+  var html=
+    '<div style="padding:18px 22px;border-bottom:1px solid '+BD+';display:flex;justify-content:space-between;align-items:flex-start;gap:12px">'
+      +'<div><div style="font-family:\'Source Serif 4\',serif;font-size:20px;color:'+TX+'">'+esc(a.clienteNombre||'')+'</div>'
+      +'<div style="font-size:12px;color:'+T2+'">'+fmtF(a.creadoEn)+' · Auditor: <b>'+esc(a.auditorNombre||'—')+'</b> · '+bCe(a.centro)+'</div></div>'
+      +'<button class="icon-btn" onclick="cerrarVerOrden()" style="font-size:16px"><i class="ti ti-x"></i></button>'
+    +'</div>'
+    +'<div style="max-height:74vh;overflow:auto;padding:20px 22px">'
+      +'<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">'
+        +'<div style="flex:1;min-width:120px;text-align:center;background:var(--cf-cream2);border:1px solid '+BD+';border-radius:14px;padding:14px"><div style="font-family:\'Source Serif 4\',serif;font-size:24px;color:'+(pc>=90?'#3E5A40':(pc>=70?'#8A6D12':'#B4453A'))+'">'+pc+'%</div><div style="font-size:11px;color:'+T2+'">Cumplimiento</div></div>'
+        +'<div style="flex:1;min-width:120px;text-align:center;background:var(--cf-cream2);border:1px solid '+BD+';border-radius:14px;padding:14px"><div style="font-family:\'Source Serif 4\',serif;font-size:24px;color:'+TX+'">'+ok+' / '+items.length+'</div><div style="font-size:11px;color:'+T2+'">Equipos confirmados</div></div>'
+        +(mapLink?'<a href="'+mapLink+'" target="_blank" style="flex:1;min-width:120px;text-align:center;background:var(--cf-cream2);border:1px solid '+BD+';border-radius:14px;padding:14px;text-decoration:none"><div style="font-size:22px;color:'+G+'"><i class="ti ti-map-pin"></i></div><div style="font-size:11px;color:'+G+'">Ver ubicación</div></a>':'')
+      +'</div>'
+      +items.map(function(it){
+        return '<div style="border:1px solid '+BD+';border-radius:14px;padding:12px 14px;margin-bottom:10px">'
+          +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:'+(it.fotoUrl||it.nota?'8px':'0')+'">'
+          +'<div><div style="font-weight:600;font-size:13px">'+esc(it.modelo||it.activoFijo||'Equipo')+'</div><div style="font-size:11px;color:'+T2+'">AF '+esc(it.activoFijo||'')+(it.serie?(' · Serie '+esc(it.serie)):'')+'</div></div>'
+          +'<div style="text-align:right"><div style="font-size:13px">'+resBadge(it.resultado)+'</div>'+(it.estado?'<div style="font-size:11px;color:'+T2+'">Estado: '+esc(it.estado)+'</div>':'')+'</div>'
+          +'</div>'
+          +(it.nota?'<div style="font-size:12px;color:'+T2+';margin-bottom:6px">'+esc(it.nota)+'</div>':'')
+          +(it.fotoUrl?'<img src="'+esc(it.fotoUrl)+'" onclick="ordLightbox(\''+esc(it.fotoUrl).replace(/'/g,"\\'")+'\')" style="width:90px;height:90px;object-fit:cover;border-radius:10px;border:1px solid '+BD+';cursor:zoom-in">':'')
+          +'</div>';
+      }).join('')
+    +'</div>'
+    +'<div style="padding:14px 22px;border-top:1px solid '+BD+';display:flex;gap:10px;justify-content:flex-end"><button class="btn" onclick="cerrarVerOrden()">Cerrar</button></div>';
+  document.getElementById('ord-modal-inner').innerHTML=html;
+  document.getElementById('ord-modal').style.display='flex';
 }
 
 // ══ PREVENTIVOS ══

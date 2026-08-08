@@ -161,6 +161,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
       <div class="btn" onclick="nuevaOrden()" style="flex:1;background:var(--green2);color:#fff;border-color:var(--green2);flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><i class="ti ti-file-invoice" style="font-size:22px"></i><span style="font-size:12px;font-weight:600">Nueva orden</span></div>
       <div class="btn" onclick="nav('equipos')" style="flex:1;flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><i class="ti ti-search" style="font-size:22px;color:var(--green)"></i><span style="font-size:12px;font-weight:600">Buscar equipo</span></div>
     </div>
+    <div id="aud-acceso" style="margin-bottom:22px;display:none"></div>
     <div id="ruta-hoy" style="margin-bottom:22px"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <span style="font-size:15px;font-weight:600;color:var(--text)">Pendientes de servicio</span>
@@ -220,6 +221,17 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 </div>
 
 <!-- SCANNER -->
+<div id="audWrap" style="position:fixed;inset:0;background:var(--bg);z-index:350;display:none;flex-direction:column">
+  <div style="background:var(--nav);color:#fff;padding:16px 18px;padding-top:calc(16px + env(safe-area-inset-top));display:flex;align-items:center;gap:12px;flex-shrink:0">
+    <button onclick="audCerrar()" style="background:none;border:none;color:#fff;font-size:22px"><i class="ti ti-arrow-left"></i></button>
+    <div style="flex:1"><div class="serif" style="font-size:17px" id="aud-titulo">Auditoría de activos</div><div style="font-size:11px;color:#9A9E9B" id="aud-sub">Verifica cada equipo con el cliente</div></div>
+    <span id="aud-pct" style="font-weight:700;font-size:15px"></span>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:16px 16px 90px" id="aud-body"></div>
+  <div id="aud-footer" style="position:fixed;left:0;right:0;bottom:0;padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--border);display:none">
+    <button class="btn btn-green" style="width:100%;justify-content:center" onclick="audGuardar()">Guardar auditoría</button>
+  </div>
+</div>
 <div id="scanWrap">
   <video id="scanVideo" playsinline autoplay muted></video>
   <div class="scan-frame"></div>
@@ -395,6 +407,7 @@ function nav(v){
 var _cfgGeneral=null;
 function cargarInicio(){
   cargarRutaHoy();
+  mostrarAccesoAuditoria();
   // KPI de equipos: 1 sola lectura (config/general precalculado) en vez de leer 1000 docs
   function fmtN(n){ return (n||n===0)?Number(n).toLocaleString('es-MX'):'—'; }
   if(_cfgGeneral){
@@ -470,6 +483,123 @@ function marcarClienteVisitadoAuto(clienteNombre){
   var cambio=false;
   (_rutaHoy.clientes||[]).forEach(function(c){ if(!c.visitado && c.clienteNombre===clienteNombre){ c.visitado=true; cambio=true; } });
   if(cambio){ renderRutaHoy(); db.collection('rutas').doc(_rutaHoyId).update({clientes:_rutaHoy.clientes}).catch(function(){}); }
+}
+
+// ══════════════════════════ AUDITORÍA DE ACTIVOS (auditor en campo) ══════════════════════════
+var _audItems=[], _audCliente='', _audClienteNum='', _audLat=null, _audLng=null;
+function esAuditor(){ var r=(CUR.rol||'').toLowerCase(); return r.indexOf('jefe')>=0||r.indexOf('director')>=0||r.indexOf('auditor')>=0||r.indexOf('admin')>=0; }
+function mostrarAccesoAuditoria(){
+  var box=$('aud-acceso'); if(!box)return;
+  if(!esAuditor()){ box.style.display='none'; return; }
+  box.style.display='block';
+  box.innerHTML='<div class="clay" onclick="audIniciar()" style="padding:15px 16px;display:flex;align-items:center;gap:13px;cursor:pointer">'
+    +'<div style="width:42px;height:42px;border-radius:13px;background:var(--greenSoft);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-clipboard-check" style="font-size:22px;color:var(--green)"></i></div>'
+    +'<div style="flex:1"><div style="font-weight:600;font-size:14px">Auditoría de activos</div><div style="font-size:12px;color:var(--muted)">Verifica físicamente las cafeteras de un cliente</div></div>'
+    +'<i class="ti ti-chevron-right" style="color:var(--muted)"></i></div>';
+}
+function audIniciar(){
+  _audItems=[]; _audCliente=''; _audClienteNum=''; _audLat=null; _audLng=null;
+  $('audWrap').style.display='flex';
+  $('aud-titulo').textContent='Auditoría de activos';
+  $('aud-sub').textContent='Elige el cliente a auditar';
+  $('aud-pct').textContent='';
+  $('aud-footer').style.display='none';
+  $('aud-body').innerHTML='<div style="display:flex;gap:8px;margin-bottom:12px"><input class="fld" id="aud-q" placeholder="Nombre del cliente..." style="flex:1"><button class="btn btn-green" onclick="audBuscarCliente()">Buscar</button></div><div id="aud-result"></div>';
+  var inp=$('aud-q'); if(inp){ inp.addEventListener('keydown',function(e){ if(e.key==='Enter')audBuscarCliente(); }); inp.focus(); }
+}
+function audCerrar(){
+  if(_audItems.length && !confirm('¿Salir sin guardar la auditoría?'))return;
+  $('audWrap').style.display='none';
+}
+function audBuscarCliente(){
+  var q=($('aud-q')||{}).value||''; q=q.trim();
+  var box=$('aud-result'); if(!box)return;
+  if(q.length<2){ box.innerHTML='<div style="color:var(--muted);font-size:12px;padding:6px">Escribe al menos 2 letras.</div>'; return; }
+  box.innerHTML='<div class="spin"></div>';
+  var col=db.collection('equipos'), variantes=[q,q.toUpperCase(),q.charAt(0).toUpperCase()+q.slice(1).toLowerCase()], vis={}, proms=[];
+  variantes.forEach(function(v){ if(vis[v])return; vis[v]=true; var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);}); proms.push(col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(120).get()); });
+  Promise.all(proms).then(function(snaps){
+    var cli={};
+    snaps.forEach(function(s){ s.docs.forEach(function(d){ var e=d.data(); if(MI_CENTRO && e.centro!==MI_CENTRO)return; if(e.clienteNombre){ var k=e.clienteNombre; if(!cli[k])cli[k]={nombre:e.clienteNombre,num:e.cliente||'',n:0}; cli[k].n++; } }); });
+    var arr=Object.values(cli).sort(function(a,b){return b.n-a.n;}).slice(0,30);
+    if(!arr.length){ box.innerHTML='<div style="color:var(--muted);font-size:12px;padding:6px">Sin clientes con ese nombre'+(MI_CENTRO?(' en '+MI_CENTRO):'')+'.</div>'; return; }
+    box.innerHTML=arr.map(function(c){
+      return '<div onclick="audCargarEquipos(\''+esc(c.nombre).replace(/'/g,"\\'")+'\',\''+esc(String(c.num)).replace(/'/g,"\\'")+'\')" class="clay" style="padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;cursor:pointer">'
+        +'<div><div style="font-weight:600;font-size:13px">'+esc(c.nombre)+'</div><div style="font-size:11px;color:var(--muted)">'+c.n+' equipos registrados</div></div><i class="ti ti-chevron-right" style="color:var(--muted)"></i></div>';
+    }).join('');
+  }).catch(function(e){ box.innerHTML='<div style="color:#b00;font-size:12px;padding:6px">'+esc(e.message)+'</div>'; });
+}
+function audCargarEquipos(nombre, num){
+  _audCliente=nombre; _audClienteNum=num;
+  $('aud-titulo').textContent=nombre;
+  $('aud-sub').textContent='Marca cada equipo';
+  $('aud-body').innerHTML='<div class="spin"></div>';
+  // capturar GPS silencioso
+  if(navigator.geolocation)navigator.geolocation.getCurrentPosition(function(p){ _audLat=p.coords.latitude; _audLng=p.coords.longitude; },function(){},{enableHighAccuracy:true,timeout:8000});
+  var col=db.collection('equipos');
+  var variantes=[nombre], q0=col.where('clienteNombre','==',nombre).limit(300);
+  q0.get().then(function(s){
+    _audItems=s.docs.filter(function(d){ var e=d.data(); return !MI_CENTRO || e.centro===MI_CENTRO; }).map(function(d){ var e=d.data();
+      return {activoFijo:e.activoFijo||d.id, modelo:e.modelo||'', serie:e.serie||'', linea:e.linea||'', centro:e.centro||'', resultado:'', estado:'', nota:'', foto:null };
+    });
+    audRender();
+  }).catch(function(e){ $('aud-body').innerHTML='<div style="color:#b00;font-size:13px;padding:10px">'+esc(e.message)+'</div>'; });
+}
+function audRender(){
+  var b=$('aud-body'); if(!b)return;
+  if(!_audItems.length){ b.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px;text-align:center">Este cliente no tiene equipos registrados'+(MI_CENTRO?(' en '+MI_CENTRO):'')+'.</div>'; return; }
+  var done=_audItems.filter(function(x){return x.resultado;}).length;
+  var ok=_audItems.filter(function(x){return x.resultado==='existe';}).length;
+  var pct=_audItems.length?Math.round(ok/_audItems.length*100):0;
+  $('aud-pct').textContent=pct+'%';
+  $('aud-sub').textContent=done+' de '+_audItems.length+' revisados';
+  $('aud-footer').style.display=done>0?'block':'none';
+  b.innerHTML=_audItems.map(function(it,i){
+    function rb(val,txt,col){ var on=it.resultado===val; return '<button onclick="audRes('+i+',\''+val+'\')" style="flex:1;padding:8px 4px;border-radius:10px;border:1px solid '+(on?col:'var(--border)')+';background:'+(on?col:'#fff')+';color:'+(on?'#fff':'var(--text2)')+';font-size:12px;font-weight:600">'+txt+'</button>'; }
+    var estados=['Bueno','Regular','Malo'];
+    return '<div class="clay" style="padding:13px 14px;margin-bottom:10px">'
+      +'<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:10px"><div style="min-width:0"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.modelo||'Equipo')+'</div><div style="font-size:11px;color:var(--muted)">AF '+esc(it.activoFijo)+(it.serie?(' · '+esc(it.serie)):'')+'</div></div></div>'
+      +'<div style="display:flex;gap:6px;margin-bottom:10px">'+rb('existe','✓ Existe','#3E5A40')+rb('movido','⚠ Movido','#8A6D12')+rb('no','✗ No está','#B4453A')+'</div>'
+      +(it.resultado&&it.resultado!=='no'?('<div style="display:flex;gap:6px;margin-bottom:10px">'+estados.map(function(es){ var on=it.estado===es; return '<button onclick="audEstado('+i+',\''+es+'\')" style="flex:1;padding:6px;border-radius:9px;border:1px solid '+(on?'var(--green)':'var(--border)')+';background:'+(on?'var(--greenSoft)':'#fff')+';color:'+(on?'var(--green)':'var(--text2)')+';font-size:11px;font-weight:600">'+es+'</button>'; }).join('')+'</div>'):'')
+      +(it.resultado?('<div style="display:flex;gap:8px;align-items:center">'
+          +(it.foto?'<img src="'+it.foto+'" style="width:46px;height:46px;object-fit:cover;border-radius:9px;border:1px solid var(--border)">':'')
+          +'<button class="btn" style="padding:8px 12px;font-size:12px" onclick="audFotoBtn('+i+')"><i class="ti ti-camera"></i> '+(it.foto?'Cambiar':'Foto *')+'</button>'
+          +'<input class="fld" style="flex:1;font-size:12px;padding:8px" placeholder="Nota (opcional)" value="'+esc(it.nota||'')+'" oninput="_audItems['+i+'].nota=this.value"></div>'):'')
+      +'</div>';
+  }).join('');
+}
+function audRes(i,val){ _audItems[i].resultado=val; if(val==='no')_audItems[i].estado=''; audRender(); }
+function audEstado(i,es){ _audItems[i].estado=es; audRender(); }
+function audFotoBtn(i){
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.capture='environment';
+  inp.onchange=function(){ if(inp.files&&inp.files[0]){ comprimirImagen(inp.files[0],function(dataUrl){ _audItems[i].foto=dataUrl; audRender(); }); } };
+  inp.click();
+}
+function audGuardar(){
+  var revisados=_audItems.filter(function(x){return x.resultado;});
+  if(!revisados.length){ toast('Marca al menos un equipo'); return; }
+  // foto obligatoria en los confirmados (existe/movido)
+  var faltan=revisados.filter(function(x){return x.resultado!=='no' && !x.foto;});
+  if(faltan.length){ toast('Falta foto en '+faltan.length+' equipo(s) confirmado(s)'); return; }
+  $('aud-footer').innerHTML='<button class="btn" disabled style="width:100%">Subiendo evidencia...</button>';
+  var audId='AUD-'+Date.now();
+  var pend=revisados.filter(function(x){return x.foto;}).length; var subidas=0, errSub=false;
+  var BUCKET='cafeteras-90e78.firebasestorage.app';
+  function finalizar(){
+    var items=revisados.map(function(x){ return {activoFijo:x.activoFijo,modelo:x.modelo,serie:x.serie,resultado:x.resultado,estado:x.estado||'',nota:x.nota||'',fotoUrl:x.fotoUrl||''}; });
+    var ok=items.filter(function(x){return x.resultado==='existe';}).length;
+    var doc={ clienteNombre:_audCliente, clienteNum:_audClienteNum, centro:MI_CENTRO||'', auditorUid:CUR.uid, auditorNombre:CUR.nombre||CUR.email, lat:_audLat, lng:_audLng, items:items, totalEquipos:items.length, confirmados:ok, cumplimiento:(items.length?Math.round(ok/items.length*100):0), creadoEn:firebase.firestore.FieldValue.serverTimestamp() };
+    db.collection('auditorias').add(doc).then(function(){ toast('✅ Auditoría guardada'); $('audWrap').style.display='none'; }).catch(function(e){ toast('Error: '+e.message); $('aud-footer').innerHTML='<button class="btn btn-green" style="width:100%" onclick="audGuardar()">Reintentar</button>'; });
+  }
+  if(!pend){ finalizar(); return; }
+  revisados.forEach(function(x,idx){
+    if(!x.foto)return;
+    var path='auditorias/'+audId+'/'+x.activoFijo+'_'+Date.now()+'.jpg';
+    storage.ref(path).putString(x.foto,'data_url').then(function(){
+      x.fotoUrl='https://firebasestorage.googleapis.com/v0/b/'+BUCKET+'/o/'+encodeURIComponent(path)+'?alt=media';
+      if(++subidas>=pend)finalizar();
+    }).catch(function(){ errSub=true; if(++subidas>=pend)finalizar(); });
+  });
 }
 
 function renderPendientes(arr){
