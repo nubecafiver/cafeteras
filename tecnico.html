@@ -588,7 +588,7 @@ function audGuardar(){
   function finalizar(){
     var items=revisados.map(function(x){ return {activoFijo:x.activoFijo,modelo:x.modelo,serie:x.serie,resultado:x.resultado,estado:x.estado||'',nota:x.nota||'',fotoUrl:x.fotoUrl||''}; });
     var ok=items.filter(function(x){return x.resultado==='existe';}).length;
-    var doc={ clienteNombre:_audCliente, clienteNum:_audClienteNum, centro:MI_CENTRO||'', auditorUid:CUR.uid, auditorNombre:CUR.nombre||CUR.email, lat:_audLat, lng:_audLng, items:items, totalEquipos:items.length, confirmados:ok, cumplimiento:(items.length?Math.round(ok/items.length*100):0), creadoEn:firebase.firestore.FieldValue.serverTimestamp() };
+    var doc={ clienteNombre:_audCliente, clienteNum:_audClienteNum, centro:MI_CENTRO||'', auditorUid:CUR.uid, auditorNombre:CUR.nombre||CUR.email, lat:_audLat, lng:_audLng, carpeta:audId, items:items, totalEquipos:items.length, confirmados:ok, cumplimiento:(items.length?Math.round(ok/items.length*100):0), creadoEn:firebase.firestore.FieldValue.serverTimestamp() };
     db.collection('auditorias').add(doc).then(function(){ toast('✅ Auditoría guardada'); $('audWrap').style.display='none'; }).catch(function(e){ toast('Error: '+e.message); $('aud-footer').innerHTML='<button class="btn btn-green" style="width:100%" onclick="audGuardar()">Reintentar</button>'; });
   }
   if(!pend){ finalizar(); return; }

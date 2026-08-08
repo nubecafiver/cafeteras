@@ -3125,13 +3125,31 @@ function verAuditoria(id){
           +'<div style="text-align:right"><div style="font-size:13px">'+resBadge(it.resultado)+'</div>'+(it.estado?'<div style="font-size:11px;color:'+T2+'">Estado: '+esc(it.estado)+'</div>':'')+'</div>'
           +'</div>'
           +(it.nota?'<div style="font-size:12px;color:'+T2+';margin-bottom:6px">'+esc(it.nota)+'</div>':'')
-          +(it.fotoUrl?'<img src="'+esc(it.fotoUrl)+'" onclick="ordLightbox(\''+esc(it.fotoUrl).replace(/'/g,"\\'")+'\')" style="width:90px;height:90px;object-fit:cover;border-radius:10px;border:1px solid '+BD+';cursor:zoom-in">':'')
+          +'<div class="aud-foto" data-af="'+esc(it.activoFijo||'')+'" data-fb="'+esc(it.fotoUrl||'')+'"></div>'
           +'</div>';
       }).join('')
     +'</div>'
     +'<div style="padding:14px 22px;border-top:1px solid '+BD+';display:flex;gap:10px;justify-content:flex-end"><button class="btn" onclick="cerrarVerOrden()">Cerrar</button></div>';
   document.getElementById('ord-modal-inner').innerHTML=html;
   document.getElementById('ord-modal').style.display='flex';
+  cargarFotosAuditoria(a);
+}
+function cargarFotosAuditoria(a){
+  var BUCKET='cafeteras-90e78.firebasestorage.app';
+  var slots=document.querySelectorAll('#ord-modal-inner .aud-foto');
+  function ponFoto(slot,url){ if(!url)return; slot.innerHTML='<img src="'+url+'" onclick="ordLightbox(\''+url.replace(/'/g,"\\'")+'\')" style="width:90px;height:90px;object-fit:cover;border-radius:10px;border:1px solid var(--cf-border);cursor:zoom-in">'; }
+  function fallback(){ slots.forEach(function(s){ var fb=s.getAttribute('data-fb'); if(fb&&fb.indexOf('/o/')>0)ponFoto(s,fb); }); }
+  if(!a.carpeta){ fallback(); return; }
+  storage.ref('auditorias/'+a.carpeta).listAll().then(function(res){
+    if(!res.items||!res.items.length){ fallback(); return; }
+    var byAf={};
+    res.items.forEach(function(it){
+      var url='https://firebasestorage.googleapis.com/v0/b/'+BUCKET+'/o/'+encodeURIComponent(it.fullPath)+'?alt=media';
+      var fname=it.name||''; var af=fname.split('_')[0];
+      byAf[af]=url;
+    });
+    slots.forEach(function(s){ var af=s.getAttribute('data-af'); if(byAf[af])ponFoto(s,byAf[af]); else { var fb=s.getAttribute('data-fb'); if(fb&&fb.indexOf('/o/')>0)ponFoto(s,fb); } });
+  }).catch(function(){ fallback(); });
 }
 
 // ══ PREVENTIVOS ══
