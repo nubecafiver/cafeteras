@@ -161,6 +161,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
       <div class="btn" onclick="nuevaOrden()" style="flex:1;background:var(--green2);color:#fff;border-color:var(--green2);flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><i class="ti ti-file-invoice" style="font-size:22px"></i><span style="font-size:12px;font-weight:600">Nueva orden</span></div>
       <div class="btn" onclick="nav('equipos')" style="flex:1;flex-direction:column;display:flex;align-items:center;gap:6px;padding:15px 8px"><i class="ti ti-search" style="font-size:22px;color:var(--green)"></i><span style="font-size:12px;font-weight:600">Buscar equipo</span></div>
     </div>
+    <div id="pend-banner" style="margin-bottom:16px;display:none"></div>
     <div id="aud-acceso" style="margin-bottom:22px;display:none"></div>
     <div id="ruta-hoy" style="margin-bottom:22px"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -408,6 +409,7 @@ var _cfgGeneral=null;
 function cargarInicio(){
   cargarRutaHoy();
   mostrarAccesoAuditoria();
+  renderPendientes();
   // KPI de equipos: 1 sola lectura (config/general precalculado) en vez de leer 1000 docs
   function fmtN(n){ return (n||n===0)?Number(n).toLocaleString('es-MX'):'—'; }
   if(_cfgGeneral){
@@ -1148,6 +1150,79 @@ function subirFotos(folio, cb){
   });
 }
 
+// ══════════════════════════ COLA LOCAL DE ÓRDENES (para no perder trabajo sin señal) ══════════════════════════
+// Guarda en IndexedDB la orden + sus fotos (base64). Si no sube, queda pendiente y el técnico reintenta.
+var _pendDB=null;
+function pendDB(){
+  return new Promise(function(res,rej){
+    if(_pendDB){res(_pendDB);return;}
+    var r=indexedDB.open('cafiver_pendientes',1);
+    r.onupgradeneeded=function(e){ var db=e.target.result; if(!db.objectStoreNames.contains('ordenes'))db.createObjectStore('ordenes',{keyPath:'localId'}); };
+    r.onsuccess=function(e){ _pendDB=e.target.result; res(_pendDB); };
+    r.onerror=function(){ rej(r.error); };
+  });
+}
+function pendGuardar(item){ return pendDB().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction('ordenes','readwrite'); tx.objectStore('ordenes').put(item); tx.oncomplete=function(){res();}; tx.onerror=function(){rej(tx.error);}; }); }); }
+function pendBorrar(localId){ return pendDB().then(function(db){ return new Promise(function(res){ var tx=db.transaction('ordenes','readwrite'); tx.objectStore('ordenes').delete(localId); tx.oncomplete=function(){res();}; tx.onerror=function(){res();}; }); }); }
+function pendListar(){ return pendDB().then(function(db){ return new Promise(function(res){ var tx=db.transaction('ordenes','readonly'); var rq=tx.objectStore('ordenes').getAll(); rq.onsuccess=function(){res(rq.result||[]);}; rq.onerror=function(){res([]);}; }); }).catch(function(){return [];}); }
+
+// Sube una orden pendiente: primero fotos, luego el documento. Devuelve promesa.
+function subirPendiente(item){
+  return new Promise(function(resolve,reject){
+    var BUCKET='cafeteras-90e78.firebasestorage.app';
+    var fotos=item.fotosB64||[]; var urls=[]; var pend=fotos.length; var hubo=false;
+    function guardarDoc(){
+      var data=Object.assign({},item.data); data.fotos=urls.filter(Boolean);
+      if(!data.fotos.length){ reject(new Error('sin fotos')); return; }
+      db.collection('ordenes').add(data).then(function(){ resolve(); }).catch(reject);
+    }
+    if(!fotos.length){ reject(new Error('sin fotos')); return; }
+    fotos.forEach(function(dataUrl,i){
+      var path='ordenes/'+item.data.folio+'/foto_'+(i+1)+'_'+item.ts+'_'+i+'.jpg';
+      storage.ref(path).putString(dataUrl,'data_url').then(function(){
+        urls[i]='https://firebasestorage.googleapis.com/v0/b/'+BUCKET+'/o/'+encodeURIComponent(path)+'?alt=media';
+        if(--pend===0)guardarDoc();
+      }).catch(function(e){ hubo=true; if(--pend===0){ if(urls.filter(Boolean).length)guardarDoc(); else reject(e); } });
+    });
+  });
+}
+
+var _subiendoPend=false;
+function reintentarPendientes(manual){
+  if(_subiendoPend)return;
+  _subiendoPend=true;
+  var btn=$('pend-retry'); if(btn){ btn.disabled=true; btn.textContent='Subiendo...'; }
+  pendListar().then(function(items){
+    if(!items.length){ _subiendoPend=false; renderPendientes(); return; }
+    var i=0, subidas=0, fallidas=0;
+    (function next(){
+      if(i>=items.length){
+        _subiendoPend=false; renderPendientes();
+        if(manual){ if(subidas)toast('✅ '+subidas+' orden(es) subida(s)'); if(fallidas)toast('Aún hay '+fallidas+' sin señal, reintenta luego'); }
+        if(subidas)cargarInicio();
+        return;
+      }
+      var it=items[i++];
+      subirPendiente(it).then(function(){ subidas++; return pendBorrar(it.localId); }).then(next)
+        .catch(function(){ fallidas++; next(); });
+    })();
+  });
+}
+
+function renderPendientes(){
+  var box=$('pend-banner'); if(!box)return;
+  pendListar().then(function(items){
+    if(!items.length){ box.style.display='none'; box.innerHTML=''; return; }
+    box.style.display='block';
+    box.innerHTML='<div style="background:#FBEEC8;border:1px solid #E4C65A;border-radius:16px;padding:14px 16px">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><i class="ti ti-cloud-off" style="font-size:22px;color:#8A6D12"></i>'
+      +'<div style="flex:1"><div style="font-weight:700;font-size:14px;color:#5C4A0F">'+items.length+' orden(es) sin subir</div>'
+      +'<div style="font-size:12px;color:#7A6417">Guardadas en el teléfono. Súbelas cuando tengas señal.</div></div></div>'
+      +'<button id="pend-retry" class="btn btn-green" style="width:100%;justify-content:center" onclick="reintentarPendientes(true)">Subir ahora</button>'
+      +'</div>';
+  });
+}
+
 function guardarOrden(){
   var af=$('o-af').value.trim();
   if(!af){toast('Falta el activo fijo');return;}
@@ -1183,15 +1258,24 @@ function guardarOrden(){
     estado:'pendiente', firmado:false, origen:'app_tecnico',
     creadoEn:firebase.firestore.FieldValue.serverTimestamp()
   };
-  $('sheet-ft').innerHTML='<button class="btn" disabled>Subiendo fotos...</button>';
-  subirFotos(data.folio, function(urls, err){
-    if(!urls.length){ toast('No se pudo subir la foto, intenta de nuevo'+(err&&err.message?(': '+err.message):'')); abrirFormOrden(); return; }
-    data.fotos=urls;
-    $('sheet-ft').innerHTML='<button class="btn" disabled>Guardando...</button>';
-    db.collection('ordenes').add(data).then(function(){
-      toast('✅ Orden '+data.folio+' guardada'); marcarClienteVisitadoAuto(data.cliente);
-      closeSheet(); cargarInicio();
-    }).catch(function(e){ toast('Error: '+e.message); abrirFormOrden(); });
+  $('sheet-ft').innerHTML='<button class="btn" disabled>Guardando...</button>';
+  // Guardar SIEMPRE primero en el teléfono (con las fotos), para no perder nada sin señal.
+  var localId='L'+Date.now()+'_'+Math.floor(Math.random()*1000);
+  var item={ localId:localId, ts:Date.now(), data:data, fotosB64:_fotos.map(function(f){return f.dataUrl;}) };
+  pendGuardar(item).then(function(){
+    marcarClienteVisitadoAuto(data.cliente);
+    closeSheet();
+    // Intentar subirla de una vez
+    subirPendiente(item).then(function(){
+      pendBorrar(localId).then(function(){ toast('✅ Orden '+data.folio+' guardada'); renderPendientes(); cargarInicio(); });
+    }).catch(function(){
+      // No se pudo subir (sin señal u otro): queda pendiente, el técnico reintenta
+      toast('Guardada en el teléfono. Súbela cuando tengas señal.');
+      renderPendientes(); cargarInicio();
+    });
+  }).catch(function(e){
+    // Si ni siquiera se pudo guardar local, avisar claro (no perder el formulario)
+    toast('No se pudo guardar: '+(e&&e.message?e.message:'error')); abrirFormOrden();
   });
 }
 
