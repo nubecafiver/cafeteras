@@ -384,6 +384,11 @@ function arrancarApp(){
   // Cargar catálogo de centros (1 lectura por doc, pocos centros)
   db.collection('centros').limit(60).get().then(function(s){ s.docs.forEach(function(d){_catCentros[d.id]=d.data();}); $('tb-title').textContent = MI_CENTRO?centroNombre(MI_CENTRO):'Mi oficina'; }).catch(function(){});
   cargarInicio();
+  // Si la app abrió desde un QR (…tecnico.html?af=800265), ir directo al equipo
+  try{
+    var _afQR=new URLSearchParams(location.search).get('af');
+    if(_afQR){ setTimeout(function(){ abrirPorActivo(_afQR); },400); }
+  }catch(e){}
 }
 
 // ══════════ QUERY HELPER: siempre acotado al centro del técnico ══════════
@@ -621,20 +626,31 @@ function renderPendientes(arr){
 // ══════════ EQUIPOS ══════════
 // Abre la ficha del equipo escaneado (o avisa si no es de su centro)
 function abrirPorActivo(af){
+  af=String(af||'').trim();
+  if(!af){ toast('Código vacío'); return; }
   toast('Buscando '+af+'...');
-  var col=db.collection('equipos'), n=parseInt(af), proms=[];
-  if(!isNaN(n)) proms.push(col.where('activoFijo','==',n).limit(5).get());
-  proms.push(col.where('serie','==',String(af)).limit(5).get());
-  Promise.all(proms).then(function(snaps){
-    var hit=null, fuera=false;
-    snaps.forEach(function(s){s.docs.forEach(function(d){
-      var e={id:d.id,...d.data()};
-      if(MI_CENTRO && e.centro!==MI_CENTRO){ fuera=true; return; }
-      if(!hit)hit=e;
-    });});
-    if(hit){ _equipoActivo=hit; abrirFichaEquipo(); }
-    else if(fuera){ toast('Ese equipo no es de tu oficina ('+MI_CENTRO+').'); }
-    else { toast('No se encontró el equipo '+af); }
+  var col=db.collection('equipos');
+  var afNum=parseInt(af,10);                       // 800265
+  var afSinCeros=af.replace(/^0+/,'')||af;         // quita ceros a la izquierda
+  var proms=[];
+  // 1) por id de documento (el id ES el activo fijo, sin ceros)
+  proms.push(col.doc(afSinCeros).get().then(function(d){ return d.exists?[{id:d.id,...d.data()}]:[]; }).catch(function(){return [];}));
+  // 2) por campo activoFijo como número
+  if(!isNaN(afNum)) proms.push(col.where('activoFijo','==',afNum).limit(5).get().then(function(s){return s.docs.map(function(d){return {id:d.id,...d.data()};});}).catch(function(){return [];}));
+  // 3) por serie (por si el QR trae la serie)
+  proms.push(col.where('serie','==',af).limit(5).get().then(function(s){return s.docs.map(function(d){return {id:d.id,...d.data()};});}).catch(function(){return [];}));
+  Promise.all(proms).then(function(listas){
+    var vistos={}, todos=[];
+    listas.forEach(function(l){ l.forEach(function(e){ if(!vistos[e.id]){ vistos[e.id]=1; todos.push(e); } }); });
+    if(!todos.length){ toast('No se encontró el equipo '+af); return; }
+    // Preferir uno de MI_CENTRO si existe; si no, abrir el que haya (aviso)
+    var mio=todos.filter(function(e){return !MI_CENTRO || e.centro===MI_CENTRO;});
+    var hit=mio[0]||todos[0];
+    _equipoActivo=hit;
+    abrirFichaEquipo();
+    if(MI_CENTRO && hit.centro && hit.centro!==MI_CENTRO){
+      toast('⚠ Este equipo figura en el centro '+hit.centro+' (no en el tuyo).');
+    }
   }).catch(function(e){ toast('Error: '+e.message); });
 }
 
