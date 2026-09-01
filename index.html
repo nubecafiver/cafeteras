@@ -913,8 +913,10 @@ var CENTROS = {
   'KFME':'PLAZA MÉRIDA',
   'KFMX':'PLAZA MEXICO',
   'KFMY':'PLAZA MONTERREY',
+  'KFOZ':'PLAZA ORIZABA',
   'KFPU':'PLAZA PUEBLA',
-  'KFQE':'Queretaro'
+  'KFQE':'Queretaro',
+  'KFVA':'PLAZA VALLARTA'
 };
 
 // ══ ESTADO ══
@@ -1898,13 +1900,16 @@ async function cargarStatsDashboard(){
     +'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px">'
     +(function(){
-      var entries=Object.entries(CENTROS).map(function(e){
-        return{codigo:e[0],nombre:e[1],num:porCentro[e[0]]||0};
-      }).sort(function(a,b){return b.num-a.num;});
-      var mx=entries.length&&entries[0].num?entries[0].num:1;
+      var _codigos={};
+      Object.keys(CENTROS).forEach(function(c){_codigos[c]=1;});
+      Object.keys(porCentro).forEach(function(c){_codigos[c]=1;});   // incluir centros con equipos aunque falten del catálogo
+      var entries=Object.keys(_codigos).map(function(cod){
+        return{codigo:cod,nombre:CENTROS[cod]||cod,num:porCentro[cod]||0,val:(valorNeto&&valorNeto[cod])||0};
+      }).sort(function(a,b){return b.val-a.val;});
+      var mx=entries.length&&entries[0].val?entries[0].val:1;
       var cols=['#2a4a1e','#3d6b2c','#8b6914','#5a8f42','#6b4423','#4a7a6b','#2d5a3d','#7a6b2a','#5a4a3e','#3d6b4a'];
       return entries.map(function(e,i){
-        var pct=e.num?Math.max(3,Math.round(e.num/mx*100)):0;
+        var pct=e.val?Math.max(3,Math.round(e.val/mx*100)):0;
         var col=e.num?cols[i%10]:'rgba(42,74,30,.15)';
         var val=valorNeto&&valorNeto[e.codigo]?fmt$(valorNeto[e.codigo]):'';
         return'<div style="cursor:pointer;padding:5px 0;border-bottom:1px solid rgba(42,74,30,.08)" onclick="dbKpiClick(this)" data-filtro="centro:'+e.codigo+'">'
