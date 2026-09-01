@@ -1823,8 +1823,11 @@ async function cargarStatsDashboard(){
   var disponibles= config.totalDisponible||0;
   var porLinea   = config.porLinea||{};
   var porModelo  = config.porModelo||{};
-  var valorNeto  = config.valorNeto||{};
-  var valorNetoTotal = (config.valorNetoTotalReal!=null) ? config.valorNetoTotalReal : Object.values(valorNeto).reduce(function(a,b){return a+(b||0);},0);
+  var valorNetoAll = config.valorNeto||{};
+  var valorNeto = valorNetoAll;
+  var valorNetoTotal = (config.valorNetoTotalReal!=null) ? config.valorNetoTotalReal : Object.values(valorNetoAll).reduce(function(a,b){return a+(b||0);},0);
+  if(window.dbClaseFiltro==='nuevo'){ valorNeto=config.valorNetoNuevo||{}; valorNetoTotal=config.totalValorNuevo||0; }
+  else if(window.dbClaseFiltro==='usado'){ valorNeto=config.valorNetoUsado||{}; valorNetoTotal=config.totalValorUsado||0; }
   var porClase   = config.porClase||{};
   var porCentro  = config.porCentro||{};
 
@@ -1893,7 +1896,10 @@ async function cargarStatsDashboard(){
 
     // Centros — todos ordenados mayor a menor con código + nombre
     +'<div class="db-card">'
-    +'<div class="db-card-hd"><span>Equipos por centro logístico</span><span style="font-size:11px;color:#8b6914;font-weight:500">Valor neto contable</span></div>'
+    +'<div class="db-card-hd"><span>Equipos por centro logístico</span>'
+      +'<span style="display:flex;gap:4px">'
+      +['todo','nuevo','usado'].map(function(f){var on=(window.dbClaseFiltro||'todo')===f;var lbl=f==='todo'?'Todo':(f==='nuevo'?'Nuevo':'Usado');return '<button onclick="window.dbClaseFiltro=\''+f+'\';renderDashboard()" style="font-size:11px;font-weight:600;padding:4px 11px;border-radius:14px;border:1px solid '+(on?'#111315':'#D8D9DA')+';background:'+(on?'#111315':'#fff')+';color:'+(on?'#fff':'#6B6F72')+';cursor:pointer">'+lbl+'</button>';}).join('')
+      +'</span></div>'
     +'<div style="background:#111315;border-radius:14px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">'
     +'<span style="font-size:11px;font-weight:600;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.08em">Valor neto total del parque</span>'
     +'<span style="font-size:22px;font-weight:700;color:#fff;font-family:Playfair Display,serif">'+fmt$(valorNetoTotal)+'</span>'
