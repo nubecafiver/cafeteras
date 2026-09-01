@@ -1822,7 +1822,7 @@ async function cargarStatsDashboard(){
   var porLinea   = config.porLinea||{};
   var porModelo  = config.porModelo||{};
   var valorNeto  = config.valorNeto||{};
-  var valorNetoTotal = Object.values(valorNeto).reduce(function(a,b){return a+(b||0);},0);
+  var valorNetoTotal = (config.valorNetoTotalReal!=null) ? config.valorNetoTotalReal : Object.values(valorNeto).reduce(function(a,b){return a+(b||0);},0);
   var porClase   = config.porClase||{};
   var porCentro  = config.porCentro||{};
 
