@@ -1933,7 +1933,7 @@ async function cargarStatsDashboard(){
         var filas=arr.map(function(it){
           return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--cf-cream2);gap:8px">'
             +'<span style="font-size:13px;color:var(--cf-text2)">'+esc(it.lin)+'</span>'
-            +'<span style="font-size:12px;white-space:nowrap"><b style="color:var(--cf-text)">'+fmt$(it.v)+'</b> <span style="color:var(--cf-text2)">· '+it.n.toLocaleString()+'</span></span></div>';
+            +'<span style="font-size:12px;white-space:nowrap"><b style="color:var(--cf-text)">$'+Number(it.v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})+'</b> <span style="color:var(--cf-text2)">· '+it.n.toLocaleString()+'</span></span></div>';
         }).join('')||'<div style="font-size:12px;color:var(--cf-text2);padding:8px 0">Sin datos</div>';
         return '<div class="db-card" style="padding:16px 18px;border-top:3px solid '+col+'">'
           +'<div style="font-size:14px;font-weight:600;color:'+col+';margin-bottom:8px">'+ICON[g]+' '+g+'</div>'+filas+'</div>';
