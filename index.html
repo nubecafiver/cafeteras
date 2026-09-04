@@ -1874,16 +1874,10 @@ async function cargarStatsDashboard(){
     +(config.ultimaImportacion?'<div style="text-align:right;font-size:11px;color:rgba(255,255,255,.4)">Última sync SAP<br><b style="color:rgba(255,255,255,.7);font-size:13px">'+fmtF(config.ultimaImportacion)+'</b></div>':'')
     +'</div>'
 
-    // KPI FILA 1 — SOLO TOTAL
-    +'<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px">Parque de equipos</div>'
-    +'<div class="db-kpi-grid">'
+    // KPI — una sola fila con los 5 que importan
+    +'<div style="font-size:10px;font-weight:700;color:#4a5e42;text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px">Parque de equipos</div>'
+    +'<div class="db-kpi-grid" style="grid-template-columns:repeat(5,1fr)">'
     +dbKpi('Total universo',totalEq.toLocaleString(),'equipos en SAP','#111315','☕','')
-    +dbKpi('Ordenes abiertas',ordAbiertas,'pendientes','#111315','📋','')
-    +dbKpi('Ingresos mes',fmt$(ingresosMes),'facturacion del mes','#111315','💰','')
-    +dbKpi('Total historico',fmt$(ingresosTotal),'acumulado','#111315','📈','')
-    +'</div>'
-    +'<div style="font-size:10px;font-weight:700;color:#4a5e42;text-transform:uppercase;letter-spacing:.12em;margin:12px 0 8px">Clasificación del parque</div>'
-    +'<div class="db-kpi-grid">'
     +dbKpi('Equipo nuevo',(porClase.CSNUEVO||0).toLocaleString(),'CSNUEVO','#111315','✨','claseActivo:CSNUEVO')
     +dbKpi('Equipo usado',(porClase.CSUSADO||0).toLocaleString(),'CSUSADO','#111315','♻️','claseActivo:CSUSADO')
     +dbKpi('Cafetera',(porClase.CAFETERA||0).toLocaleString(),'CAFETERA','#111315','☕','claseActivo:CAFETERA')
