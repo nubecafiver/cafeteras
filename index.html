@@ -461,6 +461,24 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
 .db-acc:hover{background:#EDF1ED!important;border-color:#3E5A40!important;transform:none!important}
 /* Etiquetas de sección */
 #view-dashboard div[style*="Clasificación del parque"],#view-dashboard div[style*="Parque de equipos"]{color:#6B726C!important}
+/* ═══════════ REFINAMIENTO PROFESIONAL (acabado premium) ═══════════ */
+#view-dashboard{padding:28px 30px!important;max-width:1400px;margin:0 auto}
+.db-wrap{display:flex;flex-direction:column;gap:20px}
+.db-header{background:#fff!important;border:1px solid var(--cf-border)!important;border-radius:16px!important;padding:24px 28px!important;box-shadow:0 1px 3px rgba(17,19,21,.04)!important;margin-bottom:0!important}
+.db-title{font-size:24px!important;color:var(--cf-text)!important;letter-spacing:-.01em!important}
+.db-fecha{color:var(--cf-text2)!important;font-size:13px!important;text-transform:capitalize}
+.db-kpi-grid{gap:14px!important;margin-bottom:0!important}
+.db-kpi{background:#fff!important;border:1px solid var(--cf-border)!important;border-radius:16px!important;padding:20px 22px!important;box-shadow:0 1px 3px rgba(17,19,21,.04)!important;transition:transform .18s ease,box-shadow .18s ease!important}
+.db-kpi:hover{transform:translateY(-3px)!important;box-shadow:0 6px 20px rgba(17,19,21,.09)!important}
+.db-kpi::before{display:none!important}
+.db-kpi-label{font-size:12px!important;color:var(--cf-text2)!important;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.db-kpi-num{font-family:'Source Serif 4',serif!important;font-size:32px!important;line-height:1.15!important;color:var(--cf-text)!important;margin-top:6px}
+.db-kpi-sub{font-size:12px!important;color:var(--cf-text2)!important;margin-top:2px}
+.db-card{background:#fff!important;border:1px solid var(--cf-border)!important;border-radius:16px!important;padding:22px 24px!important;box-shadow:0 1px 3px rgba(17,19,21,.04)!important;transition:box-shadow .18s ease!important}
+.db-card:hover{box-shadow:0 4px 16px rgba(17,19,21,.07)!important}
+.db-card-hd{font-size:16px!important;color:var(--cf-text)!important;border-bottom:1px solid var(--cf-cream2)!important;padding-bottom:12px!important;margin-bottom:16px!important}
+.db-grid-2{gap:16px!important}
+.db-grid-3{gap:16px!important}
 </style>
 </head>
 <body>
@@ -1874,11 +1892,62 @@ async function cargarStatsDashboard(){
 
     /* operacion movida arriba */
 
-    // FILA INFERIOR — línea + centros en todo el ancho
-    +'<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:10px">'
+    // ── CLASIFICACIÓN POR GRUPOS (Cafeteras / Complementario / Accesorios) ──
+    +(function(){
+      var GRUPOS={
+        'Cafeteras':['Cafeteras Hoteleras','Cafeteras Automática','Cafeteras percolador','Cafet. Semiautomática','Cafet. Superautomática','Cafeteras Vending','Bunn','Jura','Astoria','La Pavoni','Simonelli','Necta','Superautomatica','Semiautomatica','Habitacion','Habitación'],
+        'Complementario':['Molinos','Molino','Thermos','Generador de Vapor','Equipo bebidas frías','Equ. Food service'],
+        'Accesorios':['Accesorios Cafeteras','Misceláneos Refacc.','Everpure','Capsulas monodosis','Cápsulas monodosis','Filtrado','Cafe soluble']
+      };
+      var COLORES={'Cafeteras':'#3E5A40','Complementario':'#8A6D12','Accesorios':'#6B6F72'};
+      var ICON={'Cafeteras':'☕','Complementario':'⚙','Accesorios':'🔧'};
+      var SUB={'Cafeteras':'máquinas','Complementario':'molinos, thermos, vapor','Accesorios':'refacciones, filtros'};
+      var vpl=config.valorPorLinea||{};
+      var acum={'Cafeteras':{n:0,v:0},'Complementario':{n:0,v:0},'Accesorios':{n:0,v:0}};
+      function grupoDe(lin){ for(var g in GRUPOS){ if(GRUPOS[g].indexOf(lin)>=0)return g; } return 'Cafeteras'; }
+      Object.keys(porLinea).forEach(function(lin){
+        if(lin==='Sin linea'||lin==='Sin línea'||lin==='null')return;
+        var g=grupoDe(lin); acum[g].n+=porLinea[lin]||0; acum[g].v+=vpl[lin]||0;
+      });
+      var maxV=Math.max(acum.Cafeteras.v,acum.Complementario.v,acum.Accesorios.v,1);
+      var cards=['Cafeteras','Complementario','Accesorios'].map(function(g){
+        var col=COLORES[g], pct=Math.max(3,Math.round(acum[g].v/maxV*100));
+        return '<div class="db-card" style="padding:16px 18px">'
+          +'<div style="display:flex;align-items:center;gap:7px;margin-bottom:2px"><span style="font-size:17px">'+ICON[g]+'</span><span style="font-size:15px;font-weight:600;color:var(--cf-text)">'+g+'</span></div>'
+          +'<div style="font-size:11px;color:var(--cf-text2);margin-bottom:12px">'+SUB[g]+'</div>'
+          +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">'
+          +'<div><div style="font-size:10px;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.05em">Piezas</div><div style="font-family:\'Source Serif 4\',serif;font-size:22px;color:var(--cf-text)">'+acum[g].n.toLocaleString()+'</div></div>'
+          +'<div style="text-align:right"><div style="font-size:10px;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.05em">Valor</div><div style="font-family:\'Source Serif 4\',serif;font-size:20px;color:'+col+'">'+fmt$(acum[g].v)+'</div></div>'
+          +'</div>'
+          +'<div style="height:6px;background:#EFEFF0;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px"></div></div>'
+          +'</div>';
+      }).join('');
+      // ── DESGLOSE: 3 columnas, cada grupo con sus líneas ──
+      function lineasDe(g){
+        return Object.keys(porLinea).filter(function(lin){ return grupoDe(lin)===g && lin!=='Sin linea' && lin!=='Sin línea' && lin!=='null'; })
+          .map(function(lin){ return {lin:lin, n:porLinea[lin]||0, v:vpl[lin]||0}; })
+          .sort(function(a,b){ return b.v-a.v; });
+      }
+      var cols=['Cafeteras','Complementario','Accesorios'].map(function(g){
+        var col=COLORES[g], arr=lineasDe(g);
+        var filas=arr.map(function(it){
+          return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--cf-cream2);gap:8px">'
+            +'<span style="font-size:13px;color:var(--cf-text2)">'+esc(it.lin)+'</span>'
+            +'<span style="font-size:12px;white-space:nowrap"><b style="color:var(--cf-text)">'+fmt$(it.v)+'</b> <span style="color:var(--cf-text2)">· '+it.n.toLocaleString()+'</span></span></div>';
+        }).join('')||'<div style="font-size:12px;color:var(--cf-text2);padding:8px 0">Sin datos</div>';
+        return '<div class="db-card" style="padding:16px 18px;border-top:3px solid '+col+'">'
+          +'<div style="font-size:14px;font-weight:600;color:'+col+';margin-bottom:8px">'+ICON[g]+' '+g+'</div>'+filas+'</div>';
+      }).join('');
+      return '<div class="db-card-hd" style="border:none;padding:0;margin:4px 0 10px">Clasificación del parque</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px">'+cards+'</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;align-items:start">'+cols+'</div>';
+    })()
 
-    // Por línea — ancho completo de su columna
-    +'<div class="db-card"><div class="db-card-hd">Equipos por línea</div>'
+    // FILA INFERIOR — solo centros, ancho completo
+    +'<div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:10px">'
+
+    // Por línea — OCULTA (su contenido ahora vive en el desglose por grupo de arriba)
+    +'<div style="display:none"><div class="db-card"><div class="db-card-hd">Equipos por línea</div>'
     +(Object.keys(porLinea).length?
       Object.entries(porLinea).filter(function(e){return e[0]!=='Sin linea'&&e[0]!=='null'&&e[0]!=='Sin línea';}).sort(function(a,b){return b[1]-a[1];}).slice(0,12).map(function(e,i){
         var mx=Math.max.apply(null,Object.values(porLinea));
@@ -1892,7 +1961,7 @@ async function cargarStatsDashboard(){
           +'<div style="height:100%;width:'+Math.round(e[1]/mx*100)+'%;background:#3E5A40;border-radius:2px"></div></div></div>';
       }).join('')
       :'<div style="color:#6b7c63;font-size:12px;padding:8px 0">Cargando...</div>')
-    +'</div>'
+    +'</div></div>'
 
     // Centros — todos ordenados mayor a menor con código + nombre
     +'<div class="db-card">'
@@ -2001,16 +2070,14 @@ async function cargarStatsDashboard(){
 
 function dbKpi(label,val,sub,color,icon,filtro){
   var onclick=filtro?'onclick="dbKpiClick(this)" data-filtro="'+filtro+'" style="cursor:pointer"':'';
-  return'<div class="db-kpi" style="padding:14px" '+onclick+'>'
-    +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">'
-    +'<div style="font-size:10px;font-weight:700;color:#4a5e42;text-transform:uppercase;letter-spacing:.08em">'+label+'</div>'
-    +'<div style="font-size:18px;opacity:.7">'+icon+'</div>'
+  return'<div class="db-kpi" '+onclick+'>'
+    +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">'
+    +'<div style="font-size:11px;font-weight:700;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.06em">'+label+'</div>'
+    +'<div style="font-size:17px;opacity:.5">'+icon+'</div>'
     +'</div>'
-    +'<div style="font-size:28px;font-weight:700;color:'+color+';line-height:1;margin-bottom:4px;font-variant-numeric:tabular-nums">'+val+'</div>'
-    +'<div style="font-size:11px;color:#6b7c63">'+sub+(filtro?'  <span style="font-size:10px;opacity:.5">→ Ver</span>':'')+'</div>'
-    +'<div style="height:2px;background:rgba(42,74,30,.08);border-radius:1px;margin-top:12px;overflow:hidden">'
-    +'<div style="height:100%;width:60%;background:'+color+';opacity:.4;border-radius:1px"></div>'
-    +'</div></div>';
+    +'<div style="font-family:\'Source Serif 4\',serif;font-size:32px;color:'+color+';line-height:1.1;font-variant-numeric:tabular-nums">'+val+'</div>'
+    +'<div style="font-size:12px;color:var(--cf-text2);margin-top:3px">'+sub+(filtro?'  <span style="font-size:10px;opacity:.6">→ Ver</span>':'')+'</div>'
+    +'</div>';
 }
 
 function dbModeloClick(el){
@@ -2697,6 +2764,24 @@ function openPanel(docId, col){
   document.getElementById('dp').classList.add('open');
   document.getElementById('dp-overlay').classList.add('on');
 }
+function cargarMovimientos(activoFijo){
+  var box=document.getElementById('dp-movs'); if(!box)return;
+  var nombres={almacen:'Almacén',centro:'Centro',cliente:'Cliente',estado:'Estado'};
+  var iconos={almacen:'ti-building-warehouse',centro:'ti-map-pin',cliente:'ti-user',estado:'ti-flag'};
+  db.collection('movimientos').where('activoFijo','==',parseInt(activoFijo)||activoFijo).limit(50).get().then(function(s){
+    var arr=s.docs.map(function(d){return d.data();});
+    arr.sort(function(a,b){return((b.fecha&&b.fecha.seconds)||0)-((a.fecha&&a.fecha.seconds)||0);});
+    if(!arr.length){ box.innerHTML='<div style="font-size:12px;color:#9aa0a6">Sin movimientos registrados. Se irán guardando cuando el equipo cambie de almacén, cliente o estado.</div>'; return; }
+    box.innerHTML=arr.map(function(m){
+      var col=m.campo==='estado'?'#8A6D12':(m.campo==='cliente'?'#3E5A40':'#2E5A8A');
+      return '<div style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid #eee">'
+        +'<div style="width:30px;height:30px;border-radius:9px;background:'+col+'18;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti '+(iconos[m.campo]||'ti-arrows-exchange')+'" style="font-size:16px;color:'+col+'"></i></div>'
+        +'<div style="flex:1"><div style="font-size:13px"><b>'+(nombres[m.campo]||m.campo)+'</b>: '
+        +'<span style="color:#9aa0a6">'+esc(m.de==null?'—':String(m.de))+'</span> → <span style="color:'+col+';font-weight:600">'+esc(m.a==null?'—':String(m.a))+'</span></div>'
+        +'<div style="font-size:11px;color:#9aa0a6">'+fmtF(m.fecha)+'</div></div></div>';
+    }).join('');
+  }).catch(function(e){ box.innerHTML='<div style="font-size:12px;color:#b00">No se pudo cargar el historial: '+esc(e.message)+'</div>'; });
+}
 function closePanel(){document.getElementById('dp').classList.remove('open');document.getElementById('dp-overlay').classList.remove('on');openEqId=null;}
 
 function dpTab(tab, eObj, col){
@@ -2771,7 +2856,10 @@ function dpTab(tab, eObj, col){
     },200);
   }else if(tab==='historial'){
     body.innerHTML=
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
+      '<div class="dp-sec-t">Movimientos del equipo</div>'
+      +'<div id="dp-movs" style="margin-bottom:18px"><div style="font-size:12px;color:#9aa0a6">Cargando historial...</div></div>'
+      +'<div class="dp-sec-t">Servicios</div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
       +'<span style="font-size:12px;color:#9aa0a6">'+hist.length+' servicio(s) · Total: <strong style="color:#34a853">'+fmt$(totalInv)+'</strong></span>'
       +'<button class="btn btn-blue btn-sm" onclick="abrirOrdenDesde('+e.activoFijo+',\''+esc(e.modelo)+'\',\''+e.centro+'\',\''+esc(nmCliente)+'\')">+ Nueva orden</button>'
       +'</div>'
@@ -2787,6 +2875,7 @@ function dpTab(tab, eObj, col){
         +'<div style="display:flex;gap:6px;margin-top:8px">'+(h.estado!=='terminado'?'<button class="btn btn-sm btn-green" onclick="abrirFirma(\''+h.id+'\')">✍️ Firma</button>':'')+'<button class="btn btn-sm" onclick="printOrden(\''+h.id+'\')" >&#128424; Imprimir</button></div>'
         +'</div>';}).join('')
         :'<div class="empty-state">Sin servicios registrados</div>');
+    cargarMovimientos(e.activoFijo);
   }else if(tab==='pm'){
     var PM={'Habitacion':'Cada 6 meses','Superautomatica':'Cada 3 meses','Filtrado':'Cada 6 meses','Semiautomatica':'Cada 4 meses','Molino':'Cada 3 meses','Accesorios':'Anual'};
     var frecuencia=PM[e.linea]||'Cada 6 meses';
