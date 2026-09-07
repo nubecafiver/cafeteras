@@ -942,7 +942,9 @@ var curUser=null, curView='dashboard';
 var equipos=[], clientes=[], ordenes=[];
 var openEqId=null, dpCurTab='info';
 var ordenActual=null, sigPad=null;
-var eqFiltros={linea:'',centro:'',q:'',modelo:''};
+var eqFiltros={linea:'',centro:'',q:'',modelo:'',almacen:''};
+var eqVistaLinea=null;   // linea cuyo desglose por almacen se muestra
+var _cacheLinea={};      // cache de resumenLinea
 var _resumenAbierto={},_resumenLineas=[],_resumenModo='arbol';
 var ordFiltros={tipo:'',estado:'',tecnico:'',centro:'',desde:'',hasta:''};
 var lastScanned=null, zxingReader=null;
@@ -2254,12 +2256,72 @@ function descargarResumenCSV(){
   var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='CAFIVER_resumen_modelos.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);
 }
 
+// ── Donde estan los equipos de esta linea ─────────────────────────────────
+// Lee resumenLinea/<linea>, precalculado por cafiver-resumen.js. Antes esto no
+// se podia: "Cafeteras Hoteleras" son 29,788 equipos y el navegador no puede
+// traerlos. Ahora es una sola lectura.
+function eqVerTodos(){
+  eqVistaLinea=null;
+  eqFiltros.linea=''; eqFiltros.q=''; eqFiltros.modelo=''; eqFiltros.almacen=''; 
+  renderEquipos();
+}
+
+function verLineaAlmacenes(lin){
+  eqVistaLinea=lin; eqFiltros.linea=lin; eqFiltros.modelo=''; eqFiltros.q=''; eqFiltros.almacen='';
+  renderEquipos();
+  if(_cacheLinea[lin]){pintarLineaAlmacenes();return;}
+  var tb=document.getElementById('eq-tbody');
+  if(tb)tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Cargando...</td></tr>';
+  db.collection('resumenLinea').doc(String(lin).replace(/\//g,'_')).get().then(function(d){
+    _cacheLinea[lin]=d.exists?d.data():{almacenes:[],vacio:true};
+    pintarLineaAlmacenes();
+  }).catch(function(e){
+    if(tb)tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#B03A2E">Error: '+esc(e.message)+'</td></tr>';
+  });
+}
+
+function pintarLineaAlmacenes(){
+  var tb=document.getElementById('eq-tbody'); if(!tb)return;
+  var d=_cacheLinea[eqVistaLinea];
+  if(!d){tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Cargando...</td></tr>';return;}
+  var arr=(d.almacenes||[]);
+  if(d.vacio||!arr.length){
+    tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#8b6914">Sin desglose para esta linea. Ejecuta <code>node cafiver-resumen.js</code>.</td></tr>';
+    return;
+  }
+  var fv=function(x){return '$'+Number(x||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});};
+  var mx=arr[0].n||1, sN=0, sV=0;
+  arr.forEach(function(a){sN+=a.n;sV+=(a.v||0);});
+  var html='<tr style="background:#2a4a1e;color:#fff">'
+    +'<td colspan="2" style="padding:9px 12px;font-weight:600">'+esc(eqVistaLinea)+'</td>'
+    +'<td style="padding:9px 12px;text-align:right;font-weight:700">'+sN.toLocaleString()+' equipos</td>'
+    +'<td colspan="2" style="padding:9px 12px;text-align:right;font-weight:700">'+fv(sV)+'</td>'
+    +'<td colspan="2" style="padding:9px 12px;text-align:right;font-size:11px;opacity:.75">'+arr.length+' almacenes</td></tr>';
+  html+=arr.map(function(a){
+    var pct=Math.max(2,Math.round(a.n/mx*100));
+    return '<tr style="cursor:pointer;border-bottom:1px solid #eceded" onclick="verEquiposDeAlmacen(this.dataset.c)" data-c="'+esc(a.cod)+'" title="Ver los equipos de este almacen">'
+      +'<td style="padding:8px 12px;font-size:12px;color:#8b6914;font-weight:600">'+esc(a.cod)+'</td>'
+      +'<td colspan="2" style="padding:8px 12px;font-size:13px">'+esc(a.nombre||'(sin nombre)')+'</td>'
+      +'<td style="padding:8px 12px;text-align:right;font-weight:700;font-size:13px">'+a.n.toLocaleString()+'</td>'
+      +'<td colspan="2" style="padding:8px 12px;text-align:right;font-size:12px">'+fv(a.v)+'</td>'
+      +'<td style="padding:8px 12px"><div style="height:5px;background:#eceded;border-radius:3px;overflow:hidden">'
+      +'<div style="height:100%;width:'+pct+'%;background:#3E5A40;border-radius:3px"></div></div></td></tr>';
+  }).join('');
+  tb.innerHTML=html;
+}
+
+// Clic en un almacen: baja al detalle de equipos de esa linea en ese almacen.
+function verEquiposDeAlmacen(cod){
+  eqVistaLinea=null; eqFiltros.almacen=cod; eqFiltros.q=''; eqFiltros.modelo='';
+  renderEquipos();
+}
+
 function renderEquipos(){
   var w=document.getElementById('view-equipos');if(!w)return;
   w.innerHTML=
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">'
-    +'<button class="btn btn-sm'+(eqFiltros.linea===''&&eqFiltros.modelo===''?' btn-blue':'')+'" onclick="eqFiltros.linea=\'\';eqFiltros.q=\'\';eqFiltros.modelo=\'\';buscarEquiposFirestore()">Todos</button>'
-    +['Cafeteras Hoteleras','Cafet. Superautomática','Cafeteras percolador','Cafet. Semiautomática','Molinos','Thermos','Accesorios Cafeteras','Bunn'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" onclick="eqFiltros.modelo=\'\';eqFiltros.linea=\''+l+'\';buscarEquiposFirestore()">'+l+'</button>';}).join('')
+    +'<button class="btn btn-sm'+(eqFiltros.linea===''&&eqFiltros.modelo===''&&!eqFiltros.almacen?' btn-blue':'')+'" onclick="eqVerTodos()">Todos</button>'
+    +['Cafeteras Hoteleras','Cafet. Superautomática','Cafeteras percolador','Cafet. Semiautomática','Molinos','Thermos','Accesorios Cafeteras','Bunn'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" data-l="'+esc(l)+'" onclick="verLineaAlmacenes(this.dataset.l)">'+l+'</button>';}).join('')
     +(eqFiltros.modelo?'<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(42,74,30,.08);border:1px solid var(--cf-border);border-radius:14px;padding:4px 10px;font-size:12px;color:#2a4a1e;font-weight:500">Modelo: '+eqFiltros.modelo+'<span style="cursor:pointer;font-weight:700;color:#8b6914" onclick="eqFiltros.modelo=\'\';buscarEquiposFirestore();renderEquipos()" title="Quitar filtro">✕</span></span>':'')
     +'</div>'
     +'<div class="tbl-box">'
@@ -2275,7 +2337,8 @@ function renderEquipos(){
     +'<div id="eq-footer" style="padding:10px 16px;font-size:12px;color:#9aa0a6;text-align:center;border-top:1px solid #e8eaed"></div>'
     +'</div>';
   // NO consultar al entrar: solo si ya hay un filtro activo (para no leer de más al abrir la vista)
-  if(eqFiltros.q||eqFiltros.modelo||eqFiltros.linea||eqFiltros.centro)buscarEquiposFirestore();
+  if(eqVistaLinea){pintarLineaAlmacenes();return;}
+  if(eqFiltros.q||eqFiltros.modelo||eqFiltros.almacen||eqFiltros.centro)buscarEquiposFirestore();
 }
 var _eqDebounce=null;
 function buscarEquiposDebounce(){
@@ -2304,6 +2367,10 @@ function buscarEquiposFirestore(){
     var af=parseInt(q);
     if(!isNaN(af))queries.push(col.where('activoFijo','==',af).limit(50).get());
     else queries.push(col.where('serie','==',q).limit(50).get());
+  }else if(eqFiltros.almacen){
+    // Un almacen tiene a lo mucho ~1,300 equipos: se trae completo y la linea
+    // se filtra del lado del cliente (evita indice compuesto en Firestore).
+    queries.push(col.where('almacen','==',eqFiltros.almacen).limit(1500).get());
   }else if(eqFiltros.modelo){
     queries.push(col.where('modelo','==',eqFiltros.modelo).limit(LIM).get());
   }else if(eqFiltros.linea){
@@ -2329,6 +2396,7 @@ function buscarEquiposFirestore(){
           var e={id:d.id,...d.data()};
           // Filtros en cliente (se aplican siempre, sin importar por cuál campo se consultó)
           if(eqFiltros.centro&&e.centro!==eqFiltros.centro)return;
+          if(eqFiltros.almacen&&eqFiltros.linea&&e.linea!==eqFiltros.linea)return;
           if(q&&isNaN(parseInt(q))&&e.serie!==q){
             var ql=q.toLowerCase();
             if(!(e.modelo||'').toLowerCase().includes(ql)&&
