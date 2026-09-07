@@ -1848,6 +1848,8 @@ async function cargarStatsDashboard(){
   else if(window.dbClaseFiltro==='usado'){ valorNeto=config.valorNetoUsado||{}; valorNetoTotal=config.totalValorUsado||0; }
   var porClase   = config.porClase||{};
   var porCentro  = config.porCentro||{};
+  var porNU      = config.porNuevoUsado||{};
+  var modelosUnicos = config.modelosUnicos||0;
 
   var ords=ordenes;
   var ahora=new Date(), mes=ahora.getMonth(), anio=ahora.getFullYear();
@@ -1878,11 +1880,21 @@ async function cargarStatsDashboard(){
     +'<div style="font-size:10px;font-weight:700;color:#4a5e42;text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px">Parque de equipos</div>'
     +'<div class="db-kpi-grid" style="grid-template-columns:repeat(5,1fr)">'
     +dbKpi('Total universo',totalEq.toLocaleString(),'equipos en SAP','#111315','☕','')
-    +dbKpi('Equipo nuevo',(porClase.CSNUEVO||0).toLocaleString(),'CSNUEVO','#111315','✨','claseActivo:CSNUEVO')
-    +dbKpi('Equipo usado',(porClase.CSUSADO||0).toLocaleString(),'CSUSADO','#111315','♻️','claseActivo:CSUSADO')
+    +dbKpi('Clase nuevo',(porClase.CSNUEVO||0).toLocaleString(),'CSNUEVO','#111315','✨','claseActivo:CSNUEVO')
+    +dbKpi('Clase usado',(porClase.CSUSADO||0).toLocaleString(),'CSUSADO','#111315','♻️','claseActivo:CSUSADO')
     +dbKpi('Cafetera',(porClase.CAFETERA||0).toLocaleString(),'CAFETERA','#111315','☕','claseActivo:CAFETERA')
     +dbKpi('Hotelera',(porClase.HOTELERA||0).toLocaleString(),'HOTELERA','#111315','🏨','claseActivo:HOTELERA')
     +'</div>'
+    // Los 4 KPIs son CLASES DE ACTIVO de SAP y particionan el universo.
+    // La antiguedad real vive en otro campo (nuevoUsado): CAFETERA y
+    // HOTELERA tambien son equipo usado.
+    +(Object.keys(porNU).length?
+      '<div style="font-size:11px;color:var(--cf-text2);margin:-4px 0 14px;line-height:1.5">'
+      +'Las cuatro clases particionan el universo. Por <b>antig\u00fcedad real</b>: '
+      +'<b style="color:var(--cf-text)">'+(porNU.CSNUEVO||0).toLocaleString()+'</b> nuevos \u00b7 '
+      +'<b style="color:var(--cf-text)">'+(porNU.CSUSADO||0).toLocaleString()+'</b> usados '
+      +'<span style="opacity:.7">(Cafetera y Hotelera tambi\u00e9n son equipo usado)</span>'
+      +'</div>':'')
 
     /* operacion movida arriba */
 
@@ -1891,20 +1903,23 @@ async function cargarStatsDashboard(){
       var GRUPOS={
         'Cafeteras':['Cafeteras Hoteleras','Cafeteras Automática','Cafeteras percolador','Cafet. Semiautomática','Cafet. Superautomática','Cafeteras Vending','Bunn','Jura','Astoria','La Pavoni','Simonelli','Necta','Superautomatica','Semiautomatica','Habitacion','Habitación'],
         'Complementario':['Molinos','Molino','Thermos','Generador de Vapor','Equipo bebidas frías','Equ. Food service'],
-        'Accesorios':['Accesorios Cafeteras','Misceláneos Refacc.','Everpure','Capsulas monodosis','Cápsulas monodosis','Filtrado','Cafe soluble']
+        'Accesorios':['Accesorios Cafeteras','Misceláneos Refacc.','Everpure','Capsulas monodosis','Cápsulas monodosis','Filtrado','Cafe soluble'],
+        'Sin clasificar':[]
       };
-      var COLORES={'Cafeteras':'#3E5A40','Complementario':'#8A6D12','Accesorios':'#6B6F72'};
+      var COLORES={'Cafeteras':'#3E5A40','Complementario':'#8A6D12','Accesorios':'#6B6F72','Sin clasificar':'#B03A2E'};
       var ICON={'Cafeteras':'☕','Complementario':'⚙','Accesorios':'🔧'};
-      var SUB={'Cafeteras':'máquinas','Complementario':'molinos, thermos, vapor','Accesorios':'refacciones, filtros'};
+      var SUB={'Cafeteras':'máquinas','Complementario':'molinos, thermos, vapor','Accesorios':'refacciones, filtros','Sin clasificar':'lineas nuevas de SAP - revisar'};
       var vpl=config.valorPorLinea||{};
-      var acum={'Cafeteras':{n:0,v:0},'Complementario':{n:0,v:0},'Accesorios':{n:0,v:0}};
-      function grupoDe(lin){ for(var g in GRUPOS){ if(GRUPOS[g].indexOf(lin)>=0)return g; } return 'Cafeteras'; }
+      var acum={'Cafeteras':{n:0,v:0},'Complementario':{n:0,v:0},'Accesorios':{n:0,v:0},'Sin clasificar':{n:0,v:0}};
+      function grupoDe(lin){ for(var g in GRUPOS){ if(GRUPOS[g].indexOf(lin)>=0)return g; } return 'Sin clasificar'; }
       Object.keys(porLinea).forEach(function(lin){
         if(lin==='Sin linea'||lin==='Sin línea'||lin==='null')return;
         var g=grupoDe(lin); acum[g].n+=porLinea[lin]||0; acum[g].v+=vpl[lin]||0;
       });
       var maxV=Math.max(acum.Cafeteras.v,acum.Complementario.v,acum.Accesorios.v,1);
-      var cards=['Cafeteras','Complementario','Accesorios'].map(function(g){
+      var GVIS=['Cafeteras','Complementario','Accesorios'];
+      if(acum['Sin clasificar'].n>0)GVIS.push('Sin clasificar');
+      var cards=GVIS.map(function(g){
         var col=COLORES[g], pct=Math.max(3,Math.round(acum[g].v/maxV*100));
         return '<div class="db-card" style="padding:16px 18px">'
           +'<div style="display:flex;align-items:center;gap:7px;margin-bottom:2px"><span style="font-size:17px">'+ICON[g]+'</span><span style="font-size:15px;font-weight:600;color:var(--cf-text)">'+g+'</span></div>'
@@ -1922,7 +1937,7 @@ async function cargarStatsDashboard(){
           .map(function(lin){ return {lin:lin, n:porLinea[lin]||0, v:vpl[lin]||0}; })
           .sort(function(a,b){ return b.v-a.v; });
       }
-      var cols=['Cafeteras','Complementario','Accesorios'].map(function(g){
+      var cols=GVIS.map(function(g){
         var col=COLORES[g], arr=lineasDe(g);
         var filas=arr.map(function(it){
           return '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--cf-cream2);gap:8px">'
@@ -1933,8 +1948,8 @@ async function cargarStatsDashboard(){
           +'<div style="font-size:14px;font-weight:600;color:'+col+';margin-bottom:8px">'+ICON[g]+' '+g+'</div>'+filas+'</div>';
       }).join('');
       return '<div class="db-card-hd" style="border:none;padding:0;margin:4px 0 10px">Clasificación del parque</div>'
-        +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px">'+cards+'</div>'
-        +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;align-items:start">'+cols+'</div>';
+        +'<div style="display:grid;grid-template-columns:repeat('+GVIS.length+',1fr);gap:14px;margin-bottom:14px">'+cards+'</div>'
+        +'<div style="display:grid;grid-template-columns:repeat('+GVIS.length+',1fr);gap:14px;margin-bottom:16px;align-items:start">'+cols+'</div>';
     })()
 
     // FILA INFERIOR — solo centros, ancho completo
@@ -1999,7 +2014,14 @@ async function cargarStatsDashboard(){
 
     // ── EQUIPOS POR MODELO (top del parque) ──
     +'<div class="db-card" style="margin-bottom:10px">'
-    +'<div class="db-card-hd"><span>Equipos por modelo</span><span style="font-size:11px;color:#8b6914;font-weight:500">Top del parque</span></div>'
+    +(function(){
+       var _e=Object.entries(porModelo).sort(function(a,b){return b[1]-a[1];});
+       var _t16=_e.slice(0,16).reduce(function(a,b){return a+b[1];},0);
+       var _pct=totalEq?Math.round(_t16/totalEq*100):0;
+       return '<div class="db-card-hd"><span>Equipos por modelo</span>'
+         +'<span style="font-size:11px;color:#8b6914;font-weight:500">Top 16 \u00b7 '
+         +_t16.toLocaleString()+' de '+totalEq.toLocaleString()+' equipos ('+_pct+'%)</span></div>';
+     })()
     +(Object.keys(porModelo).length?
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px">'
       +Object.entries(porModelo).sort(function(a,b){return b[1]-a[1];}).slice(0,16).map(function(e,i){
@@ -2013,6 +2035,21 @@ async function cargarStatsDashboard(){
           +'<div style="height:3px;background:rgba(42,74,30,.06);border-radius:2px;overflow:hidden">'
           +'<div style="height:100%;width:'+Math.max(3,Math.round(e[1]/mx*100))+'%;background:'+c+';border-radius:2px;transition:width .6s ease"></div></div></div>';
       }).join('')
+      // Renglon de cierre: el top 16 no es una particion. Se agrega el resto
+      // para que la columna sume el universo completo y nadie tenga que
+      // preguntarse a donde se fueron los equipos que faltan.
+      +(function(){
+         var _e=Object.entries(porModelo).sort(function(a,b){return b[1]-a[1];});
+         var _t16=_e.slice(0,16).reduce(function(a,b){return a+b[1];},0);
+         var _otros=totalEq-_t16; if(_otros<=0)return '';
+         var _nm=modelosUnicos>16?(modelosUnicos-16):0;
+         return '<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;padding:9px 0 4px;margin-top:6px;border-top:2px solid rgba(42,74,30,.18)">'
+           +'<span style="font-size:11px;color:#6b7c63;font-style:italic">Otros'+(_nm?' '+_nm.toLocaleString()+' modelos':' modelos')+'</span>'
+           +'<span style="font-size:11px;font-weight:700;color:#6b7c63">'+_otros.toLocaleString()+'</span></div>'
+           +'<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;padding:6px 0 2px;border-top:1px solid rgba(42,74,30,.25)">'
+           +'<span style="font-size:11px;font-weight:700;color:#2a4a1e">Total del parque</span>'
+           +'<span style="font-size:12px;font-weight:700;color:#2a4a1e">'+totalEq.toLocaleString()+'</span></div>';
+       })()
       +'</div>'
       :'<div style="color:#6b7c63;font-size:12px;padding:8px 0">Sin datos. Ejecuta <code>node cafiver-resumen.js</code> para generar el resumen.</div>')
     +'</div>'
