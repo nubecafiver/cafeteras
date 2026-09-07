@@ -2015,16 +2015,14 @@ async function cargarStatsDashboard(){
     // ── EQUIPOS POR MODELO (top del parque) ──
     +'<div class="db-card" style="margin-bottom:10px">'
     +(function(){
-       var _e=Object.entries(porModelo).sort(function(a,b){return b[1]-a[1];});
-       var _t16=_e.slice(0,16).reduce(function(a,b){return a+b[1];},0);
-       var _pct=totalEq?Math.round(_t16/totalEq*100):0;
+       var _n=Object.keys(porModelo).length;
        return '<div class="db-card-hd"><span>Equipos por modelo</span>'
-         +'<span style="font-size:11px;color:#8b6914;font-weight:500">Top 16 \u00b7 '
-         +_t16.toLocaleString()+' de '+totalEq.toLocaleString()+' equipos ('+_pct+'%)</span></div>';
+         +'<span style="font-size:11px;color:#8b6914;font-weight:500">'
+         +_n.toLocaleString()+' modelos \u00b7 '+totalEq.toLocaleString()+' equipos</span></div>';
      })()
     +(Object.keys(porModelo).length?
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px">'
-      +Object.entries(porModelo).sort(function(a,b){return b[1]-a[1];}).slice(0,16).map(function(e,i){
+      +Object.entries(porModelo).sort(function(a,b){return b[1]-a[1];}).map(function(e,i){
         var mx=Math.max.apply(null,Object.values(porModelo));
         var cols=['#2a4a1e','#3d6b2c','#8b6914','#5a8f42','#6b4423','#4a7a6b','#2d5a3d','#7a6b2a','#5a4a3e','#3d6b4a'];
         var c=cols[i%10];
@@ -2035,20 +2033,15 @@ async function cargarStatsDashboard(){
           +'<div style="height:3px;background:rgba(42,74,30,.06);border-radius:2px;overflow:hidden">'
           +'<div style="height:100%;width:'+Math.max(3,Math.round(e[1]/mx*100))+'%;background:'+c+';border-radius:2px;transition:width .6s ease"></div></div></div>';
       }).join('')
-      // Renglon de cierre: el top 16 no es una particion. Se agrega el resto
-      // para que la columna sume el universo completo y nadie tenga que
-      // preguntarse a donde se fueron los equipos que faltan.
+      // Ahora se pintan TODOS los modelos, asi que la columna ya es una
+      // particion completa: el renglon de total solo la confirma a la vista.
       +(function(){
-         var _e=Object.entries(porModelo).sort(function(a,b){return b[1]-a[1];});
-         var _t16=_e.slice(0,16).reduce(function(a,b){return a+b[1];},0);
-         var _otros=totalEq-_t16; if(_otros<=0)return '';
-         var _nm=modelosUnicos>16?(modelosUnicos-16):0;
-         return '<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;padding:9px 0 4px;margin-top:6px;border-top:2px solid rgba(42,74,30,.18)">'
-           +'<span style="font-size:11px;color:#6b7c63;font-style:italic">Otros'+(_nm?' '+_nm.toLocaleString()+' modelos':' modelos')+'</span>'
-           +'<span style="font-size:11px;font-weight:700;color:#6b7c63">'+_otros.toLocaleString()+'</span></div>'
-           +'<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;padding:6px 0 2px;border-top:1px solid rgba(42,74,30,.25)">'
+         var _s=Object.values(porModelo).reduce(function(a,b){return a+b;},0);
+         var _d=totalEq-_s;
+         return '<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;padding:8px 0 2px;margin-top:6px;border-top:2px solid rgba(42,74,30,.25)">'
            +'<span style="font-size:11px;font-weight:700;color:#2a4a1e">Total del parque</span>'
-           +'<span style="font-size:12px;font-weight:700;color:#2a4a1e">'+totalEq.toLocaleString()+'</span></div>';
+           +'<span style="font-size:12px;font-weight:700;color:#2a4a1e">'+_s.toLocaleString()+'</span></div>'
+           +(_d!==0?'<div style="grid-column:1/-1;font-size:11px;color:#B03A2E;padding:4px 0">\u26a0 Descuadre de '+_d.toLocaleString()+' contra el universo ('+totalEq.toLocaleString()+'). Corre <code>node cafiver-resumen.js</code>.</div>':'');
        })()
       +'</div>'
       :'<div style="color:#6b7c63;font-size:12px;padding:8px 0">Sin datos. Ejecuta <code>node cafiver-resumen.js</code> para generar el resumen.</div>')
