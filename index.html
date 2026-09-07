@@ -2260,6 +2260,16 @@ function descargarResumenCSV(){
 // Lee resumenLinea/<linea>, precalculado por cafiver-resumen.js. Antes esto no
 // se podia: "Cafeteras Hoteleras" son 29,788 equipos y el navegador no puede
 // traerlos. Ahora es una sola lectura.
+// Las lineas salen del catalogo que arma cafiver-resumen.js (lineasCat), asi
+// que cuando SAP traiga una linea nueva el boton aparece solo. La lista fija
+// es respaldo por si el config todavia no se ha regenerado.
+var LINEAS_FALLBACK=['Cafeteras Hoteleras','Cafet. Superautomática','Cafeteras percolador',
+  'Cafet. Semiautomática','Molinos','Thermos','Accesorios Cafeteras','Bunn'];
+function eqLineasBotones(){
+  var c=(typeof _statsConfig!=='undefined'&&_statsConfig&&_statsConfig.lineasCat)||null;
+  return (c&&c.length)?c.slice():LINEAS_FALLBACK;
+}
+
 function eqVerTodos(){
   eqVistaLinea=null;
   eqFiltros.linea=''; eqFiltros.q=''; eqFiltros.modelo=''; eqFiltros.almacen=''; 
@@ -2299,7 +2309,7 @@ function pintarLineaAlmacenes(){
     +'<td colspan="2" style="padding:9px 12px;text-align:right;font-size:11px;opacity:.75">'+arr.length+' almacenes</td></tr>';
   html+=arr.map(function(a){
     var pct=Math.max(2,Math.round(a.n/mx*100));
-    return '<tr style="cursor:pointer;border-bottom:1px solid #eceded" onclick="verEquiposDeAlmacen(this.dataset.c)" data-c="'+esc(a.cod)+'" title="Ver los equipos de este almacen">'
+    return '<tr style="border-bottom:1px solid #eceded">'
       +'<td style="padding:8px 12px;font-size:12px;color:#8b6914;font-weight:600">'+esc(a.cod)+'</td>'
       +'<td colspan="2" style="padding:8px 12px;font-size:13px">'+esc(a.nombre||'(sin nombre)')+'</td>'
       +'<td style="padding:8px 12px;text-align:right;font-weight:700;font-size:13px">'+a.n.toLocaleString()+'</td>'
@@ -2307,21 +2317,21 @@ function pintarLineaAlmacenes(){
       +'<td style="padding:8px 12px"><div style="height:5px;background:#eceded;border-radius:3px;overflow:hidden">'
       +'<div style="height:100%;width:'+pct+'%;background:#3E5A40;border-radius:3px"></div></div></td></tr>';
   }).join('');
+  html+='<tr><td colspan="7" style="padding:10px 12px;font-size:11px;color:#6b7c63;font-style:italic;border-top:1px solid #eceded">'
+    +'Para ver los equipos uno por uno, busca el nombre del almac\u00e9n en la pantalla <b>Clientes</b>.</td></tr>';
   tb.innerHTML=html;
 }
 
-// Clic en un almacen: baja al detalle de equipos de esa linea en ese almacen.
-function verEquiposDeAlmacen(cod){
-  eqVistaLinea=null; eqFiltros.almacen=cod; eqFiltros.q=''; eqFiltros.modelo='';
-  renderEquipos();
-}
+// El detalle equipo por equipo NO se hace aqui a proposito: traerlo costaria
+// hasta 1,500 lecturas de Firestore por clic. La pantalla Clientes ya lo
+// resuelve buscando por nombre, que es el que se muestra en esta tabla.
 
 function renderEquipos(){
   var w=document.getElementById('view-equipos');if(!w)return;
   w.innerHTML=
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">'
     +'<button class="btn btn-sm'+(eqFiltros.linea===''&&eqFiltros.modelo===''&&!eqFiltros.almacen?' btn-blue':'')+'" onclick="eqVerTodos()">Todos</button>'
-    +['Cafeteras Hoteleras','Cafet. Superautomática','Cafeteras percolador','Cafet. Semiautomática','Molinos','Thermos','Accesorios Cafeteras','Bunn'].map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" data-l="'+esc(l)+'" onclick="verLineaAlmacenes(this.dataset.l)">'+l+'</button>';}).join('')
+    +eqLineasBotones().map(function(l){return'<button class="btn btn-sm'+(eqFiltros.linea===l?' btn-blue':'')+'" data-l="'+esc(l)+'" onclick="verLineaAlmacenes(this.dataset.l)">'+l+'</button>';}).join('')
     +(eqFiltros.modelo?'<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(42,74,30,.08);border:1px solid var(--cf-border);border-radius:14px;padding:4px 10px;font-size:12px;color:#2a4a1e;font-weight:500">Modelo: '+eqFiltros.modelo+'<span style="cursor:pointer;font-weight:700;color:#8b6914" onclick="eqFiltros.modelo=\'\';buscarEquiposFirestore();renderEquipos()" title="Quitar filtro">✕</span></span>':'')
     +'</div>'
     +'<div class="tbl-box">'
