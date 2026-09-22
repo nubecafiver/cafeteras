@@ -1645,13 +1645,18 @@ function rutaBuscarCliente(){
   var variantes=[q,q.toUpperCase(),q.charAt(0).toUpperCase()+q.slice(1).toLowerCase()], visto={};
   variantes.forEach(function(v){ if(visto[v])return; visto[v]=true;
     var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
-    var qq=col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(150);
-    proms.push(qq.get());
+    // El centro va DENTRO de la consulta. Antes se filtraba despues de traer
+    // 150 resultados de todo el pais, y los del centro del tecnico casi nunca
+    // alcanzaban a entrar en ese corte: la busqueda devolvia vacio aunque el
+    // cliente si existiera. Requiere indice compuesto (centro + clienteNombre).
+    var qq=col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi);
+    if(_rutaEdit.centro) qq=qq.where('centro','==',_rutaEdit.centro);
+    proms.push(qq.limit(150).get());
   });
   Promise.all(proms).then(function(snaps){
     var cli={};
     snaps.forEach(function(s){s.docs.forEach(function(d){var e=d.data();
-      if(_rutaEdit.centro && e.centro!==_rutaEdit.centro)return;
+      if(_rutaEdit.centro && e.centro!==_rutaEdit.centro)return;   // red de seguridad
       if(e.clienteNombre){ var k=e.clienteNombre; if(!cli[k])cli[k]={nombre:e.clienteNombre,num:e.cliente||'',n:0}; cli[k].n++; }
     });});
     var arr=Object.values(cli).sort(function(a,b){return b.n-a.n;}).slice(0,40);
@@ -1663,7 +1668,14 @@ function rutaBuscarCliente(){
         +(ya?'<span style="font-size:11px;color:var(--cf-green)">✓ agregado</span>':'<button class="btn btn-sm" onclick="rutaAddCliente(\''+esc(c.nombre).replace(/\'/g,"\\\\\'")+'\',\''+esc(String(c.num)).replace(/\'/g,"\\\\\'")+'\')">+ Agregar</button>')
         +'</div>';
     }).join('');
-  }).catch(function(e){ box.innerHTML='<div style="color:#b00;font-size:12px;padding:8px">'+esc(e.message)+'</div>'; });
+  }).catch(function(e){
+    var m=esc(e.message||'');
+    // Firestore devuelve el link para crear el indice dentro del mensaje.
+    var url=(String(e.message||'').match(/https:\/\/[^\s]+/)||[])[0];
+    box.innerHTML='<div style="color:#b00;font-size:12px;padding:8px">'+m
+      +(url?'<div style="margin-top:8px"><a href="'+url+'" target="_blank" style="color:#8b6914;font-weight:600">Crear el indice en Firebase &rarr;</a><div style="color:#6b7c63;margin-top:4px">Dale clic, espera 2-5 min a que diga "Habilitado" y vuelve a buscar.</div></div>':'')
+      +'</div>';
+  });
 }
 
 function rutaAddCliente(nombre,num){
