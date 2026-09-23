@@ -1636,46 +1636,70 @@ function cargarRutaExistente(){
   }).catch(function(){ renderRutas(); });
 }
 
+// Busqueda de clientes EN MEMORIA contra config/almacenesIndex.
+// Antes consultaba Firestore trayendo 150 equipos de todo el pais y despues
+// descartaba los de otro centro: los del centro del tecnico casi nunca entraban
+// en ese corte y la busqueda salia vacia. Ahora: 1 lectura por sesion, resultado
+// instantaneo, encuentra el texto en cualquier parte del nombre y sin acentos.
+var _almIdx=null, _almIdxErr=null;
+
+function rutaNorm(t){
+  return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+}
+
+function rutaCargarIndice(cb){
+  if(_almIdx){ cb(); return; }
+  db.collection('config').doc('almacenesIndex').get().then(function(d){
+    var a=(d.exists&&d.data().almacenes)||[];
+    _almIdx=a.map(function(x){ return {c:x.c,nom:x.nom,ce:x.ce,n:x.n,k:rutaNorm(x.nom)+' '+rutaNorm(x.c)}; });
+    if(!_almIdx.length)_almIdxErr='El indice esta vacio. Ejecuta: node indice-almacenes.js';
+    cb();
+  }).catch(function(e){ _almIdx=[]; _almIdxErr=e.message; cb(); });
+}
+
 function rutaBuscarCliente(){
   var q=(document.getElementById('ruta-q')||{}).value||''; q=q.trim();
   var box=document.getElementById('ruta-result'); if(!box)return;
   if(q.length<2){ box.innerHTML='<div style="color:var(--cf-text2);font-size:12px;padding:8px">Escribe al menos 2 letras.</div>'; return; }
-  box.innerHTML='<div style="color:var(--cf-text2);font-size:12px;padding:8px">Buscando...</div>';
-  var col=db.collection('equipos'), proms=[];
-  var variantes=[q,q.toUpperCase(),q.charAt(0).toUpperCase()+q.slice(1).toLowerCase()], visto={};
-  variantes.forEach(function(v){ if(visto[v])return; visto[v]=true;
-    var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
-    // El centro va DENTRO de la consulta. Antes se filtraba despues de traer
-    // 150 resultados de todo el pais, y los del centro del tecnico casi nunca
-    // alcanzaban a entrar en ese corte: la busqueda devolvia vacio aunque el
-    // cliente si existiera. Requiere indice compuesto (centro + clienteNombre).
-    var qq=col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi);
-    if(_rutaEdit.centro) qq=qq.where('centro','==',_rutaEdit.centro);
-    proms.push(qq.limit(150).get());
+  if(!_almIdx){
+    box.innerHTML='<div style="color:var(--cf-text2);font-size:12px;padding:8px">Cargando catalogo...</div>';
+    rutaCargarIndice(rutaBuscarCliente);
+    return;
+  }
+  if(_almIdxErr&&!_almIdx.length){
+    box.innerHTML='<div style="color:#b00;font-size:12px;padding:8px">'+esc(_almIdxErr)+'</div>'; return;
+  }
+  var nq=rutaNorm(q), ce=_rutaEdit.centro||'';
+  var res=_almIdx.filter(function(a){
+    if(ce&&a.ce!==ce)return false;
+    return a.k.indexOf(nq)>=0;
   });
-  Promise.all(proms).then(function(snaps){
-    var cli={};
-    snaps.forEach(function(s){s.docs.forEach(function(d){var e=d.data();
-      if(_rutaEdit.centro && e.centro!==_rutaEdit.centro)return;   // red de seguridad
-      if(e.clienteNombre){ var k=e.clienteNombre; if(!cli[k])cli[k]={nombre:e.clienteNombre,num:e.cliente||'',n:0}; cli[k].n++; }
-    });});
-    var arr=Object.values(cli).sort(function(a,b){return b.n-a.n;}).slice(0,40);
-    if(!arr.length){ box.innerHTML='<div style="color:var(--cf-text2);font-size:12px;padding:8px">Sin clientes con ese nombre'+(_rutaEdit.centro?(' en '+_rutaEdit.centro):'')+'.</div>'; return; }
-    box.innerHTML=arr.map(function(c){
-      var ya=_rutaEdit.clientes.some(function(x){return x.clienteNombre===c.nombre;});
-      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--cf-border)">'
-        +'<div style="min-width:0"><div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.nombre)+'</div><div style="font-size:11px;color:var(--cf-text2)">'+c.n+' equipos</div></div>'
-        +(ya?'<span style="font-size:11px;color:var(--cf-green)">✓ agregado</span>':'<button class="btn btn-sm" onclick="rutaAddCliente(\''+esc(c.nombre).replace(/\'/g,"\\\\\'")+'\',\''+esc(String(c.num)).replace(/\'/g,"\\\\\'")+'\')">+ Agregar</button>')
-        +'</div>';
-    }).join('');
-  }).catch(function(e){
-    var m=esc(e.message||'');
-    // Firestore devuelve el link para crear el indice dentro del mensaje.
-    var url=(String(e.message||'').match(/https:\/\/[^\s]+/)||[])[0];
-    box.innerHTML='<div style="color:#b00;font-size:12px;padding:8px">'+m
-      +(url?'<div style="margin-top:8px"><a href="'+url+'" target="_blank" style="color:#8b6914;font-weight:600">Crear el indice en Firebase &rarr;</a><div style="color:#6b7c63;margin-top:4px">Dale clic, espera 2-5 min a que diga "Habilitado" y vuelve a buscar.</div></div>':'')
+  // Los que empiezan con el texto van primero; luego por numero de equipos.
+  res.sort(function(a,b){
+    var ea=a.k.indexOf(nq)===0?0:1, eb=b.k.indexOf(nq)===0?0:1;
+    if(ea!==eb)return ea-eb;
+    return b.n-a.n;
+  });
+  if(!res.length){
+    // Si no hay en el centro del tecnico, decir si existe en otro: evita que el
+    // usuario crea que el cliente no existe.
+    var fuera=ce?_almIdx.filter(function(a){return a.ce!==ce&&a.k.indexOf(nq)>=0;}):[];
+    box.innerHTML='<div style="color:var(--cf-text2);font-size:12px;padding:8px">Sin clientes con ese nombre'+(ce?(' en '+esc(ce)):'')+'.'
+      +(fuera.length?'<div style="margin-top:6px;color:#8b6914">Hay '+fuera.length+' en otros centros: '
+        +esc(fuera.slice(0,4).map(function(x){return x.nom+' ('+x.ce+')';}).join(', '))+'.</div>':'')
       +'</div>';
-  });
+    return;
+  }
+  box.innerHTML=res.slice(0,60).map(function(c){
+    var ya=_rutaEdit.clientes.some(function(x){return x.clienteNombre===c.nom;});
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--cf-border)">'
+      +'<div style="min-width:0"><div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.nom)+'</div>'
+      +'<div style="font-size:11px;color:var(--cf-text2)">'+c.n+' equipos &middot; '+esc(c.c||'-')+' &middot; '+esc(c.ce||'-')+'</div></div>'
+      +(ya?'<span style="font-size:11px;color:var(--cf-green)">&#10003; agregado</span>'
+          :'<button class="btn btn-sm" data-n="'+esc(c.nom)+'" data-c="'+esc(c.c||'')+'" onclick="rutaAddCliente(this.dataset.n,this.dataset.c)">+ Agregar</button>')
+      +'</div>';
+  }).join('')
+  +(res.length>60?'<div style="padding:8px;font-size:11px;color:var(--cf-text2)">'+(res.length-60)+' mas. Escribe mas letras para acotar.</div>':'');
 }
 
 function rutaAddCliente(nombre,num){
@@ -1788,6 +1812,7 @@ function progAsignar(uid){
     if(d.exists && d.data().clientes) _rutaEdit.clientes=d.data().clientes;
     progRenderLista();
   }).catch(function(){ progRenderLista(); });
+  rutaCargarIndice(function(){});
   document.getElementById('prog-modal').style.display='flex';
 }
 function progCerrarModal(){ document.getElementById('prog-modal').style.display='none'; }
@@ -1887,7 +1912,26 @@ async function cargarStatsDashboard(){
     +'<div class="db-header">'
     +'<div><div class="db-title">Panel de Control — CAFIVER</div>'
     +'<div class="db-fecha">'+new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'</div></div>'
-    +(config.ultimaImportacion?'<div style="text-align:right;font-size:11px;color:rgba(255,255,255,.4)">Última sync SAP<br><b style="color:rgba(255,255,255,.7);font-size:13px">'+fmtF(config.ultimaImportacion)+'</b></div>':'')
+    // Estado de la sincronizacion nocturna. Lo escribe verificar-sync.js al
+    // final de cada corrida. Se muestra siempre para que administradores y
+    // tecnicos sepan de un vistazo si los datos son de anoche o estan viejos.
+    +(function(){
+       var f=config.syncFecha||config.ultimaImportacion;
+       if(!f)return '';
+       var ms=0; try{ ms=(f.seconds?f.seconds*1000:new Date(f).getTime()); }catch(e){}
+       var dias=ms?Math.floor((Date.now()-ms)/86400000):0;
+       var ok=config.syncOK!==false;
+       var col=!ok?'#ff8a80':(dias>=2?'#ffcc80':'rgba(255,255,255,.7)');
+       var nota=!ok?'con errores':(dias>=2?('hace '+dias+' dias'):(dias===1?'ayer':'hoy'));
+       return '<div style="text-align:right;font-size:11px;color:rgba(255,255,255,.4)">'
+         +'Última sync SAP'
+         +'<br><b style="color:'+col+';font-size:13px">'+fmtF(f)+'</b>'
+         +'<br><span style="color:'+col+'">'+(ok?'&#10003; ':'&#9888; ')+nota
+         +(config.syncVigentes?(' &middot; '+Number(config.syncVigentes).toLocaleString()+' equipos'):'')
+         +'</span>'
+         +(!ok&&config.syncMensaje?'<br><span style="color:#ff8a80;font-size:10px">'+esc(String(config.syncMensaje).slice(0,90))+'</span>':'')
+         +'</div>';
+     })()
     +'</div>'
 
     // KPI — una sola fila con los 5 que importan
