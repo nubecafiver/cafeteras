@@ -652,6 +652,8 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
           <select id="o-tipo" style="width:100%;font-size:12px;padding:7px 10px;border:1.5px solid #e0e2e6;border-radius:8px;outline:none;font-family:'Inter',sans-serif">
             <option value="correctivo">Correctivo</option>
             <option value="preventivo">Preventivo</option>
+            <option value="instalacion">Instalación</option>
+            <option value="retiro">Retiro</option>
           </select>
         </div>
         <div class="af"><label>Técnico *</label>
@@ -1226,7 +1228,23 @@ function lbl(l,grupoArt){
   return'<span class="pill '+(m[nombre]||'pill-acc')+'" style="font-size:10px">'+nombre+'</span>';
 }
 function bCe(ce){return'<span class="pill" style="background:#f0f2f5;color:#5f6368;font-size:10px;padding:2px 8px;font-weight:700">'+(ce||'—')+'</span>';}
-function bTipo(t){return t==='correctivo'?'<span class="pill pill-proc"><i class="ti ti-tool"></i> Correctivo</span>':'<span class="pill pill-ok"><i class="ti ti-refresh"></i> Preventivo</span>';}
+// ── Tipos de servicio ─────────────────────────────────────────────────────
+// Antes solo habia correctivo y preventivo, y el codigo preguntaba
+// "¿es correctivo? si no, es preventivo". Con instalacion y retiro esa logica
+// binaria los contaria mal, asi que todo pasa por esta tabla.
+var TIPOS_SERVICIO = {
+  correctivo : { nom:'Correctivo',  ico:'ti-tool',        bg:'#fce8e6', fg:'#c62828', rbg:'#F6E6E4', rfg:'#B4453A' },
+  preventivo : { nom:'Preventivo',  ico:'ti-refresh',     bg:'#e6f4ea', fg:'#2e7d32', rbg:'#F6F0DD', rfg:'#8A6D12' },
+  instalacion: { nom:'Instalación', ico:'ti-plus',        bg:'#e8f0fe', fg:'#1557b0', rbg:'#E4ECF6', rfg:'#1557b0' },
+  retiro     : { nom:'Retiro',      ico:'ti-arrow-down',  bg:'#f3e8fd', fg:'#6A3AB4', rbg:'#EFE6F6', rfg:'#6A3AB4' }
+};
+var TIPOS_ORDEN = ['correctivo','preventivo','instalacion','retiro'];
+function tipoInfo(t){ return TIPOS_SERVICIO[t] || TIPOS_SERVICIO.preventivo; }
+function tipoNom(t){ return tipoInfo(t).nom; }
+function bTipo(t){
+  var i=tipoInfo(t);
+  return '<span class="pill" style="background:'+i.bg+';color:'+i.fg+'"><i class="ti '+i.ico+'"></i> '+i.nom+'</span>';
+}
 function bEst(e){var m={'terminado':'pill-ok','en proceso':'pill-pend','pendiente':'pill-acc','urgente':'pill-venc'};return'<span class="pill '+(m[e]||'pill-acc')+'">'+(e||'pendiente')+'</span>';}
 function fmtF(ts){if(!ts)return'—';if(ts.toDate)return ts.toDate().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});return String(ts).slice(0,10);}
 function esc(s){return String(s||'').replace(/'/g,'\u2019').replace(/"/g,'\u201d').replace(/\n/g,' ').slice(0,80);}
@@ -1715,7 +1733,7 @@ function rutaListaHTML(){
       +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:600">'+(i+1)+'. '+esc(c.clienteNombre)+'</span>'
       +'<button class="icon-btn" onclick="rutaDelCliente('+i+')" title="Quitar">✕</button></div>'
       +'<div style="display:flex;gap:8px">'
-      +'<select class="fi-sm" style="font-size:12px" onchange="_rutaEdit.clientes['+i+'].tipo=this.value"><option value="preventivo"'+(c.tipo==='preventivo'?' selected':'')+'>Preventivo</option><option value="correctivo"'+(c.tipo==='correctivo'?' selected':'')+'>Correctivo</option><option value="revision"'+(c.tipo==='revision'?' selected':'')+'>Revisión</option></select>'
+      +'<select class="fi-sm" style="font-size:12px" onchange="_rutaEdit.clientes['+i+'].tipo=this.value"><option value="preventivo"'+(c.tipo==='preventivo'?' selected':'')+'>Preventivo</option><option value="correctivo"'+(c.tipo==='correctivo'?' selected':'')+'>Correctivo</option><option value="instalacion"'+(c.tipo==='instalacion'?' selected':'')+'>Instalación</option><option value="retiro"'+(c.tipo==='retiro'?' selected':'')+'>Retiro</option><option value="revision"'+(c.tipo==='revision'?' selected':'')+'>Revisión</option></select>'
       +'<input class="fi-sm" style="flex:1;font-size:12px" placeholder="Nota (opcional)" value="'+esc(c.nota||'')+'" oninput="_rutaEdit.clientes['+i+'].nota=this.value">'
       +'</div></div>';
   }).join('');
@@ -1781,8 +1799,9 @@ function progFilaTecnico(t){
       +'</div>'
       +'<div style="flex:1;display:flex;gap:6px;flex-wrap:wrap;min-width:200px">'
         +(cl.length?cl.map(function(c,i){
-          var col=c.visitado?'#EDF1ED':(c.tipo==='correctivo'?'#F6E6E4':'#F6F0DD');
-          var txt=c.visitado?'#3E5A40':(c.tipo==='correctivo'?'#B4453A':'#8A6D12');
+          var _ti=tipoInfo(c.tipo);
+          var col=c.visitado?'#EDF1ED':_ti.rbg;
+          var txt=c.visitado?'#3E5A40':_ti.rfg;
           return '<span title="'+esc((c.tipo||'')+(c.nota?(' · '+c.nota):''))+'" style="background:'+col+';color:'+txt+';font-size:11px;padding:4px 9px;border-radius:14px;'+(c.visitado?'text-decoration:line-through':'')+'">'+esc(c.clienteNombre)+'</span>';
         }).join(''):'<span style="font-size:12px;color:var(--cf-text2);align-self:center">—</span>')
       +'</div>'
@@ -2988,6 +3007,8 @@ function dpTab(tab, eObj, col){
       +dpRow('Total servicios',hist.length)
       +dpRow('Correctivos',hist.filter(function(h){return h.tipo==='correctivo';}).length)
       +dpRow('Preventivos',hist.filter(function(h){return h.tipo==='preventivo';}).length)
+      +dpRow('Instalaciones',hist.filter(function(h){return h.tipo==='instalacion';}).length)
+      +dpRow('Retiros',hist.filter(function(h){return h.tipo==='retiro';}).length)
       +dpRow('Total invertido','<strong style="color:#34a853">'+fmt$(totalInv)+'</strong>')
       +dpRow('Último servicio',hist.length?fmtF(hist[0].creadoEn):'Sin servicios');
     // Especificaciones técnicas — agregar como elemento DOM separado
@@ -3140,8 +3161,9 @@ function renderOrdenes(){
     // Filtros
     +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'
     +'<button class="btn btn-sm'+(ordFiltros.tipo===''?' btn-blue':'')+'" onclick="ordFiltros.tipo=\'\';renderOrdenes()">Todas</button>'
-    +'<button class="btn btn-sm'+(ordFiltros.tipo==='correctivo'?' btn-blue':'')+'" onclick="ordFiltros.tipo=\'correctivo\';renderOrdenes()">Correctivo</button>'
-    +'<button class="btn btn-sm'+(ordFiltros.tipo==='preventivo'?' btn-blue':'')+'" onclick="ordFiltros.tipo=\'preventivo\';renderOrdenes()">Preventivo</button>'
+    +TIPOS_ORDEN.map(function(t){
+        return '<button class="btn btn-sm'+(ordFiltros.tipo===t?' btn-blue':'')+'" data-t="'+t+'" onclick="ordFiltros.tipo=this.dataset.t;renderOrdenes()">'+tipoNom(t)+'</button>';
+      }).join('')
     +'<button class="btn btn-sm'+(ordFiltros.estado==='pendiente'?' btn-blue':'')+'" onclick="ordFiltros.estado=(ordFiltros.estado===\'pendiente\'?\'\':\'pendiente\');renderOrdenes()">Pendientes</button>'
     +'<button class="btn btn-sm'+(ordFiltros.estado==='terminado'?' btn-blue':'')+'" onclick="ordFiltros.estado=(ordFiltros.estado===\'terminado\'?\'\':\'terminado\');renderOrdenes()">Completadas</button>'
     +'<span style="width:1px;height:24px;background:var(--cf-border)"></span>'
@@ -3195,7 +3217,7 @@ function renderAnalisis(){
   var porTec={}, porCentro={}, porCliente={}, porMes={};
   data.forEach(function(o){
     var v=o.costoTotal||0; totFact+=v;
-    if(o.tipo==='correctivo')corr++; else prev++;
+    if(o.tipo==='correctivo')corr++; else if(o.tipo==='preventivo')prev++;   // instalacion y retiro no entran aqui
     var t=o.tecnicoNombre||'Sin asignar'; porTec[t]=porTec[t]||{n:0,f:0}; porTec[t].n++; porTec[t].f+=v;
     var ce=o.centro||'—'; porCentro[ce]=porCentro[ce]||{n:0,f:0}; porCentro[ce].n++; porCentro[ce].f+=v;
     var cl=o.cliente||'—'; porCliente[cl]=porCliente[cl]||{n:0,f:0}; porCliente[cl].n++; porCliente[cl].f+=v;
@@ -3592,6 +3614,8 @@ function renderReportes(){
   var ingr=ordenes.reduce(function(a,o){return a+(o.costoTotal||0);},0);
   var corr=ordenes.filter(function(o){return o.tipo==='correctivo';}).length;
   var prev=ordenes.filter(function(o){return o.tipo==='preventivo';}).length;
+  var inst=ordenes.filter(function(o){return o.tipo==='instalacion';}).length;
+  var reti=ordenes.filter(function(o){return o.tipo==='retiro';}).length;
   var byTec={};ordenes.forEach(function(o){if(!byTec[o.tecnicoNombre||'—']){byTec[o.tecnicoNombre||'—']={n:0,c:0};}byTec[o.tecnicoNombre||'—'].n++;byTec[o.tecnicoNombre||'—'].c+=o.costoTotal||0;});
   var byCe={};ordenes.forEach(function(o){if(!byCe[o.centro||'—']){byCe[o.centro||'—']={n:0,c:0};}byCe[o.centro||'—'].n++;byCe[o.centro||'—'].c+=o.costoTotal||0;});
   // ── Tabla de equipos por centro y línea: PRECALCULADA en config/general ──
@@ -3777,8 +3801,15 @@ function exportExcelOrdenes(){
   var ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:14},{wch:12},{wch:12},{wch:12},{wch:14},{wch:26},{wch:18},{wch:24},{wch:18},{wch:12},{wch:12},{wch:12},{wch:10},{wch:12},{wch:30}];
   XLSX.utils.book_append_sheet(wb,ws,'Órdenes');
   // Hoja por técnico
-  var pt={};ordenes.forEach(function(o){if(!pt[o.tecnicoNombre||'—'])pt[o.tecnicoNombre||'—']={corr:0,prev:0,tot:0,ing:0};var t=pt[o.tecnicoNombre||'—'];if(o.tipo==='correctivo')t.corr++;else t.prev++;t.tot++;t.ing+=o.costoTotal||0;});
-  var rows2=[['Técnico','Correctivos','Preventivos','Total','Ingresos'],...Object.entries(pt).map(function(e){return[e[0],e[1].corr,e[1].prev,e[1].tot,e[1].ing];})];
+  var pt={};ordenes.forEach(function(o){
+    var k=o.tecnicoNombre||'—';
+    if(!pt[k])pt[k]={correctivo:0,preventivo:0,instalacion:0,retiro:0,tot:0,ing:0};
+    var t=pt[k];
+    if(t[o.tipo]!==undefined)t[o.tipo]++;
+    t.tot++; t.ing+=o.costoTotal||0;
+  });
+  var rows2=[['Técnico','Correctivos','Preventivos','Instalaciones','Retiros','Total','Ingresos'],
+    ...Object.entries(pt).map(function(e){return[e[0],e[1].correctivo,e[1].preventivo,e[1].instalacion,e[1].retiro,e[1].tot,e[1].ing];})];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows2),'Por Técnico');
   // Hoja por centro
   var pc={};ordenes.forEach(function(o){if(!pc[o.centro||'—'])pc[o.centro||'—']={n:0,ing:0};pc[o.centro||'—'].n++;pc[o.centro||'—'].ing+=o.costoTotal||0;});
@@ -3802,7 +3833,7 @@ function exportExcelGerencial(){
   var total=ordenes.length,ingr=ordenes.reduce(function(a,o){return a+(o.costoTotal||0);},0);
   var term=ordenes.filter(function(o){return o.estado==='terminado';}).length;
   var kpis=[['CAFIVER — Reporte Gerencial','Generado:',new Date().toLocaleDateString('es-MX'),curUser?'Por: '+curUser.name:''],[]
-    ,['KPIs GENERALES','','',''],['Total órdenes',total,'',''],['Correctivos',ordenes.filter(function(o){return o.tipo==='correctivo';}).length,'',''],['Preventivos',ordenes.filter(function(o){return o.tipo==='preventivo';}).length,'',''],['Completadas',term,'',''],['Pendientes',total-term,'',''],['Total ingresos',ingr,'',''],['Promedio por orden',total?Math.round(ingr/total):0,'',''],[]
+    ,['KPIs GENERALES','','',''],['Total órdenes',total,'',''],['Correctivos',ordenes.filter(function(o){return o.tipo==='correctivo';}).length,'',''],['Preventivos',ordenes.filter(function(o){return o.tipo==='preventivo';}).length,'',''],['Instalaciones',ordenes.filter(function(o){return o.tipo==='instalacion';}).length,'',''],['Retiros',ordenes.filter(function(o){return o.tipo==='retiro';}).length,'',''],['Completadas',term,'',''],['Pendientes',total-term,'',''],['Total ingresos',ingr,'',''],['Promedio por orden',total?Math.round(ingr/total):0,'',''],[]
     ,['POR TÉCNICO','Órdenes','Ingresos','']
   ];
   var pt={};ordenes.forEach(function(o){if(!pt[o.tecnicoNombre||'—'])pt[o.tecnicoNombre||'—']={n:0,c:0};pt[o.tecnicoNombre||'—'].n++;pt[o.tecnicoNombre||'—'].c+=o.costoTotal||0;});
@@ -4256,7 +4287,7 @@ function buildFormatoOrden(ord){
     +'<div style="font-size:12px;font-weight:700;color:#1a73e8">ORDEN DE SERVICIO</div>'
     +'<div style="font-size:15px;font-weight:700;font-family:monospace">'+ord.folio+'</div>'
     +'<div style="font-size:10px;color:#9aa0a6">'+fecha+'</div>'
-    +'<div style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:700;background:'+(ord.tipo==='correctivo'?'#fce8e6':'#e6f4ea')+';color:'+(ord.tipo==='correctivo'?'#c62828':'#2e7d32')+'">'+((ord.tipo==='correctivo'?'CORRECTIVO':'PREVENTIVO'))+'</div>'
+    +'<div style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:700;background:'+tipoInfo(ord.tipo).bg+';color:'+tipoInfo(ord.tipo).fg+'">'+tipoNom(ord.tipo).toUpperCase()+'</div>'
     +'</div></div>';
   html+='<div style="border:1px solid #e0e2e6;border-radius:6px;padding:10px 12px;margin-bottom:10px">'
     +'<div style="font-size:9px;font-weight:700;color:#1a73e8;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid #e8f0fe;padding-bottom:4px;margin-bottom:8px">Datos del Equipo</div>'
@@ -4279,7 +4310,7 @@ function buildFormatoOrden(ord){
     +'<div><div style="font-size:8px;color:#9aa0a6;font-weight:700;text-transform:uppercase">Tecnico</div><div style="font-size:11px;font-weight:600">'+ord.tecnicoNombre+'</div></div>'
     +'<div><div style="font-size:8px;color:#9aa0a6;font-weight:700;text-transform:uppercase">Fecha</div><div style="font-size:11px;font-weight:600">'+ord.fechaServicio+'</div></div>'
     +'<div><div style="font-size:8px;color:#9aa0a6;font-weight:700;text-transform:uppercase">Hora inicio</div><div style="font-size:11px;font-weight:600">'+(ord.horaInicio||'---')+'</div></div>'
-    +'<div><div style="font-size:8px;color:#9aa0a6;font-weight:700;text-transform:uppercase">Tipo</div><div style="font-size:11px;font-weight:600">'+(ord.tipo==='correctivo'?'Correctivo':'Preventivo')+'</div></div>'
+    +'<div><div style="font-size:8px;color:#9aa0a6;font-weight:700;text-transform:uppercase">Tipo</div><div style="font-size:11px;font-weight:600">'+tipoNom(ord.tipo)+'</div></div>'
     +'<div><div style="font-size:8px;color:#9aa0a6;font-weight:700;text-transform:uppercase">Prioridad</div><div style="font-size:11px;font-weight:600">'+(ord.prioridad||'Normal')+'</div></div>'
     +'<div><div style="font-size:8px;color:#9aa0a6;font-weight:700;text-transform:uppercase">Estado</div><div style="font-size:11px;font-weight:600">'+(ord.estado||'Pendiente')+'</div></div>'
     +'</div>'
