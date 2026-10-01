@@ -328,6 +328,73 @@ var CHECKLIST_BRILLANTE = {
   ]
 };
 
+// ══════════════════════════════════════════════════════════════════════════
+//  CADENA DE ACTIVOS FIJOS
+//  Cuando un equipo sale de bodega y se coloca con un cliente, SAP no le
+//  cambia el numero: descapitaliza el activo viejo y crea uno nuevo que
+//  apunta al anterior en "Activo fijo orig" (campo aibn1).
+//
+//      972959  CSNUEVO   descapitalizado 23.09.2026
+//      1326642 CAFETERA  aibn1 = 972959
+//
+//  Las dos fichas son el mismo aparato (misma serie CAPHA26-648). Sin esto,
+//  el historial de servicio del equipo instalado empieza en blanco y lo que
+//  se hizo mientras estaba en bodega queda huerfano.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Devuelve [activoFijo actual, su anterior, el anterior de ese, ...]
+// Solo mira hacia atras: del activo vivo hacia sus predecesores.
+function cadenaActivos(equipo, equiposPorAF){
+  var out = [], visto = {}, actual = equipo, guarda = 0;
+  while(actual && guarda++ < 12){
+    var af = String(actual.activoFijo || '');
+    if(!af || visto[af]) break;
+    visto[af] = true;
+    out.push(af);
+    var orig = String(actual.aibn1 || '').replace(/^0+/, '');
+    if(!orig || orig === '0') break;
+    actual = equiposPorAF ? equiposPorAF[orig] : null;
+    // Si el predecesor ya no esta cargado, igual se incluye su numero:
+    // sus ordenes siguen existiendo aunque el equipo este dado de baja.
+    if(!actual){ if(!visto[orig]) out.push(orig); break; }
+  }
+  return out;
+}
+
+// Historial completo de un equipo, siguiendo la cadena.
+// `ordenes` es el arreglo ya cargado en memoria.
+function historialDe(equipo, ordenes, equiposPorAF){
+  var cad = cadenaActivos(equipo, equiposPorAF);
+  var set = {}; cad.forEach(function(a){ set[a] = true; });
+  return ordenes.filter(function(o){
+    return set[String(o.activoFijo || '')];
+  }).sort(function(a,b){
+    return (b.creadoEn && b.creadoEn.seconds || 0) - (a.creadoEn && a.creadoEn.seconds || 0);
+  });
+}
+
+// Indice activoFijo -> equipo, para resolver la cadena sin ir a Firestore.
+function indicePorAF(lista){
+  var m = {};
+  (lista || []).forEach(function(e){
+    var af = String(e.activoFijo || '').replace(/^0+/, '');
+    if(af) m[af] = e;
+  });
+  return m;
+}
+
+// Aviso para la ficha: "este equipo viene de otro activo".
+function avisoCadena(equipo, equiposPorAF){
+  var cad = cadenaActivos(equipo, equiposPorAF);
+  if(cad.length < 2) return '';
+  var previos = cad.slice(1);
+  return '<div style="background:#F6F0DD;border:1px solid #E4C65A;border-radius:8px;'
+    +'padding:8px 10px;margin-bottom:12px;font-size:11px;color:#5C4A0F">'
+    +'<b>Historial encadenado.</b> Este equipo viene del activo '
+    + previos.map(function(a){ return '<b>'+esc(a)+'</b>'; }).join(' &larr; ')
+    +'. Se incluyen sus órdenes anteriores.</div>';
+}
+
 // ══════════ TIPOS DE SERVICIO ══════════
 // Misma tabla que el escritorio (index.html). Antes el codigo preguntaba
 // "¿es correctivo? si no, es preventivo", asi que una instalacion o un retiro
@@ -1088,6 +1155,8 @@ function distanciaMetros(la1,lo1,la2,lo2){
 function verificarMovimiento(){
   if(_geoLat==null||!_ordEquipo||!_ordEquipo.activoFijo)return;
   var af=parseInt(_ordEquipo.activoFijo)||_ordEquipo.activoFijo;
+  // Solo el activo actual: el predecesor estuvo en bodega, su ubicacion no
+  // sirve para comparar si el tecnico esta donde el cliente.
   db.collection('ordenes').where('activoFijo','==',af).limit(10).get().then(function(s){
     var ult=null;
     s.docs.forEach(function(d){

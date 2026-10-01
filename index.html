@@ -1827,6 +1827,73 @@ function usrPassCreada(nom, num, pass){
     +'</div>';
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  CADENA DE ACTIVOS FIJOS
+//  Cuando un equipo sale de bodega y se coloca con un cliente, SAP no le
+//  cambia el numero: descapitaliza el activo viejo y crea uno nuevo que
+//  apunta al anterior en "Activo fijo orig" (campo aibn1).
+//
+//      972959  CSNUEVO   descapitalizado 23.09.2026
+//      1326642 CAFETERA  aibn1 = 972959
+//
+//  Las dos fichas son el mismo aparato (misma serie CAPHA26-648). Sin esto,
+//  el historial de servicio del equipo instalado empieza en blanco y lo que
+//  se hizo mientras estaba en bodega queda huerfano.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Devuelve [activoFijo actual, su anterior, el anterior de ese, ...]
+// Solo mira hacia atras: del activo vivo hacia sus predecesores.
+function cadenaActivos(equipo, equiposPorAF){
+  var out = [], visto = {}, actual = equipo, guarda = 0;
+  while(actual && guarda++ < 12){
+    var af = String(actual.activoFijo || '');
+    if(!af || visto[af]) break;
+    visto[af] = true;
+    out.push(af);
+    var orig = String(actual.aibn1 || '').replace(/^0+/, '');
+    if(!orig || orig === '0') break;
+    actual = equiposPorAF ? equiposPorAF[orig] : null;
+    // Si el predecesor ya no esta cargado, igual se incluye su numero:
+    // sus ordenes siguen existiendo aunque el equipo este dado de baja.
+    if(!actual){ if(!visto[orig]) out.push(orig); break; }
+  }
+  return out;
+}
+
+// Historial completo de un equipo, siguiendo la cadena.
+// `ordenes` es el arreglo ya cargado en memoria.
+function historialDe(equipo, ordenes, equiposPorAF){
+  var cad = cadenaActivos(equipo, equiposPorAF);
+  var set = {}; cad.forEach(function(a){ set[a] = true; });
+  return ordenes.filter(function(o){
+    return set[String(o.activoFijo || '')];
+  }).sort(function(a,b){
+    return (b.creadoEn && b.creadoEn.seconds || 0) - (a.creadoEn && a.creadoEn.seconds || 0);
+  });
+}
+
+// Indice activoFijo -> equipo, para resolver la cadena sin ir a Firestore.
+function indicePorAF(lista){
+  var m = {};
+  (lista || []).forEach(function(e){
+    var af = String(e.activoFijo || '').replace(/^0+/, '');
+    if(af) m[af] = e;
+  });
+  return m;
+}
+
+// Aviso para la ficha: "este equipo viene de otro activo".
+function avisoCadena(equipo, equiposPorAF){
+  var cad = cadenaActivos(equipo, equiposPorAF);
+  if(cad.length < 2) return '';
+  var previos = cad.slice(1);
+  return '<div style="background:#F6F0DD;border:1px solid #E4C65A;border-radius:8px;'
+    +'padding:8px 10px;margin-bottom:12px;font-size:11px;color:#5C4A0F">'
+    +'<b>Historial encadenado.</b> Este equipo viene del activo '
+    + previos.map(function(a){ return '<b>'+esc(a)+'</b>'; }).join(' &larr; ')
+    +'. Se incluyen sus órdenes anteriores.</div>';
+}
+
 function switchView(v){
   curView=v;
   ['dashboard','equipos','clientes','directorio','ordenes','rutas','programacion','analisis','auditoria','preventivos','qr','reportes','resumen','etiquetas','movimientos','usuarios'].forEach(function(x){
@@ -3273,7 +3340,10 @@ function dpTab(tab, eObj, col){
   }
   if(!e)return;
   var body = document.getElementById('dp-body');
-  var hist = ordenes.filter(function(o){return String(o.activoFijo)===String(e.activoFijo);}).sort(function(a,b){return(b.creadoEn&&b.creadoEn.seconds||0)-(a.creadoEn&&a.creadoEn.seconds||0);});
+  // Incluye las ordenes de los activos anteriores del mismo aparato.
+  var _idxAF = indicePorAF(window._equiposRes||[]);
+  var hist = historialDe(e, ordenes, _idxAF);
+  var _avisoCad = avisoCadena(e, _idxAF);
   var totalInv = hist.reduce(function(a,o){return a+(o.costoTotal||0);},0);
   // Nombre del cliente: primero el campo guardado, luego el catálogo de almacenes
   var nmCliente = e.clienteNombre||getAlmacenNombre(e.centro,e.almacen)||String(e.almacen||'—');
@@ -3302,6 +3372,7 @@ function dpTab(tab, eObj, col){
       +(curView==='clientes'?'<div class="dp-sec-t">📇 Datos de contacto (directorio)</div><div id="dp-directorio-content"><div style="color:#9aa0a6;font-size:12px">Buscando datos del cliente...</div></div>':'')
       +'<div class="dp-sec-t">Resumen servicios</div>'
       +dpRow('Total servicios',hist.length)
+      +_avisoCad
       +dpRow('Correctivos',hist.filter(function(h){return h.tipo==='correctivo';}).length)
       +dpRow('Preventivos',hist.filter(function(h){return h.tipo==='preventivo';}).length)
       +dpRow('Instalaciones',hist.filter(function(h){return h.tipo==='instalacion';}).length)
@@ -4550,7 +4621,7 @@ function finalizarOrden(){
 function buildFicha(docId,col){
   var colData=col==='cl'?clientes:equipos;
   var e=colData.find(function(x){return x.id===docId;});if(!e)return '';
-  var hist=ordenes.filter(function(o){return String(o.activoFijo)===String(e.activoFijo);});
+  var hist=historialDe(e, ordenes, indicePorAF(window._equiposRes||[]));
   var totalInv=hist.reduce(function(a,o){return a+(o.costoTotal||0);},0);
   var qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=100x100&data='+encodeURIComponent(BASE_QR_URL+e.activoFijo)+'&color=1a73e8';
   return'<div class="ficha-header">'
