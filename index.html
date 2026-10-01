@@ -543,6 +543,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
     <button class="tnav"    id="tnav-auditoria"   onclick="switchView('auditoria')">    <span><i class="ti ti-clipboard-check"></i></span><span class="tnav-txt"> Auditoría</span></button>
     <button class="tnav"    id="tnav-programacion" onclick="switchView('programacion')"><span><i class="ti ti-calendar-event"></i></span><span class="tnav-txt"> Programación</span></button>
     <button class="tnav"    id="tnav-qr"          onclick="switchView('qr')">         <span><i class="ti ti-qrcode"></i></span><span class="tnav-txt"> QR</span></button>
+    <button class="tnav"    id="tnav-usuarios"    onclick="switchView('usuarios')" style="display:none"><span><i class="ti ti-users"></i></span><span class="tnav-txt"> Usuarios</span></button>
     <div class="topbar-right">
       <button class="btn btn-sm" onclick="doLogout()" title="Cerrar sesión"><i class="ti ti-logout"></i> Salir</button>
     </div>
@@ -557,6 +558,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
   <div id="view-programacion" class="view-wrap hidden"></div>
   <div id="view-analisis" class="view-wrap hidden"></div>
   <div id="view-auditoria" class="view-wrap hidden"></div>
+  <div id="view-usuarios" class="view-wrap hidden"></div>
   <div id="prog-modal" style="display:none;position:fixed;inset:0;background:rgba(30,33,31,.45);z-index:900;align-items:center;justify-content:center;padding:20px">
     <div style="background:#fff;border-radius:20px;max-width:760px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid #EAECE9">
       <div style="padding:16px 20px;border-bottom:1px solid #EAECE9;display:flex;justify-content:space-between;align-items:center">
@@ -1405,6 +1407,12 @@ function enterApp(){
   if(_yaEntro)return;
   _yaEntro=true;
 
+  // El boton de Usuarios solo se ve para quien puede administrarlos.
+  try{
+    var bu=document.getElementById('tnav-usuarios');
+    if(bu) bu.style.display = esAdminUsuarios() ? '' : 'none';
+  }catch(e){}
+
   // 1. Ocultar login
   document.getElementById('login-screen').classList.add('hidden');
 
@@ -1531,9 +1539,297 @@ function cargarCatalogosYDatos(){
 }
 
 // ══ NAVEGACIÓN ══
+// ══════════════════════════════════════════════════════════════════════════
+//  ADMINISTRACION DE USUARIOS
+//  Alta, baja y asignacion de centros sin salir de la app.
+//
+//  Crear una cuenta de Auth desde el navegador normalmente te deja logueado
+//  COMO el usuario recien creado y te saca de tu sesion. Para evitarlo se usa
+//  una segunda instancia de Firebase (appAlta): la cuenta se crea ahi, se
+//  cierra esa sesion y la del administrador queda intacta.
+// ══════════════════════════════════════════════════════════════════════════
+var DOMINIO_INTERNO = 'tecnicos.cafiver.mx';   // el tecnico nunca lo teclea
+var ROLES = [
+  { v:'tecnico', n:'Técnico',     d:'Solo su celular. Ve sus órdenes y su ruta.' },
+  { v:'jefe',    n:'Coordinador', d:'Escritorio y celular. Ve y asigna en sus centros.' },
+  { v:'admin',   n:'Admin',       d:'Todo el país.' }
+];
+var _usuarios = [], _usrEdit = null, _appAlta = null, _usrFiltro = '';
+
+function esAdminUsuarios(){
+  var u = window.curUser || {};
+  var r = String(u.rol || '').toLowerCase();
+  return r === 'admin' || r === 'jefe' || r === 'director' || r === 'gerente';
+}
+
+function appAlta(){
+  if(_appAlta) return _appAlta;
+  var cfg = firebase.app().options;
+  _appAlta = firebase.initializeApp(cfg, 'alta-usuarios');
+  return _appAlta;
+}
+
+function correoDe(num){ return String(num||'').trim() + '@' + DOMINIO_INTERNO; }
+
+// Contrasena inicial legible pero no adivinable. Se muestra UNA vez.
+function generarPass(){
+  var s = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', p = '';
+  for(var i=0;i<8;i++) p += s.charAt(Math.floor(Math.random()*s.length));
+  return p;
+}
+
+function renderUsuarios(){
+  var w = document.getElementById('view-usuarios'); if(!w) return;
+  if(!esAdminUsuarios()){
+    w.innerHTML = '<div class="tbl-box" style="padding:40px;text-align:center;color:var(--cf-text2)">'
+      +'Esta sección es solo para coordinadores y administradores.</div>';
+    return;
+  }
+  w.innerHTML =
+    '<div class="tbl-box">'
+    +'<div class="tbl-hdr" style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap">'
+    +'<b style="font-size:15px">Usuarios</b>'
+    +'<input class="fi-sm" id="usr-q" type="search" placeholder="Buscar por nombre, número o centro..." style="flex:1;min-width:200px">'
+    +'<button class="btn btn-blue" onclick="usrNuevo()"><i class="ti ti-plus"></i> Nuevo usuario</button>'
+    +'</div>'
+    +'<div id="usr-lista" style="padding:6px 4px"><div style="padding:30px;text-align:center;color:var(--cf-text2)">Cargando...</div></div>'
+    +'</div>'
+    +'<div id="usr-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;padding:16px">'
+    +'<div style="background:var(--cf-white);border-radius:14px;max-width:560px;width:100%;max-height:92vh;overflow:auto">'
+    +'<div id="usr-modal-body"></div></div></div>';
+  setTimeout(function(){
+    var i = document.getElementById('usr-q');
+    if(i){ i.value=_usrFiltro; i.addEventListener('input', function(){ _usrFiltro=this.value; usrPintar(); }); }
+    usrCargar();
+  }, 50);
+}
+
+function usrCargar(){
+  db.collection('usuarios').get().then(function(s){
+    _usuarios = [];
+    s.forEach(function(d){ _usuarios.push(Object.assign({uid:d.id}, d.data())); });
+    _usuarios.sort(function(a,b){
+      var ra = {admin:0, jefe:1, tecnico:2}[a.rol] != null ? {admin:0,jefe:1,tecnico:2}[a.rol] : 3;
+      var rb = {admin:0, jefe:1, tecnico:2}[b.rol] != null ? {admin:0,jefe:1,tecnico:2}[b.rol] : 3;
+      if(ra !== rb) return ra - rb;
+      return String(a.nombre||'').localeCompare(String(b.nombre||''));
+    });
+    usrPintar();
+  }).catch(function(e){
+    document.getElementById('usr-lista').innerHTML =
+      '<div style="padding:24px;color:#b00">Error: '+esc(e.message)+'</div>';
+  });
+}
+
+// Un usuario puede tener varios centros. El campo viejo `centro` se conserva
+// para el codigo que todavia lo lee.
+function centrosDe(u){
+  if(Array.isArray(u.centros) && u.centros.length) return u.centros;
+  return u.centro ? [u.centro] : [];
+}
+
+function usrPintar(){
+  var box = document.getElementById('usr-lista'); if(!box) return;
+  var q = _usrFiltro.trim().toLowerCase();
+  var lista = _usuarios.filter(function(u){
+    if(!q) return true;
+    return (String(u.nombre||'')+' '+String(u.numeroEmpleado||'')+' '+centrosDe(u).join(' ')+' '+String(u.email||''))
+      .toLowerCase().indexOf(q) >= 0;
+  });
+  if(!lista.length){ box.innerHTML='<div style="padding:30px;text-align:center;color:var(--cf-text2)">Sin resultados.</div>'; return; }
+
+  var porRol = {};
+  lista.forEach(function(u){ var r=u.rol||'(sin rol)'; (porRol[r]=porRol[r]||[]).push(u); });
+
+  var html = '<div style="padding:4px 10px 10px;font-size:12px;color:var(--cf-text2)">'
+    + lista.length + ' usuario(s)</div>';
+
+  ROLES.concat([{v:'(sin rol)',n:'Sin rol',d:''}]).forEach(function(R){
+    var arr = porRol[R.v]; if(!arr || !arr.length) return;
+    html += '<div style="padding:8px 12px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8b6914;font-weight:700">'
+      + esc(R.n) + ' · ' + arr.length + '</div>';
+    arr.forEach(function(u){
+      var cen = centrosDe(u);
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin:0 6px 6px;border:1px solid rgba(42,74,30,.1);border-radius:10px;background:var(--cf-white)'
+        + (u.activo===false ? ';opacity:.55' : '') + '">'
+        +'<div style="min-width:0;flex:1">'
+        +'<div style="font-size:13px;font-weight:600">'+esc(u.nombre||'(sin nombre)')
+        + (u.activo===false ? ' <span style="font-size:10px;color:#b00;font-weight:700">INACTIVO</span>' : '')
+        +'</div>'
+        +'<div style="font-size:11px;color:var(--cf-text2)">'
+        + (u.numeroEmpleado ? ('Nº '+esc(u.numeroEmpleado)+' · ') : '')
+        + esc(u.email||'') + '</div></div>'
+        +'<div style="font-size:11px;color:#8b6914;font-weight:600;text-align:right;min-width:120px">'
+        + (cen.length ? esc(cen.join(', ')) : '<span style="color:var(--cf-text2)">sin centro</span>') + '</div>'
+        +'<button class="btn btn-sm" data-u="'+esc(u.uid)+'" onclick="usrEditar(this.dataset.u)">Editar</button>'
+        +'</div>';
+    });
+  });
+  box.innerHTML = html;
+}
+
+function usrNuevo(){ _usrEdit = null; usrForm(); }
+function usrEditar(uid){
+  _usrEdit = _usuarios.filter(function(u){ return u.uid===uid; })[0] || null;
+  usrForm();
+}
+function usrCerrar(){ document.getElementById('usr-modal').style.display='none'; }
+
+function usrForm(){
+  var u = _usrEdit, nuevo = !u;
+  var cen = u ? centrosDe(u) : [];
+  var jefes = _usuarios.filter(function(x){ return x.rol==='jefe' || x.rol==='admin'; });
+
+  // Centros: del catalogo real, para no escribirlos a mano
+  var centros = Object.keys(catalogoCentros).length
+    ? Object.entries(catalogoCentros).map(function(e){ return [e[0], e[1].nombre||e[0]]; })
+    : Object.entries(CENTROS);
+  centros.sort(function(a,b){ return a[0].localeCompare(b[0]); });
+
+  var body =
+    '<div style="padding:16px 18px;border-bottom:1px solid var(--cf-border);display:flex;justify-content:space-between;align-items:center">'
+    +'<b style="font-size:15px">'+(nuevo?'Nuevo usuario':'Editar usuario')+'</b>'
+    +'<button class="btn btn-sm" onclick="usrCerrar()">Cerrar</button></div>'
+    +'<div style="padding:16px 18px">'
+    +'<div id="usr-err" style="color:#b00;font-size:12px;margin-bottom:10px"></div>'
+
+    +'<label style="font-size:11px;color:var(--cf-text2);font-weight:600">NÚMERO DE EMPLEADO</label>'
+    +'<input class="fi-sm" id="u-num" style="width:100%;margin:4px 0 4px" value="'+esc(u?(u.numeroEmpleado||''):'')+'"'
+    + (nuevo?'':' disabled') + ' placeholder="50795">'
+    +'<div style="font-size:11px;color:var(--cf-text2);margin-bottom:12px">Con esto entra a la app. '
+    + (nuevo?'No se puede cambiar después.':'No se puede cambiar.') + '</div>'
+
+    +'<label style="font-size:11px;color:var(--cf-text2);font-weight:600">NOMBRE COMPLETO</label>'
+    +'<input class="fi-sm" id="u-nom" style="width:100%;margin:4px 0 12px" value="'+esc(u?(u.nombre||''):'')+'">'
+
+    +'<label style="font-size:11px;color:var(--cf-text2);font-weight:600">ROL</label>'
+    +'<select class="fi-sm" id="u-rol" style="width:100%;margin:4px 0 4px" onchange="usrRolCambio()">'
+    + ROLES.map(function(R){
+        return '<option value="'+R.v+'"'+((u&&u.rol===R.v)?' selected':'')+'>'+R.n+'</option>';
+      }).join('')
+    +'</select>'
+    +'<div id="u-rol-desc" style="font-size:11px;color:var(--cf-text2);margin-bottom:12px"></div>'
+
+    +'<label style="font-size:11px;color:var(--cf-text2);font-weight:600">CENTROS</label>'
+    +'<div style="font-size:11px;color:var(--cf-text2);margin:2px 0 6px">Un coordinador puede tener varios.</div>'
+    +'<div style="max-height:170px;overflow:auto;border:1px solid var(--cf-border);border-radius:8px;padding:8px;margin-bottom:12px">'
+    + centros.map(function(c){
+        return '<label style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;cursor:pointer">'
+          +'<input type="checkbox" class="u-cen" value="'+esc(c[0])+'"'+(cen.indexOf(c[0])>=0?' checked':'')+'>'
+          +'<b style="min-width:46px;color:#8b6914">'+esc(c[0])+'</b><span>'+esc(c[1])+'</span></label>';
+      }).join('')
+    +'</div>'
+
+    +'<div id="u-jefe-wrap"><label style="font-size:11px;color:var(--cf-text2);font-weight:600">REPORTA A</label>'
+    +'<select class="fi-sm" id="u-jefe" style="width:100%;margin:4px 0 12px">'
+    +'<option value="">(sin asignar)</option>'
+    + jefes.map(function(j){
+        return '<option value="'+esc(j.uid)+'"'+((u&&u.jefeUid===j.uid)?' selected':'')+'>'+esc(j.nombre||j.email)+'</option>';
+      }).join('')
+    +'</select></div>'
+
+    +'<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:16px">'
+    +'<input type="checkbox" id="u-activo"'+((!u||u.activo!==false)?' checked':'')+'> Usuario activo</label>'
+
+    + (nuevo
+      ? '<div style="background:#F6F0DD;border:1px solid #E4C65A;border-radius:8px;padding:10px;font-size:12px;margin-bottom:14px">'
+        +'Se genera una contraseña y se muestra <b>una sola vez</b> al guardar. Anótala y entrégasela.</div>'
+      : '')
+
+    +'<button class="btn btn-blue" style="width:100%;justify-content:center;padding:11px" onclick="usrGuardar()">'
+    + (nuevo?'Crear usuario':'Guardar cambios') + '</button>'
+    +'</div>';
+
+  document.getElementById('usr-modal-body').innerHTML = body;
+  document.getElementById('usr-modal').style.display = 'flex';
+  usrRolCambio();
+}
+
+function usrRolCambio(){
+  var v = (document.getElementById('u-rol')||{}).value;
+  var R = ROLES.filter(function(x){ return x.v===v; })[0];
+  var d = document.getElementById('u-rol-desc'); if(d && R) d.textContent = R.d;
+  var w = document.getElementById('u-jefe-wrap');
+  if(w) w.style.display = (v==='tecnico') ? 'block' : 'none';
+}
+
+function usrGuardar(){
+  var err = document.getElementById('usr-err'); err.textContent='';
+  var nuevo = !_usrEdit;
+  var num = (document.getElementById('u-num').value||'').trim();
+  var nom = (document.getElementById('u-nom').value||'').trim();
+  var rol = document.getElementById('u-rol').value;
+  var activo = document.getElementById('u-activo').checked;
+  var jefeUid = (document.getElementById('u-jefe')||{}).value || '';
+  var cen = [].slice.call(document.querySelectorAll('.u-cen:checked')).map(function(c){ return c.value; });
+
+  if(nuevo && !/^\d+$/.test(num)){ err.textContent='El número de empleado debe ser solo dígitos.'; return; }
+  if(!nom){ err.textContent='Escribe el nombre completo.'; return; }
+  if(rol !== 'admin' && !cen.length){ err.textContent='Asigna al menos un centro.'; return; }
+  if(nuevo && _usuarios.some(function(u){ return String(u.numeroEmpleado)===num; })){
+    err.textContent='Ya existe un usuario con ese número de empleado.'; return;
+  }
+
+  var datos = {
+    numeroEmpleado: num,
+    nombre: nom,
+    rol: rol,
+    centros: cen,
+    centro: cen[0] || '',            // compatibilidad con el codigo que lee `centro`
+    jefeUid: (rol==='tecnico') ? jefeUid : '',
+    activo: activo,
+    actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  if(!nuevo){
+    err.textContent = 'Guardando...';
+    db.collection('usuarios').doc(_usrEdit.uid).set(datos, {merge:true}).then(function(){
+      usrCerrar(); usrCargar();
+    }).catch(function(e){ err.textContent = 'Error: '+e.message; });
+    return;
+  }
+
+  // Alta: la cuenta se crea en la segunda instancia para no perder tu sesion.
+  var pass = generarPass(), correo = correoDe(num);
+  err.textContent = 'Creando cuenta...';
+  appAlta().auth().createUserWithEmailAndPassword(correo, pass).then(function(cred){
+    var uid = cred.user.uid;
+    datos.email = correo;
+    datos.uid = uid;
+    return db.collection('usuarios').doc(uid).set(datos).then(function(){
+      return appAlta().auth().signOut();
+    }).then(function(){
+      usrPassCreada(nom, num, pass);
+      usrCargar();
+    });
+  }).catch(function(e){
+    var m = e.message;
+    if(e.code==='auth/email-already-in-use') m = 'Ese número de empleado ya tiene cuenta en Firebase.';
+    if(e.code==='auth/weak-password') m = 'La contraseña generada fue rechazada. Intenta otra vez.';
+    err.textContent = 'Error: '+m;
+  });
+}
+
+function usrPassCreada(nom, num, pass){
+  document.getElementById('usr-modal-body').innerHTML =
+    '<div style="padding:22px 20px;text-align:center">'
+    +'<div style="font-size:40px;line-height:1">&#10003;</div>'
+    +'<div style="font-size:16px;font-weight:700;margin:8px 0 4px">Usuario creado</div>'
+    +'<div style="font-size:13px;color:var(--cf-text2);margin-bottom:16px">'+esc(nom)+'</div>'
+    +'<div style="background:#F6F0DD;border:1px solid #E4C65A;border-radius:10px;padding:14px;text-align:left">'
+    +'<div style="font-size:11px;color:#7A6417;font-weight:600">ENTRA CON</div>'
+    +'<div style="font-family:monospace;font-size:20px;font-weight:700;margin:2px 0 10px">'+esc(num)+'</div>'
+    +'<div style="font-size:11px;color:#7A6417;font-weight:600">CONTRASEÑA</div>'
+    +'<div style="font-family:monospace;font-size:20px;font-weight:700;letter-spacing:.08em">'+esc(pass)+'</div>'
+    +'</div>'
+    +'<div style="font-size:12px;color:#b00;margin:12px 0 16px">Anótala ahora. No se vuelve a mostrar.</div>'
+    +'<button class="btn btn-blue" style="width:100%;justify-content:center;padding:11px" onclick="usrCerrar()">Listo</button>'
+    +'</div>';
+}
+
 function switchView(v){
   curView=v;
-  ['dashboard','equipos','clientes','directorio','ordenes','rutas','programacion','analisis','auditoria','preventivos','qr','reportes','resumen','etiquetas','movimientos'].forEach(function(x){
+  ['dashboard','equipos','clientes','directorio','ordenes','rutas','programacion','analisis','auditoria','preventivos','qr','reportes','resumen','etiquetas','movimientos','usuarios'].forEach(function(x){
     var w=document.getElementById('view-'+x);if(w)w.classList.toggle('hidden',x!==v);
     var b=document.getElementById('tnav-'+x);if(b)b.classList.toggle('on',x===v);
   });
@@ -1546,6 +1842,7 @@ function switchView(v){
   if(v==='programacion')renderProgramacion();
   if(v==='analisis')renderAnalisis();
   if(v==='auditoria')renderAuditoria();
+  if(v==='usuarios')renderUsuarios();
   if(v==='preventivos')renderPreventivos();
   if(v==='qr')renderQR();
   if(v==='reportes')renderReportes();
@@ -4659,9 +4956,30 @@ var _yaEntro=false;
 auth.onAuthStateChanged(function(user){
   if(user&&!_yaEntro){
     var email=user.email.toLowerCase();
-    var p=USERS[email]||{name:email.split('@')[0],rol:'tecnico',color:'#1a73e8'};
-    curUser={uid:user.uid,email:email,name:p.name,rol:p.rol,color:p.color};
-    enterApp();
+    // El perfil vive en Firestore (coleccion usuarios), igual que en la app del
+    // tecnico. El mapa USERS de arriba quedo como respaldo para las cuentas
+    // viejas que todavia no tienen documento propio.
+    db.collection('usuarios').doc(user.uid).get().then(function(d){
+      var p;
+      if(d.exists){
+        var x=d.data();
+        if(x.activo===false){ alert('Usuario inactivo. Contacta al administrador.'); auth.signOut(); return; }
+        p={name:x.nombre||email.split('@')[0], rol:x.rol||'tecnico', color:'#1a73e8',
+           centros:(Array.isArray(x.centros)&&x.centros.length)?x.centros:(x.centro?[x.centro]:[]),
+           numeroEmpleado:x.numeroEmpleado||''};
+      }else{
+        var f=USERS[email]||{name:email.split('@')[0],rol:'tecnico',color:'#1a73e8'};
+        p={name:f.name, rol:f.rol, color:f.color, centros:[], numeroEmpleado:''};
+      }
+      curUser={uid:user.uid, email:email, name:p.name, rol:p.rol, color:p.color,
+               centros:p.centros, numeroEmpleado:p.numeroEmpleado};
+      enterApp();
+    }).catch(function(e){
+      console.warn('perfil:', e.message);
+      var f=USERS[email]||{name:email.split('@')[0],rol:'tecnico',color:'#1a73e8'};
+      curUser={uid:user.uid,email:email,name:f.name,rol:f.rol,color:f.color,centros:[],numeroEmpleado:''};
+      enterApp();
+    });
   }
 });
 </script>
