@@ -573,6 +573,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
         </div>
         <div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-weight:600;color:#1E211F">Ruta armada</span><span id="ruta-count" class="chip chip-c" style="background:#EDF1ED;color:#3E5A40;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">0</span></div>
+          <div id="ruta-pend"></div>
           <div id="ruta-lista"></div>
         </div>
       </div>
@@ -2201,6 +2202,8 @@ function rutaJalarTodos(){
 function rutaRefrescarLista(){
   var l=document.getElementById('ruta-lista');
   if(l) l.innerHTML=rutaListaHTML();
+  var c=document.getElementById('ruta-count');      // contador de Programacion
+  if(c) c.textContent=(_rutaEdit.clientes||[]).length;
   rutaPintarPendientes();
 }
 
@@ -2309,7 +2312,7 @@ function rutaListaHTML(){
       +'</div></div>';
   }).join('');
 }
-function rutaDelCliente(i){ _rutaEdit.clientes.splice(i,1); progRenderLista(); rutaBuscarCliente(); }
+function rutaDelCliente(i){ _rutaEdit.clientes.splice(i,1); rutaRefrescarLista(); }
 
 function rutaGuardar(){
   var e=_rutaEdit;
@@ -2411,6 +2414,7 @@ function progAsignar(uid){
     progRenderLista();
   }).catch(function(){ progRenderLista(); });
   rutaCargarIndice(function(){});
+  rutaCargarPendientes();          // no atendidos de dias anteriores
   document.getElementById('prog-modal').style.display='flex';
 }
 function progCerrarModal(){ document.getElementById('prog-modal').style.display='none'; }
