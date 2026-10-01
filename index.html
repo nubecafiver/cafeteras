@@ -543,6 +543,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
     <button class="tnav"    id="tnav-auditoria"   onclick="switchView('auditoria')">    <span><i class="ti ti-clipboard-check"></i></span><span class="tnav-txt"> Auditoría</span></button>
     <button class="tnav"    id="tnav-programacion" onclick="switchView('programacion')"><span><i class="ti ti-calendar-event"></i></span><span class="tnav-txt"> Programación</span></button>
     <button class="tnav"    id="tnav-qr"          onclick="switchView('qr')">         <span><i class="ti ti-qrcode"></i></span><span class="tnav-txt"> QR</span></button>
+    <button class="tnav"    id="tnav-cumplimiento" onclick="switchView('cumplimiento')"><span><i class="ti ti-gauge"></i></span><span class="tnav-txt"> Cumplimiento</span></button>
     <button class="tnav"    id="tnav-usuarios"    onclick="switchView('usuarios')" style="display:none"><span><i class="ti ti-users"></i></span><span class="tnav-txt"> Usuarios</span></button>
     <div class="topbar-right">
       <button class="btn btn-sm" onclick="doLogout()" title="Cerrar sesión"><i class="ti ti-logout"></i> Salir</button>
@@ -559,6 +560,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
   <div id="view-analisis" class="view-wrap hidden"></div>
   <div id="view-auditoria" class="view-wrap hidden"></div>
   <div id="view-usuarios" class="view-wrap hidden"></div>
+  <div id="view-cumplimiento" class="view-wrap hidden"></div>
   <div id="prog-modal" style="display:none;position:fixed;inset:0;background:rgba(30,33,31,.45);z-index:900;align-items:center;justify-content:center;padding:20px">
     <div style="background:#fff;border-radius:20px;max-width:760px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid #EAECE9">
       <div style="padding:16px 20px;border-bottom:1px solid #EAECE9;display:flex;justify-content:space-between;align-items:center">
@@ -1897,9 +1899,225 @@ function avisoCadena(equipo, equiposPorAF){
     +'. Se incluyen sus órdenes anteriores.</div>';
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  PANEL DE CUMPLIMIENTO
+//  Tres cosas por tecnico y periodo:
+//    a) tiempo real de cada visita (inicioReal / finReal)
+//    b) asistencia confirmada por GPS contra la ubicacion del cliente
+//    c) cumplimiento de ruta: paradas atendidas vs asignadas
+//
+//  Los campos a) y b) los empezo a guardar la app del tecnico a partir del
+//  1-oct-2026. Las ordenes anteriores no los tienen y se cuentan aparte,
+//  para que el promedio no salga falseado.
+// ══════════════════════════════════════════════════════════════════════════
+var cumFiltros = { desde:'', hasta:'', centro:'' };
+var _cumRutas = null;         // rutas del periodo, para el cumplimiento c)
+var _cumCargando = false;
+
+function cumFechaOrd(o){
+  if(!o.creadoEn) return null;
+  return o.creadoEn.toDate ? o.creadoEn.toDate() : new Date(o.creadoEn);
+}
+
+function cumMin(o){
+  if(typeof o.duracionMin === 'number') return o.duracionMin;
+  // Respaldo: si hay inicio y fin pero no el calculado.
+  if(o.inicioReal && o.finReal){
+    var d = (new Date(o.finReal) - new Date(o.inicioReal))/60000;
+    if(d>=0 && d<24*60) return Math.round(d);
+  }
+  return null;
+}
+
+function renderCumplimiento(){
+  var w=document.getElementById('view-cumplimiento'); if(!w) return;
+
+  if(!cumFiltros.desde){
+    var d=new Date(); d.setDate(1);
+    cumFiltros.desde=d.toISOString().slice(0,10);
+    cumFiltros.hasta=new Date().toISOString().slice(0,10);
+  }
+
+  var data = ordenes.filter(function(o){
+    var d=cumFechaOrd(o); if(!d) return false;
+    if(cumFiltros.desde && d < new Date(cumFiltros.desde+'T00:00:00')) return false;
+    if(cumFiltros.hasta && d > new Date(cumFiltros.hasta+'T23:59:59')) return false;
+    if(cumFiltros.centro && o.centro!==cumFiltros.centro) return false;
+    return true;
+  });
+
+  // ── Agregado por tecnico ──
+  var porTec={}, totDur=[], conGps=0, gpsOK=0, sinDatos=0;
+  data.forEach(function(o){
+    var t=o.tecnicoNombre||'Sin asignar';
+    porTec[t]=porTec[t]||{n:0, dur:[], gps:0, gpsOK:0, lejos:[], sinDatos:0};
+    var T=porTec[t]; T.n++;
+    var m=cumMin(o);
+    if(m!=null){ T.dur.push(m); totDur.push(m); } else T.sinDatos++;
+    if(typeof o.distanciaCliente === 'number'){
+      T.gps++; conGps++;
+      if(o.asistenciaOK===true || o.distanciaCliente<=150){ T.gpsOK++; gpsOK++; }
+      else T.lejos.push({cliente:o.cliente||'—', m:o.distanciaCliente, folio:o.folio||''});
+    }
+    if(m==null && typeof o.distanciaCliente!=='number') sinDatos++;
+  });
+
+  var prom = totDur.length ? Math.round(totDur.reduce(function(a,b){return a+b;},0)/totDur.length) : null;
+  var pctGps = conGps ? Math.round(gpsOK/conGps*100) : null;
+
+  function kpiC(lbl,val,sub,col){
+    return '<div class="tbl-box" style="padding:18px 20px">'
+      +'<div style="font-size:11px;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.06em">'+lbl+'</div>'
+      +'<div style="font-family:\'Source Serif 4\',serif;font-size:27px;margin-top:4px;color:'+(col||'var(--cf-text)')+'">'+val+'</div>'
+      +(sub?'<div style="font-size:11px;color:var(--cf-text2);margin-top:2px">'+sub+'</div>':'')+'</div>';
+  }
+
+  var centros = Object.keys(catalogoCentros).length ? Object.keys(catalogoCentros).sort() : [];
+
+  w.innerHTML =
+    '<div style="max-width:1200px;margin:0 auto">'
+    +'<div class="tbl-box" style="padding:18px 22px;margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'
+      +'<div><div style="font-family:\'Source Serif 4\',serif;font-size:20px">Cumplimiento de técnicos</div>'
+      +'<div style="font-size:12px;color:var(--cf-text2)">Tiempo de servicio, asistencia por GPS y rutas atendidas.</div></div>'
+      +'<div style="flex:1"></div>'
+      +'<div><div style="font-size:11px;color:var(--cf-text2);margin-bottom:4px">Desde</div>'
+      +'<input class="fi-sm" type="date" value="'+cumFiltros.desde+'" onchange="cumFiltros.desde=this.value;renderCumplimiento()"></div>'
+      +'<div><div style="font-size:11px;color:var(--cf-text2);margin-bottom:4px">Hasta</div>'
+      +'<input class="fi-sm" type="date" value="'+cumFiltros.hasta+'" onchange="cumFiltros.hasta=this.value;renderCumplimiento()"></div>'
+      +'<div><div style="font-size:11px;color:var(--cf-text2);margin-bottom:4px">Centro</div>'
+      +'<select class="fi-sm" onchange="cumFiltros.centro=this.value;renderCumplimiento()"><option value="">Todos</option>'
+      + centros.map(function(c){ return '<option value="'+esc(c)+'"'+(cumFiltros.centro===c?' selected':'')+'>'+esc(c)+'</option>'; }).join('')
+      +'</select></div>'
+    +'</div>'
+
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:14px">'
+      + kpiC('Órdenes', data.length.toLocaleString(), Object.keys(porTec).length+' técnicos')
+      + kpiC('Duración promedio', prom!=null?(prom+' min'):'—',
+             totDur.length ? (totDur.length+' con tiempo medido') : 'aún sin datos')
+      + kpiC('Asistencia confirmada', pctGps!=null?(pctGps+'%'):'—',
+             conGps ? (gpsOK+' de '+conGps+' con GPS') : 'aún sin datos',
+             pctGps!=null ? (pctGps>=80?'#3E5A40':(pctGps>=60?'#8A6D12':'#B4453A')) : null)
+      + kpiC('Sin medición', sinDatos.toLocaleString(), 'órdenes previas a la versión nueva')
+    +'</div>'
+
+    + ((!totDur.length && !conGps)
+      ? '<div class="tbl-box" style="padding:22px;margin-bottom:14px;background:#F6F0DD;border:1px solid #E4C65A">'
+        +'<b style="font-size:13px;color:#5C4A0F">Todavía no hay mediciones en este periodo.</b>'
+        +'<div style="font-size:12px;color:#7A6417;margin-top:4px">El tiempo y el GPS se empezaron a guardar con la versión nueva de la app. '
+        +'Cada cliente necesita además una primera visita para fijar su ubicación de referencia.</div></div>'
+      : '')
+
+    // ── Tabla por tecnico ──
+    +'<div class="tbl-box" style="padding:18px 20px;margin-bottom:14px">'
+      +'<div style="font-weight:600;margin-bottom:12px">Por técnico</div>'
+      + (Object.keys(porTec).length ? (
+        '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+        +'<tr style="text-align:left;font-size:11px;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.05em">'
+        +'<th style="padding:6px 4px">Técnico</th><th style="padding:6px 4px;text-align:right">Órdenes</th>'
+        +'<th style="padding:6px 4px;text-align:right">Duración prom.</th>'
+        +'<th style="padding:6px 4px;text-align:right">Asistencia</th>'
+        +'<th style="padding:6px 4px;text-align:right">Fuera del cliente</th></tr>'
+        + Object.entries(porTec).sort(function(a,b){return b[1].n-a[1].n;}).map(function(e){
+            var T=e[1];
+            var p = T.dur.length ? Math.round(T.dur.reduce(function(a,b){return a+b;},0)/T.dur.length) : null;
+            var pc = T.gps ? Math.round(T.gpsOK/T.gps*100) : null;
+            var col = pc==null?'var(--cf-text2)':(pc>=80?'#3E5A40':(pc>=60?'#8A6D12':'#B4453A'));
+            return '<tr style="border-top:1px solid var(--cf-border)">'
+              +'<td style="padding:9px 4px;font-weight:500">'+esc(e[0])+'</td>'
+              +'<td style="padding:9px 4px;text-align:right">'+T.n+'</td>'
+              +'<td style="padding:9px 4px;text-align:right">'+(p!=null?(p+' min'):'<span style="color:var(--cf-text2)">—</span>')+'</td>'
+              +'<td style="padding:9px 4px;text-align:right;color:'+col+';font-weight:600">'
+              +(pc!=null?(pc+'% ('+T.gpsOK+'/'+T.gps+')'):'<span style="color:var(--cf-text2)">—</span>')+'</td>'
+              +'<td style="padding:9px 4px;text-align:right">'+(T.lejos.length?('<b style="color:#B4453A">'+T.lejos.length+'</b>'):'0')+'</td>'
+              +'</tr>'
+              + (T.lejos.length ? '<tr><td colspan="5" style="padding:0 4px 10px 18px">'
+                 + T.lejos.slice(0,6).map(function(x){
+                     return '<div style="font-size:11px;color:#8A6D12">· '+esc(x.cliente)+' — a '+x.m.toLocaleString()+' m'+(x.folio?(' ('+esc(x.folio)+')'):'')+'</div>';
+                   }).join('')
+                 + (T.lejos.length>6?('<div style="font-size:11px;color:var(--cf-text2)">… y '+(T.lejos.length-6)+' más</div>'):'')
+                 +'</td></tr>' : '');
+          }).join('')
+        +'</table>')
+        : '<div style="color:var(--cf-text2);font-size:13px;padding:10px 0">Sin órdenes en el periodo.</div>')
+    +'</div>'
+
+    // ── Cumplimiento de ruta ──
+    +'<div class="tbl-box" style="padding:18px 20px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+      +'<span style="font-weight:600">Cumplimiento de ruta</span>'
+      +'<button class="btn btn-sm" onclick="cumCargarRutas()">Calcular</button></div>'
+      +'<div id="cum-rutas"><div style="font-size:12px;color:var(--cf-text2)">Dale a Calcular para leer las rutas del periodo.</div></div>'
+    +'</div>'
+    +'</div>';
+
+  if(_cumRutas) cumPintarRutas();
+}
+
+// Las rutas se leen solo cuando el usuario lo pide: son documentos aparte y
+// no tiene sentido traerlos cada vez que se cambia un filtro.
+function cumCargarRutas(){
+  var box=document.getElementById('cum-rutas'); if(box) box.innerHTML='<div style="font-size:12px;color:var(--cf-text2)">Leyendo rutas...</div>';
+  db.collection('rutas')
+    .where('fecha','>=',cumFiltros.desde)
+    .where('fecha','<=',cumFiltros.hasta)
+    .limit(400).get().then(function(s){
+      _cumRutas=[]; s.forEach(function(d){ _cumRutas.push(d.data()); });
+      cumPintarRutas();
+    }).catch(function(e){
+      if(box) box.innerHTML='<div style="font-size:12px;color:#b00">No se pudieron leer las rutas: '+esc(e.message)+'</div>';
+    });
+}
+
+function cumPintarRutas(){
+  var box=document.getElementById('cum-rutas'); if(!box) return;
+  var rs=(_cumRutas||[]).filter(function(r){ return !cumFiltros.centro || r.centro===cumFiltros.centro; });
+  if(!rs.length){ box.innerHTML='<div style="font-size:12px;color:var(--cf-text2)">Sin rutas en el periodo.</div>'; return; }
+
+  var porTec={};
+  rs.forEach(function(r){
+    var t=r.tecnicoNombre||'Sin asignar';
+    porTec[t]=porTec[t]||{asig:0, vis:0, noa:0, pend:0, reas:0, dias:0};
+    var T=porTec[t]; T.dias++;
+    (r.clientes||[]).forEach(function(c){
+      T.asig++;
+      var st=estadoParada(c);
+      if(st==='visitado')         T.vis++;
+      else if(st==='no_atendido') T.noa++;
+      else if(st==='reasignado')  T.reas++;
+      else                        T.pend++;
+    });
+  });
+
+  box.innerHTML =
+    '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+    +'<tr style="text-align:left;font-size:11px;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.05em">'
+    +'<th style="padding:6px 4px">Técnico</th><th style="padding:6px 4px;text-align:right">Días</th>'
+    +'<th style="padding:6px 4px;text-align:right">Asignadas</th><th style="padding:6px 4px;text-align:right">Atendidas</th>'
+    +'<th style="padding:6px 4px;text-align:right">No atendidas</th><th style="padding:6px 4px;text-align:right">Sin marcar</th>'
+    +'<th style="padding:6px 4px;text-align:right">Cumplimiento</th></tr>'
+    + Object.entries(porTec).sort(function(a,b){return b[1].asig-a[1].asig;}).map(function(e){
+        var T=e[1];
+        var base=T.asig-T.reas;                       // lo reasignado ya no es suyo
+        var pc=base?Math.round(T.vis/base*100):null;
+        var col=pc==null?'var(--cf-text2)':(pc>=85?'#3E5A40':(pc>=65?'#8A6D12':'#B4453A'));
+        return '<tr style="border-top:1px solid var(--cf-border)">'
+          +'<td style="padding:9px 4px;font-weight:500">'+esc(e[0])+'</td>'
+          +'<td style="padding:9px 4px;text-align:right">'+T.dias+'</td>'
+          +'<td style="padding:9px 4px;text-align:right">'+T.asig+'</td>'
+          +'<td style="padding:9px 4px;text-align:right">'+T.vis+'</td>'
+          +'<td style="padding:9px 4px;text-align:right">'+(T.noa?('<b style="color:#B4453A">'+T.noa+'</b>'):'0')+'</td>'
+          +'<td style="padding:9px 4px;text-align:right">'+(T.pend?('<b style="color:#8A6D12">'+T.pend+'</b>'):'0')+'</td>'
+          +'<td style="padding:9px 4px;text-align:right;color:'+col+';font-weight:600">'+(pc!=null?(pc+'%'):'—')+'</td>'
+          +'</tr>';
+      }).join('')
+    +'</table>'
+    +'<div style="font-size:11px;color:var(--cf-text2);margin-top:10px">'
+    +'«Sin marcar» son paradas que el técnico nunca tocó en la app. «Cumplimiento» no cuenta las reasignadas.</div>';
+}
+
 function switchView(v){
   curView=v;
-  ['dashboard','equipos','clientes','directorio','ordenes','rutas','programacion','analisis','auditoria','preventivos','qr','reportes','resumen','etiquetas','movimientos','usuarios'].forEach(function(x){
+  ['dashboard','equipos','clientes','directorio','ordenes','rutas','programacion','analisis','auditoria','preventivos','qr','reportes','resumen','etiquetas','movimientos','usuarios','cumplimiento'].forEach(function(x){
     var w=document.getElementById('view-'+x);if(w)w.classList.toggle('hidden',x!==v);
     var b=document.getElementById('tnav-'+x);if(b)b.classList.toggle('on',x===v);
   });
@@ -1913,6 +2131,7 @@ function switchView(v){
   if(v==='analisis')renderAnalisis();
   if(v==='auditoria')renderAuditoria();
   if(v==='usuarios')renderUsuarios();
+  if(v==='cumplimiento')renderCumplimiento();
   if(v==='preventivos')renderPreventivos();
   if(v==='qr')renderQR();
   if(v==='reportes')renderReportes();
