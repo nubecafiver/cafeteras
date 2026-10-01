@@ -128,7 +128,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
   <div class="serif" style="font-size:30px;color:var(--green);letter-spacing:.1em">CAFIVER</div>
   <div style="font-size:13px;color:var(--muted);margin-bottom:26px">Técnico en campo</div>
   <div style="width:100%;max-width:320px">
-    <input class="fld" id="lg-email" type="email" placeholder="Correo" autocomplete="username" style="margin-bottom:12px">
+    <input class="fld" id="lg-email" type="text" inputmode="text" placeholder="Número de empleado" autocomplete="username" style="margin-bottom:12px">
     <input class="fld" id="lg-pass" type="password" placeholder="Contraseña" autocomplete="current-password" style="margin-bottom:16px">
     <button class="btn btn-green" style="width:100%" onclick="doLogin()">Entrar</button>
     <div id="lg-err" style="color:var(--error);font-size:12px;margin-top:12px;min-height:16px"></div>
@@ -422,14 +422,18 @@ function folio(){return 'OS-'+Date.now().toString().slice(-8);}
 // ══════════ AUTH ══════════
 function doLogin(){
   var em=$('lg-email').value.trim(), pw=$('lg-pass').value.trim();
+  // El tecnico teclea solo su numero de empleado (50795). Firebase Auth
+  // necesita un correo, asi que se completa con el dominio interno. Las
+  // cuentas con correo real (ramaya@cafiver.com.mx) se dejan tal cual.
+  if(/^\d+$/.test(em)) em = em + '@tecnicos.cafiver.mx';
   $('lg-err').textContent='';
   if(!em||!pw){$('lg-err').textContent='Escribe correo y contraseña.';return;}
   $('lg-err').textContent='Entrando...';
   auth.signInWithEmailAndPassword(em,pw).then(function(){ $('lg-err').textContent=''; }).catch(function(e){
     var msg;
     if(e.code==='auth/wrong-password'||e.code==='auth/invalid-credential') msg='Correo o contraseña incorrectos.';
-    else if(e.code==='auth/user-not-found') msg='Ese correo no está registrado.';
-    else if(e.code==='auth/invalid-email') msg='El correo no tiene formato válido.';
+    else if(e.code==='auth/user-not-found') msg='Ese número de empleado no está registrado.';
+    else if(e.code==='auth/invalid-email') msg='Escribe tu número de empleado (solo dígitos) o tu correo.';
     else if(e.code==='auth/network-request-failed') msg='Sin conexión a internet.';
     else if(e.code==='auth/too-many-requests') msg='Demasiados intentos. Espera un momento.';
     else if(e.code&&(e.code.indexOf('api-key')>=0||e.code.indexOf('invalid-api')>=0)) msg='Configuración de Firebase incorrecta (revisa firebaseConfig).';

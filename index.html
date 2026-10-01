@@ -511,7 +511,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
     <div style="display:flex;flex-direction:column;gap:14px">
       <div>
         <label style="font-size:10px;font-weight:700;color:#9aa0a6;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:5px">Correo electrónico</label>
-        <input class="fi" type="email" id="login-email" placeholder="correo@cafiver.com.mx" autocomplete="email">
+        <input class="fi" type="text" id="login-email" placeholder="Número de empleado o correo" autocomplete="username">
       </div>
       <div>
         <label style="font-size:10px;font-weight:700;color:#9aa0a6;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:5px">Contraseña</label>
@@ -1378,6 +1378,8 @@ document.getElementById('toggle-pass').addEventListener('click', function(){
 
 function doLogin(){
   var email=(document.getElementById('login-email').value||'').trim().toLowerCase();
+  // Igual que en la app del tecnico: solo digitos = numero de empleado.
+  if(/^\d+$/.test(email)) email = email + '@tecnicos.cafiver.mx';
   var pass=document.getElementById('login-pass').value;
   var btn=document.getElementById('login-btn');
   document.getElementById('login-error').style.display='none';
