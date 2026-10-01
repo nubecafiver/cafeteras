@@ -28,6 +28,8 @@ body{font-family:'Hanken Grotesk',sans-serif;background:var(--bg);color:var(--te
 .f .v{font-size:14px;font-weight:600;margin-top:2px}
 .badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:#EDF1ED;color:var(--green)}
 .badge.c{background:#F6E6E4;color:#B4453A}
+.badge.i{background:#E4ECF6;color:#1557b0}   /* instalacion */
+.badge.m{background:#EFE6F6;color:#6A3AB4}   /* retiro */
 .fotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .fotos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;border:1px solid var(--border);cursor:zoom-in}
 .ck{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
@@ -51,6 +53,19 @@ var firebaseConfig={apiKey:"AIzaSyDTo9_ExbhOSAuzDDS81lZXoxUlKqGel_Q",authDomain:
 firebase.initializeApp(firebaseConfig);
 var db=firebase.firestore(), storage=firebase.storage();
 var BUCKET='cafeteras-90e78.firebasestorage.app';
+// Tipos de servicio: misma tabla que index.html y tecnico.html. Antes este
+// comprobante preguntaba "¿es correctivo? si no, es preventivo", asi que una
+// instalacion o un retiro llegaban al cliente con el color y la etiqueta de
+// preventivo.
+var TIPOS_SERVICIO = {
+  correctivo : { nom:'Correctivo',  cls:'c'  },
+  preventivo : { nom:'Preventivo',  cls:''   },
+  instalacion: { nom:'Instalación', cls:'i'  },
+  retiro     : { nom:'Retiro',      cls:'m'  },
+  revision   : { nom:'Revisión',    cls:''   }
+};
+function tipoInfo(t){ return TIPOS_SERVICIO[t] || TIPOS_SERVICIO.preventivo; }
+
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function fmt$(n){n=Number(n)||0;return '$'+n.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function qs(k){return new URLSearchParams(location.search).get(k);}
@@ -66,7 +81,8 @@ else {
 }
 
 function render(o){
-  var tipoBadge='<span class="badge'+(o.tipo==='correctivo'?' c':'')+'">'+esc((o.tipo||'preventivo').toUpperCase())+'</span>';
+  var _ti=tipoInfo(o.tipo);
+  var tipoBadge='<span class="badge'+(_ti.cls?' '+_ti.cls:'')+'">'+esc(_ti.nom.toUpperCase())+'</span>';
   var ck='';
   if(o.formato==='brillante' && o.brillante && o.brillante.length){
     ck=o.brillante.map(function(it){return '<div class="ck"><span>'+esc(it.punto||it.n||'')+'</span><span style="font-weight:700">'+esc(it.evaluacion||'—')+(it.lectura?(' · '+esc(it.lectura)):'')+'</span></div>';}).join('');
