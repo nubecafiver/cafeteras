@@ -429,7 +429,12 @@ function doLogin(){
   $('lg-err').textContent='';
   if(!em||!pw){$('lg-err').textContent='Escribe correo y contraseña.';return;}
   $('lg-err').textContent='Entrando...';
-  auth.signInWithEmailAndPassword(em,pw).then(function(){ $('lg-err').textContent=''; }).catch(function(e){
+  // Antes aqui se limpiaba lg-err, pero onAuthStateChanged ya habia escrito
+  // el error de perfil: se borraba antes de que nadie lo viera y el login se
+  // quedaba mudo. Ahora no se toca el mensaje en el exito.
+  auth.signInWithEmailAndPassword(em,pw).then(function(){
+    console.log('[login] Auth OK, leyendo perfil...');
+  }).catch(function(e){
     var msg;
     if(e.code==='auth/wrong-password'||e.code==='auth/invalid-credential') msg='Correo o contraseña incorrectos.';
     else if(e.code==='auth/user-not-found') msg='Ese número de empleado no está registrado.';
@@ -449,14 +454,23 @@ auth.onAuthStateChanged(function(user){
   // Leer perfil usuarios/{uid}
   db.collection('usuarios').doc(user.uid).get().then(function(d){
     if(!d.exists){
-      $('lg-err').textContent='Tu usuario no tiene perfil asignado. Pide al admin que lo dé de alta.';
+      console.warn('[login] sin documento usuarios/'+user.uid);
+      $('lg-err').textContent='Tu usuario no tiene perfil asignado (usuarios/'+user.uid+'). Pide al admin que lo dé de alta.';
       auth.signOut(); return;
     }
+    console.log('[login] perfil leido:', d.data().nombre, '· rol', d.data().rol);
     CUR = {uid:user.uid, email:user.email, ...d.data()};
     if(CUR.activo===false){ $('lg-err').textContent='Usuario inactivo.'; auth.signOut(); return; }
     MI_CENTRO = CUR.centro||'';
     arrancarApp();
-  }).catch(function(e){ $('lg-err').textContent='Error al leer perfil: '+e.message; });
+  }).catch(function(e){
+    console.error('[login] error al leer perfil:', e);
+    var m = (e.code==='permission-denied')
+      ? 'Sin permiso para leer tu perfil. Revisa las reglas de Firestore.'
+      : ('Error al leer perfil: '+e.message);
+    $('lg-err').textContent = m+'  ['+(e.code||'?')+']';
+    auth.signOut();
+  });
 });
 
 function arrancarApp(){
