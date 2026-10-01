@@ -1165,6 +1165,8 @@ function actualizarSelectsCentros(){
 // (centrosEnUso). Respaldo: catálogo completo, o la constante CENTROS.
 function optsCentros(selected, prefijo){
   selected=selected||'';
+  // Un coordinador solo puede elegir entre sus centros.
+  var _mios=(typeof misCentros==='function')?misCentros():[];
   var usar=(centrosEnUso&&Object.keys(centrosEnUso).length)?centrosEnUso:null;
   var pares;
   if(Object.keys(catalogoCentros).length){
@@ -1177,6 +1179,7 @@ function optsCentros(selected, prefijo){
       .map(function(e){return[e[0],e[1]];});
   }
   if(prefijo){ pares=pares.filter(function(p){return String(p[0]).toUpperCase().indexOf(prefijo.toUpperCase())===0;}); }
+  if(_mios.length){ pares=pares.filter(function(p){ return _mios.indexOf(p[0])>=0; }); }
   pares.sort(function(a,b){return a[1]<b[1]?-1:1;});
   return '<option value="">Todos los centros</option>'
     +pares.map(function(p){return'<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[0]+' — '+p[1]+'</option>';}).join('');
@@ -2154,6 +2157,62 @@ function cumPintarRutas(){
     +'«Sin marcar» son paradas que el técnico nunca tocó en la app. «Cumplimiento» no cuenta las reasignadas.</div>';
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  ALCANCE POR CENTRO
+//  Un coordinador ve solo sus centros; un admin ve el pais. El filtro va en
+//  la CONSULTA, no solo en pantalla: las reglas de Firestore rechazan una
+//  consulta que pida fuera del alcance, asi que ambos lados deben coincidir.
+//
+//  Firestore permite hasta 30 valores en un 'in'. Ningun coordinador tiene
+//  mas de 4 centros, asi que cabe de sobra.
+// ══════════════════════════════════════════════════════════════════════════
+
+function esAlcanceNacional(){
+  var r = String((window.curUser && curUser.rol) || '').toLowerCase();
+  return r === 'admin' || r === 'director' || r === 'gerente';
+}
+
+// Centros del usuario. Vacio = sin limite (solo para alcance nacional).
+function misCentros(){
+  if(esAlcanceNacional()) return [];
+  var c = (window.curUser && curUser.centros) || [];
+  return Array.isArray(c) ? c.filter(Boolean).slice(0,30) : [];
+}
+
+// Agrega el filtro a una consulta de Firestore si hace falta.
+function acotarCentro(q, campo){
+  var cen = misCentros();
+  if(!cen.length) return q;                 // nacional, o usuario sin centros
+  return q.where(campo || 'centro', 'in', cen);
+}
+
+// Para filtrar en memoria lo que ya se trajo.
+function enMiAlcance(centro){
+  var cen = misCentros();
+  if(!cen.length) return true;
+  return cen.indexOf(centro) >= 0;
+}
+
+// Un usuario sin alcance nacional y sin centros no puede ver nada: mas vale
+// decirlo que mostrarle pantallas vacias sin explicacion.
+function avisoSinCentros(){
+  if(esAlcanceNacional()) return '';
+  if(misCentros().length) return '';
+  return '<div class="tbl-box" style="padding:22px;margin:14px 0;background:#F6E6E4;border:1px solid #E4A89A">'
+    +'<b style="color:#B4453A">Tu usuario no tiene centros asignados.</b>'
+    +'<div style="font-size:12px;color:#8A5248;margin-top:4px">Pide a un administrador que te asigne al menos uno '
+    +'en la pantalla Usuarios. Mientras tanto no verás equipos ni clientes.</div></div>';
+}
+
+// Etiqueta para que el usuario sepa que está viendo un subconjunto.
+function chipAlcance(){
+  var cen = misCentros();
+  if(!cen.length) return '';
+  return '<span style="background:#EDF1ED;color:#3E5A40;font-size:11px;font-weight:600;'
+    +'padding:3px 10px;border-radius:12px;margin-left:8px" title="Solo ves estos centros">'
+    + cen.join(' · ') + '</span>';
+}
+
 function switchView(v){
   curView=v;
   ['dashboard','equipos','clientes','directorio','ordenes','rutas','programacion','analisis','auditoria','preventivos','qr','reportes','resumen','etiquetas','movimientos','usuarios','cumplimiento'].forEach(function(x){
@@ -2176,7 +2235,7 @@ function switchView(v){
   if(v==='reportes')renderReportes();
   if(v==='resumen')renderResumen();
   if(v==='movimientos')renderMovimientos();
-  if(v==='etiquetas')renderEtiquetas();
+  if(v==='etiquetas'){renderEtiquetas();etiqCargar();}
 }
 
 // ══════════════════════════ RUTAS (el jefe arma la ruta del técnico) ══════════════════════════
@@ -2734,6 +2793,16 @@ async function cargarStatsDashboard(){
     _statsConfig=config;
   }
 
+  // ── Alcance del coordinador ─────────────────────────────────────────
+  // El resumen que escribe cafiver-resumen.js es nacional. Para un
+  // coordinador se recorta aqui, con lo que ya esta cargado: porCentro trae
+  // los equipos por centro y centroLinea el desglose por linea. Cero
+  // lecturas extra. porModelo es el unico que no se puede repartir por
+  // centro, asi que a un coordinador se le oculta en vez de enganarlo con
+  // cifras nacionales.
+  var _mis = (typeof misCentros==='function') ? misCentros() : [];
+  var _acotado = _mis.length > 0;
+
   var totalEq    = config.totalEquipos||0;
   var conCliente = config.totalConCliente||0;
   var enRep      = config.totalReparacion||0;
@@ -2749,6 +2818,36 @@ async function cargarStatsDashboard(){
   var porCentro  = config.porCentro||{};
   var porNU      = config.porNuevoUsado||{};
   var modelosUnicos = config.modelosUnicos||0;
+
+  if(_acotado){
+    // Centros, valores y totales: se quedan solo los suyos.
+    var _pc={}, _vn={}, _tot=0;
+    _mis.forEach(function(c){
+      if(porCentro[c]!=null){ _pc[c]=porCentro[c]; _tot+=porCentro[c]; }
+      if(valorNeto[c]!=null) _vn[c]=valorNeto[c];
+    });
+    porCentro=_pc; valorNeto=_vn;
+    valorNetoTotal=Object.values(_vn).reduce(function(a,b){return a+(b||0);},0);
+    totalEq=_tot;
+
+    // Lineas: se reconstruyen desde centroLinea (centro -> almacen -> linea).
+    var _cl=config.centroLinea||{}, _pl={};
+    _mis.forEach(function(c){
+      var alms=_cl[c]||{};
+      Object.keys(alms).forEach(function(a){
+        var porLin=alms[a]||{};
+        Object.keys(porLin).forEach(function(k){
+          if(k==='total') return;
+          _pl[k]=(_pl[k]||0)+(porLin[k]||0);
+        });
+      });
+    });
+    if(Object.keys(_pl).length) porLinea=_pl;
+
+    // Lo que no se puede repartir por centro se oculta.
+    porModelo={}; porClase={}; porNU={};
+    modelosUnicos=0;
+  }
 
   var ords=ordenes;
   var ahora=new Date(), mes=ahora.getMonth(), anio=ahora.getFullYear();
@@ -3216,7 +3315,9 @@ function pintarLineaAlmacenes(){
   if(!d){tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Cargando...</td></tr>';return;}
   // Orden por VALOR de mayor a menor. El precalculo los guarda ordenados por
   // piezas, asi que se reordena aqui sobre una copia (no toca el cache).
-  var arr=(d.almacenes||[]).slice().sort(function(a,b){
+  // resumenLinea trae todos los centros: se recorta al alcance del usuario.
+  var arr=(d.almacenes||[]).filter(function(a){ return enMiAlcance(a.ce); })
+    .slice().sort(function(a,b){
     var dv=(b.v||0)-(a.v||0);
     return dv!==0?dv:(b.n||0)-(a.n||0);   // a igual valor, manda la cantidad
   });
@@ -3305,16 +3406,16 @@ function buscarEquiposFirestore(){
   }else if(eqFiltros.almacen){
     // Un almacen tiene a lo mucho ~1,300 equipos: se trae completo y la linea
     // se filtra del lado del cliente (evita indice compuesto en Firestore).
-    queries.push(col.where('almacen','==',eqFiltros.almacen).limit(1500).get());
+    queries.push(acotarCentro(col.where('almacen','==',eqFiltros.almacen)).limit(1500).get());
   }else if(eqFiltros.modelo){
-    queries.push(col.where('modelo','==',eqFiltros.modelo).limit(LIM).get());
+    queries.push(acotarCentro(col.where('modelo','==',eqFiltros.modelo)).limit(LIM).get());
   }else if(eqFiltros.linea){
     // Líneas enormes: exigir centro para no traer miles de golpe
     if(LINEAS_GRANDES.indexOf(eqFiltros.linea)>=0 && !eqFiltros.centro){
       if(tbody)tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#8b6914">"'+eqFiltros.linea+'" tiene muchos equipos. Elige también un <b>centro</b> para acotar la búsqueda.</td></tr>';
       return;
     }
-    queries.push(col.where('linea','==',eqFiltros.linea).limit(LIM).get());
+    queries.push(acotarCentro(col.where('linea','==',eqFiltros.linea)).limit(LIM).get());
   }else if(eqFiltros.centro){
     queries.push(col.where('centro','==',eqFiltros.centro).limit(LIM).get());
   }else{
@@ -4403,11 +4504,47 @@ function etiqHTML(af,modelo,centro){
     +'<div class="ecentro">'+getCentroNombre(centro)+'</div>'
     +'</div>';
 }
+// Antes leia de la variable `clientes`, que se declara vacia y nadie llena:
+// la pantalla siempre mostro 0 etiquetas. Ahora consulta Firestore, igual que
+// el resto de la app, y respeta el alcance por centro del usuario.
+var _etiqDatos=[], _etiqCargando=false, _etiqClave='';
+
+function etiqCargar(){
+  var clave=etiqFilt.ce+'|'+etiqFilt.lin;
+  if(_etiqCargando) return;
+  if(clave===_etiqClave && _etiqDatos.length) return;     // ya cargado
+  if(!etiqFilt.ce && !etiqFilt.lin){ _etiqDatos=[]; _etiqClave=clave; renderEtiquetas(); return; }
+
+  _etiqCargando=true; _etiqClave=clave;
+  var col=db.collection('equipos'), q;
+  if(etiqFilt.lin) q=col.where('linea','==',etiqFilt.lin);
+  else             q=col.where('centro','==',etiqFilt.ce);
+  if(etiqFilt.lin && !esAlcanceNacional()) q=acotarCentro(q);
+
+  q.limit(600).get().then(function(s){
+    var arr=[];
+    s.forEach(function(d){
+      var e=d.data();
+      if(e.estado==='baja') return;
+      if(etiqFilt.ce && e.centro!==etiqFilt.ce) return;
+      if(!enMiAlcance(e.centro)) return;
+      arr.push({id:d.id, activoFijo:e.activoFijo, modelo:e.modelo||e.descripcion||'', centro:e.centro||'', linea:e.linea||''});
+    });
+    arr.sort(function(a,b){ return (a.activoFijo||0)-(b.activoFijo||0); });
+    _etiqDatos=arr; _etiqCargando=false; renderEtiquetas();
+  }).catch(function(e){
+    _etiqCargando=false; _etiqDatos=[];
+    var w=document.getElementById('view-etiquetas');
+    if(w) w.innerHTML='<div class="tbl-box" style="padding:30px;margin:20px;color:#b00">No se pudieron leer los equipos: '+esc(e.message)+'</div>';
+  });
+}
+
 function renderEtiquetas(){
   var w=document.getElementById('view-etiquetas');if(!w)return;
-  var data=clientes.filter(function(c){
-    if(etiqFilt.ce&&c.centro!==etiqFilt.ce)return false;
-    if(etiqFilt.lin&&c.linea!==etiqFilt.lin)return false;
+  // Las lineas salen del catalogo real; antes estaban escritas a mano y
+  // varias ya no existen (Superautomatica, Molino, Cafe soluble...).
+  var _lineas=(typeof _statsConfig!=='undefined'&&_statsConfig&&_statsConfig.lineasCat)?_statsConfig.lineasCat:[];
+  var data=_etiqDatos.filter(function(c){
     if(etiqFilt.q&&!(String(c.activoFijo||'').includes(etiqFilt.q)||(c.modelo||'').toLowerCase().includes(etiqFilt.q.toLowerCase())))return false;
     return true;
   }).slice(0,300);
@@ -4415,10 +4552,12 @@ function renderEtiquetas(){
   if(!hojas.length)hojas.push([]);
   w.innerHTML=
     '<div style="background:#fff;border-bottom:1px solid #e8eaed;padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(0,0,0,.07)">'
-    +'<select class="fi-sm" onchange="etiqFilt.ce=this.value;renderEtiquetas()">'+optsCentros(etiqFilt.ce)+'</select>'
-    +'<select class="fi-sm" onchange="etiqFilt.lin=this.value;renderEtiquetas()"><option value="">Todas las líneas</option>'+['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'].map(function(l){return'<option value="'+l+'"'+(etiqFilt.lin===l?' selected':'')+'>'+l+'</option>';}).join('')+'</select>'
+    +'<select class="fi-sm" onchange="etiqFilt.ce=this.value;etiqCargar()">'+optsCentros(etiqFilt.ce)+'</select>'
+    +'<select class="fi-sm" onchange="etiqFilt.lin=this.value;etiqCargar()"><option value="">Todas las líneas</option>'+_lineas.map(function(l){return'<option value="'+esc(l)+'"'+(etiqFilt.lin===l?' selected':'')+'>'+esc(l)+'</option>';}).join('')+'</select>'
     +'<input class="fi-sm" type="text" placeholder="🔍 Buscar..." style="width:180px" value="'+etiqFilt.q+'" oninput="etiqFilt.q=this.value;renderEtiquetas()">'
-    +'<span style="font-size:12px;color:#9aa0a6">'+data.length+' etiqueta(s) · '+Math.ceil(data.length/ETIQ_POR_HOJA)+' hoja(s)</span>'
+    +'<span style="font-size:12px;color:#9aa0a6">'
+      +(_etiqCargando?'Cargando...':(data.length+' etiqueta(s) · '+Math.ceil(data.length/ETIQ_POR_HOJA)+' hoja(s)'))
+      +(!etiqFilt.ce&&!etiqFilt.lin?' — elige un centro o una línea':'')+'</span>'
     +'<button class="btn btn-blue btn-sm" style="margin-left:auto" onclick="printTodasEtiquetas()">🖨 Imprimir todas</button>'
     +'</div>'
     +'<div style="padding:20px;background:#e8eaed">'
