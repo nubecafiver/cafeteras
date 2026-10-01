@@ -545,7 +545,12 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
     <button class="tnav"    id="tnav-qr"          onclick="switchView('qr')">         <span><i class="ti ti-qrcode"></i></span><span class="tnav-txt"> QR</span></button>
     <button class="tnav"    id="tnav-cumplimiento" onclick="switchView('cumplimiento')"><span><i class="ti ti-gauge"></i></span><span class="tnav-txt"> Cumplimiento</span></button>
     <button class="tnav"    id="tnav-usuarios"    onclick="switchView('usuarios')" style="display:none"><span><i class="ti ti-users"></i></span><span class="tnav-txt"> Usuarios</span></button>
-    <div class="topbar-right">
+    <div class="topbar-right" style="display:flex;align-items:center;gap:10px">
+      <div style="text-align:right;line-height:1.25">
+        <div id="cur-nm" style="font-size:13px;font-weight:600;color:var(--cf-text)">—</div>
+        <div id="cur-sub" style="font-size:11px;color:var(--cf-text2)">—</div>
+      </div>
+      <div id="cur-av" style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:#EDF1ED;color:#3E5A40">—</div>
       <button class="btn btn-sm" onclick="doLogout()" title="Cerrar sesión"><i class="ti ti-logout"></i> Salir</button>
     </div>
   </div>
@@ -1412,6 +1417,17 @@ function enterApp(){
   if(_yaEntro)return;
   _yaEntro=true;
 
+  // Quien esta firmado, visible en todo momento.
+  try{
+    var _nm=document.getElementById('cur-nm');
+    var _sb=document.getElementById('cur-sub');
+    var _av=document.getElementById('cur-av');
+    var _ce=(curUser.centros&&curUser.centros.length)?curUser.centros.join(', '):'';
+    if(_nm) _nm.textContent = curUser.name||curUser.email;
+    if(_sb) _sb.textContent = (curUser.rol||'') + (_ce?(' · '+_ce):'');
+    if(_av) _av.textContent = String(curUser.name||curUser.email).trim().charAt(0).toUpperCase();
+  }catch(e){}
+
   // El boton de Usuarios solo se ve para quien puede administrarlos.
   try{
     var bu=document.getElementById('tnav-usuarios');
@@ -2057,11 +2073,17 @@ function renderCumplimiento(){
 // no tiene sentido traerlos cada vez que se cambia un filtro.
 function cumCargarRutas(){
   var box=document.getElementById('cum-rutas'); if(box) box.innerHTML='<div style="font-size:12px;color:var(--cf-text2)">Leyendo rutas...</div>';
-  db.collection('rutas')
-    .where('fecha','>=',cumFiltros.desde)
-    .where('fecha','<=',cumFiltros.hasta)
-    .limit(400).get().then(function(s){
-      _cumRutas=[]; s.forEach(function(d){ _cumRutas.push(d.data()); });
+  // Sin where de rango: Firestore pediria un indice compuesto y por unas
+  // cuantas rutas no vale el tramite. Se traen y se filtran aqui.
+  db.collection('rutas').limit(500).get().then(function(s){
+      _cumRutas=[];
+      s.forEach(function(d){
+        var r=d.data();
+        if(!r.fecha) return;
+        if(cumFiltros.desde && r.fecha < cumFiltros.desde) return;
+        if(cumFiltros.hasta && r.fecha > cumFiltros.hasta) return;
+        _cumRutas.push(r);
+      });
       cumPintarRutas();
     }).catch(function(e){
       if(box) box.innerHTML='<div style="font-size:12px;color:#b00">No se pudieron leer las rutas: '+esc(e.message)+'</div>';
