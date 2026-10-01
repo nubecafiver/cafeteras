@@ -1178,12 +1178,16 @@ function abrirFormOrden(){
   $('o-formato').value=_ordFormato;
   _geoLat=null;_geoLng=null;
   _fotos=[];
+  _ordInicio = Date.now();              // el reloj corre desde que abre
+  _distCliente = null; _ubicCliente = null;
   capturarUbicacion();
+  cargarUbicCliente($('o-cliente').value);
   onFormatoChange(true);
 }
 
 function onClienteInput(){
   var nom=$('o-cliente').value;
+  cargarUbicCliente(nom);
   if(esBrillante('',nom)){ $('o-formato').value='brillante'; }
   onFormatoChange(true);
 }
@@ -1245,10 +1249,83 @@ function capturarUbicacion(){
   navigator.geolocation.getCurrentPosition(function(pos){
     _geoLat=pos.coords.latitude; _geoLng=pos.coords.longitude;
     if(el)el.innerHTML='<i class="ti ti-map-pin"></i> Ubicación registrada';
-    verificarMovimiento();   // comparar con la última orden de este equipo
+    calcularDistanciaCliente();   // ¿esta donde el cliente?
+    verificarMovimiento();        // ¿se movio el equipo?
   },function(err){
     if(el)el.textContent='<i class="ti ti-map-pin-off"></i> Ubicación no disponible (se guardará sin ella)';
   },{enableHighAccuracy:true,timeout:12000,maximumAge:30000});
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  CUMPLIMIENTO: TIEMPO REAL Y ASISTENCIA POR GPS
+//
+//  Antes: `horaInicio` la tecleaba el tecnico y no habia hora de fin, asi que
+//  no se podia saber cuanto duro una visita. Y `movidoMetros` comparaba contra
+//  la ultima orden DEL EQUIPO, que responde "¿se movio la cafetera?", no
+//  "¿el tecnico esta donde el cliente?".
+//
+//  Ahora el reloj corre solo y se compara contra la ubicacion del cliente,
+//  que se captura la primera vez que alguien lo visita y queda de referencia.
+// ══════════════════════════════════════════════════════════════════════════
+var _ordInicio = null;          // milisegundos al abrir el formulario
+var _distCliente = null;        // metros entre el tecnico y el cliente
+var _ubicCliente = null;        // {lat,lng} de referencia, si ya existe
+
+// Una clave estable por cliente: sin acentos, sin mayusculas, sin espacios.
+function claveCliente(nom){
+  return String(nom||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,120);
+}
+
+// Lee la ubicacion de referencia del cliente (1 lectura, solo al abrir).
+function cargarUbicCliente(nom){
+  _ubicCliente=null; _distCliente=null;
+  var k=claveCliente(nom); if(!k) return;
+  db.collection('ubicaciones').doc(k).get().then(function(d){
+    if(d.exists && d.data().lat!=null){
+      _ubicCliente={lat:d.data().lat, lng:d.data().lng};
+      calcularDistanciaCliente();
+    }
+  }).catch(function(){});
+}
+
+function calcularDistanciaCliente(){
+  if(_geoLat==null || !_ubicCliente) return;
+  _distCliente = Math.round(distanciaMetros(_ubicCliente.lat,_ubicCliente.lng,_geoLat,_geoLng));
+  var el=$('o-geo'); if(!el) return;
+  if(_distCliente<=150){
+    el.innerHTML='<span style="color:var(--green);font-weight:700"><i class="ti ti-map-pin-check"></i> En el cliente ('+_distCliente+' m)</span>';
+  }else{
+    el.innerHTML='<span style="color:var(--amber);font-weight:700"><i class="ti ti-map-pin-exclamation"></i> A '+_distCliente+' m del cliente</span>';
+  }
+}
+
+// Al guardar: si el cliente no tenia ubicacion, esta queda de referencia.
+// Si ya tenia, no se toca (la primera visita manda).
+function guardarUbicCliente(nom){
+  if(_geoLat==null) return;
+  var k=claveCliente(nom); if(!k) return;
+  if(_ubicCliente) return;                 // ya existia
+  db.collection('ubicaciones').doc(k).set({
+    clienteNombre: nom,
+    lat: _geoLat, lng: _geoLng,
+    capturadoPor: (CUR && (CUR.nombre||CUR.email)) || '',
+    capturadoEn: firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(function(){});
+}
+
+// Datos de cumplimiento que se adjuntan a la orden.
+function datosCumplimiento(){
+  var fin = Date.now();
+  var dur = _ordInicio ? Math.round((fin - _ordInicio)/60000) : null;
+  var o = {
+    inicioReal: _ordInicio ? new Date(_ordInicio).toISOString() : null,
+    finReal: new Date(fin).toISOString()
+  };
+  if(dur!=null) o.duracionMin = dur;        // minutos entre abrir y guardar
+  if(_distCliente!=null) o.distanciaCliente = _distCliente;
+  o.asistenciaOK = (_distCliente!=null) ? (_distCliente<=150) : null;
+  return o;
 }
 
 // Distancia entre dos coordenadas en metros (Haversine)
@@ -1470,6 +1547,10 @@ function guardarOrden(){
     estado:'pendiente', firmado:false, origen:'app_tecnico',
     creadoEn:firebase.firestore.FieldValue.serverTimestamp()
   };
+  // Tiempo real de la visita y distancia al cliente.
+  var _cum = datosCumplimiento();
+  for(var _k in _cum){ if(_cum[_k]!==null) data[_k]=_cum[_k]; }
+  guardarUbicCliente(data.cliente);     // la primera visita fija la referencia
   $('sheet-ft').innerHTML='<button class="btn" disabled>Guardando...</button>';
   // Guardar SIEMPRE primero en el teléfono (con las fotos), para no perder nada sin señal.
   var localId='L'+Date.now()+'_'+Math.floor(Math.random()*1000);
