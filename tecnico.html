@@ -539,33 +539,118 @@ function cargarRutaHoy(){
     renderRutaHoy();
   }).catch(function(){ box.innerHTML=''; });
 }
+// ══════════════════════════════════════════════════════════════════════════
+//  ESTADO DE LAS PARADAS DE LA RUTA
+//  Antes solo habia `visitado` (si o no). Si el tecnico iba y no podia
+//  atender, no habia forma de decirlo: al dia siguiente el cliente
+//  desaparecia de la ruta sin rastro.
+//
+//  Ahora cada parada tiene estado y, si no se atendio, motivo obligatorio.
+//  El coordinador los ve y decide si los jala a otro dia o los reasigna.
+//  `visitado` se mantiene al dia para no romper lo que ya lo lee.
+// ══════════════════════════════════════════════════════════════════════════
+var MOTIVOS_NO = [
+  'Cerrado / no había quien atendiera',
+  'Cliente pidió reagendar',
+  'No alcanzó el tiempo',
+  'Falta refacción o equipo',
+  'No localicé el domicilio',
+  'Otro'
+];
+
+function estadoParada(c){
+  if(c.estado) return c.estado;
+  return c.visitado ? 'visitado' : 'pendiente';   // rutas viejas
+}
+
+function pintaParada(c){
+  var e = estadoParada(c);
+  if(e==='visitado')    return { op:'.55', linea:'line-through', chip:'chip-c', txt:'VISITADO' };
+  if(e==='no_atendido') return { op:'1',   linea:'',             chip:'chip-r', txt:'NO ATENDIDO' };
+  if(e==='reasignado')  return { op:'.45', linea:'line-through', chip:'chip-b', txt:'REASIGNADO' };
+  return { op:'1', linea:'', chip:'', txt:'' };
+}
+
 function renderRutaHoy(){
   var box=$('ruta-hoy'); if(!box||!_rutaHoy)return;
   var cl=_rutaHoy.clientes||[];
-  var vis=cl.filter(function(c){return c.visitado;}).length;
+  var vis=cl.filter(function(c){return estadoParada(c)==='visitado';}).length;
+  var noa=cl.filter(function(c){return estadoParada(c)==='no_atendido';}).length;
   box.innerHTML=
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
     +'<span style="font-size:15px;font-weight:600;color:var(--text)"><i class="ti ti-map-2" style="vertical-align:-2px;color:var(--green)"></i> Mi ruta de hoy</span>'
-    +'<span class="chip chip-c">'+vis+' / '+cl.length+' visitados</span></div>'
+    +'<span class="chip chip-c">'+vis+' / '+cl.length+' visitados'+(noa?(' · '+noa+' sin atender'):'')+'</span></div>'
     +cl.map(function(c,i){
-      var tipoColor = tipoChip(c.tipo);
-      return '<div class="clay" style="margin-bottom:10px;padding:13px 15px;'+(c.visitado?'opacity:.6':'')+'">'
+      var p = pintaParada(c), e = estadoParada(c);
+      return '<div class="clay" style="margin-bottom:10px;padding:13px 15px;opacity:'+p.op+'">'
         +'<div style="display:flex;justify-content:space-between;align-items:start;gap:8px">'
         +'<div style="flex:1;min-width:0" onclick="rutaHoyAbrirCliente('+i+')">'
-          +'<div style="font-weight:600;font-size:14px;'+(c.visitado?'text-decoration:line-through':'')+'">'+esc(c.clienteNombre)+'</div>'
+          +'<div style="font-weight:600;font-size:14px;'+(p.linea?'text-decoration:'+p.linea:'')+'">'+esc(c.clienteNombre)+'</div>'
           +(c.nota?'<div style="font-size:12px;color:var(--text2);margin-top:2px">'+esc(c.nota)+'</div>':'')
-          +'<span class="chip '+tipoColor+'" style="margin-top:6px;display:inline-block">'+esc(tipoNom(c.tipo).toUpperCase())+'</span>'
+          +(e==='no_atendido'&&c.motivo?'<div style="font-size:12px;color:var(--error);margin-top:3px"><i class="ti ti-alert-circle" style="vertical-align:-2px"></i> '+esc(c.motivo)+'</div>':'')
+          +'<div style="margin-top:6px">'
+          +'<span class="chip '+tipoChip(c.tipo)+'" style="display:inline-block">'+esc(tipoNom(c.tipo).toUpperCase())+'</span>'
+          +(p.txt?' <span class="chip '+p.chip+'" style="display:inline-block">'+p.txt+'</span>':'')
+          +'</div>'
         +'</div>'
-        +'<button class="btn" style="padding:8px 10px;font-size:12px;white-space:nowrap" onclick="rutaHoyToggle('+i+')">'+(c.visitado?'<i class="ti ti-rotate"></i>':'<i class="ti ti-circle-check"></i> Visité')+'</button>'
+        + (e==='reasignado' ? '' :
+          '<div style="display:flex;flex-direction:column;gap:6px">'
+          +'<button class="btn btn-green" style="padding:8px 10px;font-size:12px;white-space:nowrap" onclick="rutaVisite('+i+')">'
+          + (e==='visitado' ? '<i class="ti ti-rotate"></i>' : '<i class="ti ti-circle-check"></i> Visité') + '</button>'
+          + (e==='visitado' ? '' :
+             '<button class="btn" style="padding:8px 10px;font-size:12px;white-space:nowrap" onclick="rutaNoAtendi('+i+')">No pude</button>')
+          +'</div>')
         +'</div></div>';
     }).join('');
 }
-function rutaHoyToggle(i){
+
+// Envoltura para no pelear con comillas anidadas en el onclick.
+function rutaVisite(i){ rutaMarcar(i,'visitado'); }
+
+function rutaMarcar(i, estado, motivo){
   if(!_rutaHoy)return;
-  _rutaHoy.clientes[i].visitado=!_rutaHoy.clientes[i].visitado;
+  var c=_rutaHoy.clientes[i]; if(!c)return;
+  // Volver a tocar "Visité" cuando ya estaba visitado lo regresa a pendiente.
+  if(estado==='visitado' && estadoParada(c)==='visitado') estado='pendiente';
+  c.estado = estado;
+  c.visitado = (estado==='visitado');       // se mantiene para el codigo viejo
+  if(estado==='no_atendido'){ c.motivo = motivo||''; c.marcadoEn = new Date().toISOString(); }
+  else { delete c.motivo; }
   renderRutaHoy();
-  db.collection('rutas').doc(_rutaHoyId).update({clientes:_rutaHoy.clientes}).catch(function(){});
+  db.collection('rutas').doc(_rutaHoyId).update({clientes:_rutaHoy.clientes})
+    .catch(function(e){ toast('No se pudo guardar: '+e.message); });
 }
+
+// El motivo es obligatorio: sin el no se marca nada.
+function rutaNoAtendi(i){
+  var c=_rutaHoy&&_rutaHoy.clientes[i]; if(!c)return;
+  var h='<div style="padding:18px 16px">'
+    +'<div style="font-weight:700;font-size:15px;margin-bottom:4px">¿Por qué no se atendió?</div>'
+    +'<div style="font-size:13px;color:var(--text2);margin-bottom:14px">'+esc(c.clienteNombre)+'</div>'
+    + MOTIVOS_NO.map(function(m,k){
+        return '<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:8px;padding:12px 14px;font-size:13px" '
+          +'data-i="'+i+'" data-m="'+esc(m)+'" onclick="rutaMotivoElegido(this)">'+esc(m)+'</button>';
+      }).join('')
+    +'<button class="btn" style="width:100%;justify-content:center;margin-top:4px;font-size:13px;color:var(--text2)" onclick="closeSheet()">Cancelar</button>'
+    +'</div>';
+  var sh=$('sheet-body'); if(sh){ sh.innerHTML=h; openSheet(); }
+  else { // respaldo si no existe el panel
+    var m=prompt('Motivo por el que no se atendió a '+c.clienteNombre+':');
+    if(m && m.trim()) rutaMarcar(i,'no_atendido',m.trim());
+  }
+}
+
+function rutaMotivoElegido(btn){
+  var i=parseInt(btn.dataset.i,10), m=btn.dataset.m;
+  if(m==='Otro'){
+    var t=prompt('Escribe el motivo:');
+    if(!t || !t.trim()) return;            // sin motivo no se marca
+    m=t.trim();
+  }
+  closeSheet();
+  rutaMarcar(i,'no_atendido',m);
+}
+
 function rutaHoyAbrirCliente(i){
   if(!_rutaHoy)return;
   var nom=_rutaHoy.clientes[i].clienteNombre;
@@ -576,7 +661,11 @@ function rutaHoyAbrirCliente(i){
 function marcarClienteVisitadoAuto(clienteNombre){
   if(!_rutaHoy||!clienteNombre)return;
   var cambio=false;
-  (_rutaHoy.clientes||[]).forEach(function(c){ if(!c.visitado && c.clienteNombre===clienteNombre){ c.visitado=true; cambio=true; } });
+  (_rutaHoy.clientes||[]).forEach(function(c){
+    if(estadoParada(c)!=='visitado' && c.clienteNombre===clienteNombre){
+      c.visitado=true; c.estado='visitado'; delete c.motivo; cambio=true;
+    }
+  });
   if(cambio){ renderRutaHoy(); db.collection('rutas').doc(_rutaHoyId).update({clientes:_rutaHoy.clientes}).catch(function(){}); }
 }
 

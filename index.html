@@ -1956,6 +1956,7 @@ function renderRutas(){
           // Columna derecha: ruta armada
           +'<div class="tbl-box" style="padding:18px 20px">'
             +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-weight:600;color:var(--cf-text)">Ruta de '+esc(e.tecnicoNombre)+'</span><span class="chip chip-c" style="background:#EDF1ED;color:#3E5A40;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">'+e.clientes.length+' clientes</span></div>'
+            +'<div id="ruta-pend"></div>'
             +'<div id="ruta-lista">'+rutaListaHTML()+'</div>'
             +(e.clientes.length?'<button class="btn btn-blue" style="width:100%;justify-content:center;margin-top:12px" onclick="rutaGuardar()">💾 Guardar ruta del '+e.fecha+'</button>':'')
           +'</div>'
@@ -2002,6 +2003,7 @@ function rutaCargarTecnicos(){
 }
 
 function rutaSelTecnico(uid){
+  setTimeout(rutaCargarPendientes, 80);
   var t=_tecnicos.find(function(x){return x.uid===uid;});
   _rutaEdit.tecnicoUid=uid;
   _rutaEdit.tecnicoNombre=t?(t.nombre||t.email):'';
@@ -2091,13 +2093,216 @@ function rutaAddCliente(nombre,num){
   _rutaEdit.clientes.push({clienteNombre:nombre,clienteNum:num||'',nota:'',tipo:'preventivo',visitado:false});
   progRenderLista(); rutaBuscarCliente();
 }
+// ══════════════════════════════════════════════════════════════════════════
+//  PENDIENTES DE DIAS ANTERIORES Y REASIGNACION
+//  Lo que el tecnico no atendio no se pierde: el coordinador lo ve aqui y
+//  decide si lo jala a la ruta del dia o se lo pasa a otro tecnico.
+// ══════════════════════════════════════════════════════════════════════════
+var _pendientesPrev = [];     // paradas sin atender de rutas anteriores
+var _pendCargando = false;
+
+function estadoParada(c){
+  if(c.estado) return c.estado;
+  return c.visitado ? 'visitado' : 'pendiente';
+}
+
+// Busca lo no atendido en las ultimas rutas del tecnico elegido.
+// Son pocas lecturas: 20 documentos como mucho, solo al elegir tecnico.
+function rutaCargarPendientes(){
+  var e=_rutaEdit;
+  if(!e || !e.tecnicoUid){ _pendientesPrev=[]; return; }
+  _pendCargando=true;
+  rutaPintarPendientes();
+  db.collection('rutas')
+    .where('tecnicoUid','==', e.tecnicoUid)
+    .limit(20).get().then(function(s){
+      var out=[];
+      s.forEach(function(d){
+        var r=d.data();
+        if(!r.fecha || r.fecha >= e.fecha) return;        // solo dias anteriores
+        (r.clientes||[]).forEach(function(c, idx){
+          var st=estadoParada(c);
+          if(st==='no_atendido' || st==='pendiente'){
+            out.push({
+              rutaId:d.id, idx:idx, fecha:r.fecha,
+              clienteNombre:c.clienteNombre, clienteNum:c.clienteNum||'',
+              tipo:c.tipo||'preventivo', nota:c.nota||'',
+              motivo:c.motivo||'', estado:st
+            });
+          }
+        });
+      });
+      out.sort(function(a,b){ return a.fecha < b.fecha ? 1 : -1; });
+      _pendientesPrev=out; _pendCargando=false;
+      rutaPintarPendientes();
+    }).catch(function(err){
+      _pendCargando=false; _pendientesPrev=[];
+      var b=document.getElementById('ruta-pend');
+      if(b) b.innerHTML='<div style="font-size:12px;color:#b00">No se pudieron leer los pendientes: '+esc(err.message)+'</div>';
+    });
+}
+
+function rutaPintarPendientes(){
+  var box=document.getElementById('ruta-pend'); if(!box) return;
+  if(_pendCargando){ box.innerHTML='<div style="font-size:12px;color:var(--cf-text2)">Buscando pendientes...</div>'; return; }
+  if(!_pendientesPrev.length){ box.innerHTML=''; return; }
+
+  var yaEn={};
+  (_rutaEdit.clientes||[]).forEach(function(c){ yaEn[c.clienteNombre]=true; });
+
+  box.innerHTML =
+    '<div style="background:#FBEEC8;border:1px solid #E4C65A;border-radius:12px;padding:12px 14px;margin-bottom:14px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+    +'<span style="font-weight:700;font-size:13px;color:#5C4A0F">'
+    +'<i class="ti ti-alert-triangle" style="vertical-align:-2px"></i> '
+    +_pendientesPrev.length+' sin atender de días anteriores</span>'
+    +'<button class="btn btn-sm" onclick="rutaJalarTodos()">Jalar todos</button></div>'
+    + _pendientesPrev.map(function(p,k){
+        var ya = yaEn[p.clienteNombre];
+        return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid rgba(92,74,15,.12)">'
+          +'<div style="flex:1;min-width:0">'
+          +'<div style="font-size:12px;font-weight:600;color:#5C4A0F">'+esc(p.clienteNombre)+'</div>'
+          +'<div style="font-size:11px;color:#7A6417">'+esc(p.fecha)+' · '+esc(tipoNom(p.tipo))
+          + (p.motivo ? ' · '+esc(p.motivo) : (p.estado==='pendiente' ? ' · nunca se marcó' : ''))
+          +'</div></div>'
+          + (ya ? '<span style="font-size:11px;color:#3E5A40;font-weight:600">ya está</span>'
+                : '<button class="btn btn-sm" data-k="'+k+'" onclick="rutaJalarUno(this.dataset.k)">Jalar</button>')
+          +'</div>';
+      }).join('')
+    +'</div>';
+}
+
+function rutaJalarUno(k){
+  var p=_pendientesPrev[parseInt(k,10)]; if(!p) return;
+  if((_rutaEdit.clientes||[]).some(function(c){ return c.clienteNombre===p.clienteNombre; })) return;
+  _rutaEdit.clientes.push({
+    clienteNombre:p.clienteNombre, clienteNum:p.clienteNum,
+    nota:p.nota, tipo:p.tipo, visitado:false, estado:'pendiente',
+    vieneDe:p.rutaId, vieneDeFecha:p.fecha            // rastro del arrastre
+  });
+  rutaRefrescarLista();
+}
+
+function rutaJalarTodos(){
+  var n=0;
+  _pendientesPrev.forEach(function(p){
+    if((_rutaEdit.clientes||[]).some(function(c){ return c.clienteNombre===p.clienteNombre; })) return;
+    _rutaEdit.clientes.push({
+      clienteNombre:p.clienteNombre, clienteNum:p.clienteNum,
+      nota:p.nota, tipo:p.tipo, visitado:false, estado:'pendiente',
+      vieneDe:p.rutaId, vieneDeFecha:p.fecha
+    });
+    n++;
+  });
+  rutaRefrescarLista();
+  if(typeof toast==='function' && n) toast(n+' pendiente(s) agregado(s)');
+}
+
+function rutaRefrescarLista(){
+  var l=document.getElementById('ruta-lista');
+  if(l) l.innerHTML=rutaListaHTML();
+  rutaPintarPendientes();
+}
+
+// ── REASIGNAR UNA PARADA A OTRO TECNICO ──────────────────────────────────
+// La parada NO se borra del origen: se marca como reasignada, para que quede
+// rastro de que ese cliente se le quito a alguien y a quien se le dio.
+var _reasig = null;
+
+function rutaReasignar(i){
+  var c=_rutaEdit.clientes[i]; if(!c) return;
+  _reasig={ idx:i, cliente:c };
+  var otros=_tecnicos.filter(function(t){ return t.uid!==_rutaEdit.tecnicoUid; });
+  if(!otros.length){ alert('No hay otro técnico para reasignar.'); return; }
+  var h='<div style="padding:18px 20px">'
+    +'<div style="font-weight:700;font-size:15px;margin-bottom:4px">Reasignar a otro técnico</div>'
+    +'<div style="font-size:13px;color:var(--cf-text2);margin-bottom:14px">'+esc(c.clienteNombre)+'</div>'
+    +'<div style="font-size:12px;color:var(--cf-text2);margin-bottom:5px">Nuevo técnico</div>'
+    +'<select class="fi-sm" id="reas-tec" style="width:100%;margin-bottom:12px">'
+    + otros.map(function(t){ return '<option value="'+esc(t.uid)+'">'+esc(t.nombre||t.email)+(t.centro?(' — '+esc(t.centro)):'')+'</option>'; }).join('')
+    +'</select>'
+    +'<div style="font-size:12px;color:var(--cf-text2);margin-bottom:5px">Fecha</div>'
+    +'<input class="fi-sm" type="date" id="reas-fecha" value="'+esc(_rutaEdit.fecha)+'" style="width:100%;margin-bottom:14px">'
+    +'<div id="reas-err" style="color:#b00;font-size:12px;margin-bottom:8px"></div>'
+    +'<button class="btn btn-blue" style="width:100%;justify-content:center;padding:11px" onclick="rutaReasignarOK()">Reasignar</button>'
+    +'<button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="rutaReasignarCerrar()">Cancelar</button>'
+    +'</div>';
+  var m=document.getElementById('reas-modal');
+  if(!m){
+    m=document.createElement('div'); m.id='reas-modal';
+    m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    m.innerHTML='<div style="background:var(--cf-white);border-radius:14px;max-width:420px;width:100%" id="reas-body"></div>';
+    document.body.appendChild(m);
+  }
+  m.style.display='flex';
+  document.getElementById('reas-body').innerHTML=h;
+}
+
+function rutaReasignarCerrar(){
+  var m=document.getElementById('reas-modal'); if(m) m.style.display='none';
+  _reasig=null;
+}
+
+function rutaReasignarOK(){
+  if(!_reasig) return;
+  var err=document.getElementById('reas-err'); err.textContent='';
+  var uid=document.getElementById('reas-tec').value;
+  var fecha=document.getElementById('reas-fecha').value;
+  if(!uid||!fecha){ err.textContent='Falta técnico o fecha.'; return; }
+  var t=_tecnicos.filter(function(x){ return x.uid===uid; })[0];
+  if(!t){ err.textContent='Técnico no encontrado.'; return; }
+
+  var c=_reasig.cliente, destinoId=uid+'_'+fecha;
+  err.textContent='Reasignando...';
+
+  db.collection('rutas').doc(destinoId).get().then(function(d){
+    var dest = d.exists ? d.data() : {
+      tecnicoUid:uid, tecnicoNombre:(t.nombre||t.email),
+      centro:(t.centro||''), fecha:fecha, clientes:[]
+    };
+    dest.clientes = dest.clientes||[];
+    if(dest.clientes.some(function(x){ return x.clienteNombre===c.clienteNombre; })){
+      err.textContent='Ese técnico ya tiene a ese cliente ese día.';
+      return null;
+    }
+    dest.clientes.push({
+      clienteNombre:c.clienteNombre, clienteNum:c.clienteNum||'',
+      nota:c.nota||'', tipo:c.tipo||'preventivo', visitado:false, estado:'pendiente',
+      reasignadoDe:_rutaEdit.tecnicoNombre, reasignadoDeFecha:_rutaEdit.fecha
+    });
+    dest.actualizadoEn = firebase.firestore.FieldValue.serverTimestamp();
+    return db.collection('rutas').doc(destinoId).set(dest,{merge:true});
+  }).then(function(r){
+    if(r===null) return;
+    // En el origen queda el rastro, no se borra.
+    _rutaEdit.clientes[_reasig.idx].estado='reasignado';
+    _rutaEdit.clientes[_reasig.idx].visitado=false;
+    _rutaEdit.clientes[_reasig.idx].reasignadoA=(t.nombre||t.email);
+    rutaReasignarCerrar();
+    rutaRefrescarLista();
+    if(typeof toast==='function') toast('Reasignado a '+(t.nombre||t.email)+'. Guarda la ruta para confirmar.');
+  }).catch(function(e2){
+    err.textContent='Error: '+e2.message;
+  });
+}
+
 function rutaListaHTML(){
   var e=_rutaEdit;
   if(!e.clientes.length) return '<div style="color:var(--cf-text2);font-size:13px;padding:14px 0">Aún no agregas clientes. Búscalos a la izquierda.</div>';
   return e.clientes.map(function(c,i){
     return '<div style="border:1px solid var(--cf-border);border-radius:12px;padding:10px 12px;margin-bottom:8px">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:600">'+(i+1)+'. '+esc(c.clienteNombre)+'</span>'
-      +'<button class="icon-btn" onclick="rutaDelCliente('+i+')" title="Quitar">✕</button></div>'
+      +'<span style="display:flex;gap:4px;align-items:center">'
+      + (function(){
+          var st=estadoParada(c);
+          if(st==='visitado')    return '<span class="chip" style="background:#EDF1ED;color:#3E5A40;font-size:10px;padding:2px 8px;border-radius:12px;font-weight:700">VISITADO</span>';
+          if(st==='no_atendido') return '<span class="chip" style="background:#F6E6E4;color:#B4453A;font-size:10px;padding:2px 8px;border-radius:12px;font-weight:700" title="'+esc(c.motivo||'')+'">NO ATENDIDO</span>';
+          if(st==='reasignado')  return '<span class="chip" style="background:#F6F0DD;color:#8A6D12;font-size:10px;padding:2px 8px;border-radius:12px;font-weight:700">A '+esc(c.reasignadoA||'otro')+'</span>';
+          return '';
+        })()
+      + (estadoParada(c)==='reasignado' ? '' :
+         '<button class="icon-btn" onclick="rutaReasignar('+i+')" title="Reasignar a otro técnico"><i class="ti ti-user-share"></i></button>')
+      +'<button class="icon-btn" onclick="rutaDelCliente('+i+')" title="Quitar">✕</button></span></div>'
       +'<div style="display:flex;gap:8px">'
       +'<select class="fi-sm" style="font-size:12px" onchange="_rutaEdit.clientes['+i+'].tipo=this.value"><option value="preventivo"'+(c.tipo==='preventivo'?' selected':'')+'>Preventivo</option><option value="correctivo"'+(c.tipo==='correctivo'?' selected':'')+'>Correctivo</option><option value="instalacion"'+(c.tipo==='instalacion'?' selected':'')+'>Instalación</option><option value="retiro"'+(c.tipo==='retiro'?' selected':'')+'>Retiro</option><option value="revision"'+(c.tipo==='revision'?' selected':'')+'>Revisión</option></select>'
       +'<input class="fi-sm" style="flex:1;font-size:12px" placeholder="Nota (opcional)" value="'+esc(c.nota||'')+'" oninput="_rutaEdit.clientes['+i+'].nota=this.value">'
@@ -2112,7 +2317,15 @@ function rutaGuardar(){
   var id=e.tecnicoUid+'_'+e.fecha;
   var data={
     tecnicoUid:e.tecnicoUid, tecnicoNombre:e.tecnicoNombre, centro:e.centro||'', fecha:e.fecha,
-    clientes:e.clientes.map(function(c){return {clienteNombre:c.clienteNombre,clienteNum:c.clienteNum||'',nota:c.nota||'',tipo:c.tipo||'preventivo',visitado:!!c.visitado};}),
+    clientes:e.clientes.map(function(c){
+      var o={clienteNombre:c.clienteNombre, clienteNum:c.clienteNum||'', nota:c.nota||'',
+             tipo:c.tipo||'preventivo', visitado:!!c.visitado, estado:estadoParada(c)};
+      if(c.motivo) o.motivo=c.motivo;
+      if(c.reasignadoA) o.reasignadoA=c.reasignadoA;
+      if(c.vieneDe){ o.vieneDe=c.vieneDe; o.vieneDeFecha=c.vieneDeFecha||''; }
+      if(c.reasignadoDe){ o.reasignadoDe=c.reasignadoDe; o.reasignadoDeFecha=c.reasignadoDeFecha||''; }
+      return o;
+    }),
     actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
   };
   db.collection('rutas').doc(id).set(data,{merge:true}).then(function(){
@@ -2155,7 +2368,7 @@ function progFilaTecnico(t){
   var id=t.uid+'_'+_progFecha;
   var r=_progRutas[id];
   var cl=(r&&r.clientes)||[];
-  var vis=cl.filter(function(c){return c.visitado;}).length;
+  var vis=cl.filter(function(c){return estadoParada(c)==='visitado';}).length;
   return '<div class="tbl-box" style="padding:14px 18px;margin-bottom:12px">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
       +'<div style="display:flex;align-items:center;gap:12px;min-width:200px">'
