@@ -5027,29 +5027,67 @@ var _yaEntro=false;
 auth.onAuthStateChanged(function(user){
   if(user&&!_yaEntro){
     var email=user.email.toLowerCase();
-    // El perfil vive en Firestore (coleccion usuarios), igual que en la app del
-    // tecnico. El mapa USERS de arriba quedo como respaldo para las cuentas
-    // viejas que todavia no tienen documento propio.
-    db.collection('usuarios').doc(user.uid).get().then(function(d){
-      var p;
-      if(d.exists){
-        var x=d.data();
-        if(x.activo===false){ alert('Usuario inactivo. Contacta al administrador.'); auth.signOut(); return; }
-        p={name:x.nombre||email.split('@')[0], rol:x.rol||'tecnico', color:'#1a73e8',
-           centros:(Array.isArray(x.centros)&&x.centros.length)?x.centros:(x.centro?[x.centro]:[]),
-           numeroEmpleado:x.numeroEmpleado||''};
-      }else{
-        var f=USERS[email]||{name:email.split('@')[0],rol:'tecnico',color:'#1a73e8'};
-        p={name:f.name, rol:f.rol, color:f.color, centros:[], numeroEmpleado:''};
-      }
+
+    // Si la lectura del perfil falla o tarda, antes se quedaba en
+    // "Entrando..." para siempre. Ahora: tope de 8 segundos, mensaje visible
+    // y entrada con el perfil de respaldo para no dejar a nadie fuera.
+    var _resuelto=false;
+    function _msg(t){
+      var e=document.getElementById('login-error');
+      if(e){ e.textContent=t; e.style.display='block'; }
+      var b=document.getElementById('login-btn');
+      if(b) b.textContent='Iniciar sesión';
+      console.warn('[login]', t);
+    }
+    function _entrar(p, aviso){
+      if(_resuelto) return; _resuelto=true;
       curUser={uid:user.uid, email:email, name:p.name, rol:p.rol, color:p.color,
-               centros:p.centros, numeroEmpleado:p.numeroEmpleado};
+               centros:p.centros||[], numeroEmpleado:p.numeroEmpleado||''};
+      if(aviso) console.warn('[login]', aviso);
       enterApp();
-    }).catch(function(e){
-      console.warn('perfil:', e.message);
+    }
+    function _respaldo(){
       var f=USERS[email]||{name:email.split('@')[0],rol:'tecnico',color:'#1a73e8'};
-      curUser={uid:user.uid,email:email,name:f.name,rol:f.rol,color:f.color,centros:[],numeroEmpleado:''};
-      enterApp();
+      return {name:f.name, rol:f.rol, color:f.color, centros:[], numeroEmpleado:''};
+    }
+
+    var _tope=setTimeout(function(){
+      if(_resuelto) return;
+      _entrar(_respaldo(), 'El perfil tardo demasiado; se entro con el respaldo.');
+    }, 8000);
+
+    db.collection('usuarios').doc(user.uid).get().then(function(d){
+      clearTimeout(_tope);
+      if(_resuelto) return;
+      if(!d.exists){
+        _entrar(_respaldo(), 'Sin documento en usuarios/'+user.uid+'; se uso el respaldo.');
+        return;
+      }
+      var x=d.data();
+      if(x.activo===false){
+        _resuelto=true;
+        _msg('Usuario inactivo. Contacta al administrador.');
+        auth.signOut();
+        return;
+      }
+      _entrar({
+        name: x.nombre||email.split('@')[0],
+        rol:  x.rol||'tecnico',
+        color:'#1a73e8',
+        centros:(Array.isArray(x.centros)&&x.centros.length)?x.centros:(x.centro?[x.centro]:[]),
+        numeroEmpleado:x.numeroEmpleado||''
+      });
+    }).catch(function(e){
+      clearTimeout(_tope);
+      if(_resuelto) return;
+      // Permisos insuficientes es el caso tipico cuando las reglas cambiaron.
+      if(String(e.code||'')==='permission-denied'){
+        _msg('Sin permiso para leer tu perfil (usuarios/'+user.uid+'). Revisa las reglas de Firestore.');
+        _entrar(_respaldo(), 'permission-denied al leer el perfil; se uso el respaldo.');
+        return;
+      }
+      _msg('Error al leer tu perfil: '+(e.message||e.code||e));
+      _entrar(_respaldo(), 'Error al leer el perfil; se uso el respaldo.');
     });
   }
 });
