@@ -43,6 +43,8 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 .chip-c{background:var(--greenSoft);color:var(--green)}
 .chip-b{background:#F6F0DD;color:var(--amber)}
 .chip-r{background:#F6E6E4;color:var(--error)}
+.chip-i{background:#E4ECF6;color:#1557b0}   /* instalacion */
+.chip-m{background:#EFE6F6;color:#6A3AB4}   /* retiro */
 /* App shell */
 #app{display:none;min-height:100vh;padding-bottom:calc(90px + env(safe-area-inset-bottom));background:var(--bg)}
 .topbar{display:flex;align-items:center;gap:11px;padding:20px 18px 14px;padding-top:calc(20px + env(safe-area-inset-top))}
@@ -326,6 +328,21 @@ var CHECKLIST_BRILLANTE = {
   ]
 };
 
+// ══════════ TIPOS DE SERVICIO ══════════
+// Misma tabla que el escritorio (index.html). Antes el codigo preguntaba
+// "¿es correctivo? si no, es preventivo", asi que una instalacion o un retiro
+// creados desde el escritorio se mostraban aqui como PREVENTIVO.
+var TIPOS_SERVICIO = {
+  correctivo : { nom:'Correctivo',  chip:'chip-r' },
+  preventivo : { nom:'Preventivo',  chip:'chip-c' },
+  instalacion: { nom:'Instalación', chip:'chip-i' },
+  retiro     : { nom:'Retiro',      chip:'chip-m' },
+  revision   : { nom:'Revisión',    chip:'chip-b' }
+};
+function tipoInfo(t){ return TIPOS_SERVICIO[t] || TIPOS_SERVICIO.preventivo; }
+function tipoNom(t){ return tipoInfo(t).nom; }
+function tipoChip(t){ return tipoInfo(t).chip; }
+
 // ══════════ HELPERS ══════════
 function $(id){return document.getElementById(id);}
 function skel(n){var s='';for(var i=0;i<(n||3);i++){s+='<div class="sk-card"><div class="sk sk-line" style="width:60%"></div><div class="sk sk-line" style="width:40%"></div><div class="sk sk-line" style="width:80%;margin-bottom:0"></div></div>';}return s;}
@@ -430,7 +447,7 @@ function cargarInicio(){
   qo.where('estado','==','pendiente').limit(50).get().then(function(s){
     $('k-abiertas').textContent = s.size;
     var arr=s.docs.map(function(d){return {id:d.id,...d.data()};});
-    renderPendientes(arr);
+    renderOrdenesPendientes(arr);
   }).catch(function(e){ $('k-abiertas').textContent='—'; $('pendientes').innerHTML='<div style="color:var(--muted);font-size:13px">No se pudieron cargar pendientes.</div>'; });
   // Atendidos hoy (órdenes que YO cerré hoy) — consulta chica
   var hoy0=new Date(); hoy0.setHours(0,0,0,0);
@@ -460,13 +477,13 @@ function renderRutaHoy(){
     +'<span style="font-size:15px;font-weight:600;color:var(--text)"><i class="ti ti-map-2" style="vertical-align:-2px;color:var(--green)"></i> Mi ruta de hoy</span>'
     +'<span class="chip chip-c">'+vis+' / '+cl.length+' visitados</span></div>'
     +cl.map(function(c,i){
-      var tipoColor = c.tipo==='correctivo'?'chip-r':(c.tipo==='revision'?'chip-b':'chip-c');
+      var tipoColor = tipoChip(c.tipo);
       return '<div class="clay" style="margin-bottom:10px;padding:13px 15px;'+(c.visitado?'opacity:.6':'')+'">'
         +'<div style="display:flex;justify-content:space-between;align-items:start;gap:8px">'
         +'<div style="flex:1;min-width:0" onclick="rutaHoyAbrirCliente('+i+')">'
           +'<div style="font-weight:600;font-size:14px;'+(c.visitado?'text-decoration:line-through':'')+'">'+esc(c.clienteNombre)+'</div>'
           +(c.nota?'<div style="font-size:12px;color:var(--text2);margin-top:2px">'+esc(c.nota)+'</div>':'')
-          +'<span class="chip '+tipoColor+'" style="margin-top:6px;display:inline-block">'+esc((c.tipo||'preventivo').toUpperCase())+'</span>'
+          +'<span class="chip '+tipoColor+'" style="margin-top:6px;display:inline-block">'+esc(tipoNom(c.tipo).toUpperCase())+'</span>'
         +'</div>'
         +'<button class="btn" style="padding:8px 10px;font-size:12px;white-space:nowrap" onclick="rutaHoyToggle('+i+')">'+(c.visitado?'<i class="ti ti-rotate"></i>':'<i class="ti ti-circle-check"></i> Visité')+'</button>'
         +'</div></div>';
@@ -609,14 +626,17 @@ function audGuardar(){
   });
 }
 
-function renderPendientes(arr){
+// Antes se llamaba renderPendientes y chocaba con la del banner de ordenes
+// sin subir (mas abajo). La segunda definicion pisaba a esta y la lista de
+// ordenes pendientes del tecnico nunca se dibujaba.
+function renderOrdenesPendientes(arr){
   if(!arr.length){ $('pendientes').innerHTML='<div class="clay card-pad" style="text-align:center;color:var(--muted);font-size:13px">Sin pendientes. ¡Buen trabajo!</div>'; return; }
   $('pendientes').innerHTML = arr.map(function(o){
     return '<div class="clay card-pad" style="margin-bottom:10px" onclick="verOrden(\''+o.id+'\')">'
       +'<div style="display:flex;justify-content:space-between;align-items:start;gap:8px">'
       +'<div><div style="font-weight:700;font-size:14px">'+esc(o.modelo||'Equipo')+'</div>'
       +'<div style="font-size:12px;color:var(--text2)">'+esc(o.cliente||'—')+'</div></div>'
-      +'<span class="chip '+(o.tipo==='correctivo'?'chip-r':'chip-c')+'">'+(o.tipo==='correctivo'?'CORRECTIVO':'PREVENTIVO')+'</span>'
+      +'<span class="chip '+tipoChip(o.tipo)+'">'+tipoNom(o.tipo).toUpperCase()+'</span>'
       +'</div>'
       +'<div style="font-size:11px;color:var(--muted);margin-top:6px;font-family:monospace">'+esc(o.folio||'')+' · AF '+esc(o.activoFijo||'')+'</div>'
       +'</div>';
@@ -962,7 +982,7 @@ function abrirFormOrden(){
     +'<div class="frow"><label>Cliente / Sucursal</label><input class="fld" id="o-cliente" value="'+esc(cliNom)+'" oninput="onClienteInput()"></div>'
     +'<div class="g2"><div class="frow"><label>Fecha</label><input class="fld" id="o-fecha" type="date" value="'+hoy+'"></div>'
     +'<div class="frow"><label>Hora</label><input class="fld" id="o-hora" type="time" value="'+hora+'"></div></div>'
-    +'<div class="frow"><label>Tipo de servicio</label><select class="fld" id="o-tipo"><option value="correctivo">Correctivo</option><option value="preventivo" selected>Preventivo</option></select></div>'
+    +'<div class="frow"><label>Tipo de servicio</label><select class="fld" id="o-tipo"><option value="correctivo">Correctivo</option><option value="preventivo" selected>Preventivo</option><option value="instalacion">Instalación</option><option value="retiro">Retiro</option></select></div>'
     +'<div class="frow"><label>Formato de checklist</label><select class="fld" id="o-formato" onchange="onFormatoChange()">'
       +'<option value="estandar">Estándar (por línea)</option><option value="brillante">Checklist Brillante — Krispy Kreme</option></select>'
       +'<div id="o-fmt-hint" style="font-size:11px;color:var(--amber);margin-top:4px"></div></div>'
