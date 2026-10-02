@@ -9,6 +9,7 @@
 <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -4539,6 +4540,89 @@ function etiqCargar(){
   });
 }
 
+// ══ ETIQUETAS EN PDF ══════════════════════════════════════════════════════
+// El dialogo de impresion del navegador depende del CSS de @media print y
+// salia en blanco. Un PDF se arma aqui, con medidas exactas, y sale igual
+// en cualquier maquina e impresora.
+//
+// Hoja carta, 3 columnas x 10 filas = 30 etiquetas por hoja.
+var ETQ_PDF = { cols:3, filas:10, mx:10, my:10, gap:2 };
+
+function etiquetasPDF(){
+  if(!window.jspdf || !window.jspdf.jsPDF){ alert('No se pudo cargar el generador de PDF. Revisa tu conexión.'); return; }
+  var data=_etiqDatos.filter(function(c){
+    if(etiqFilt.q&&!(String(c.activoFijo||'').includes(etiqFilt.q)||(c.modelo||'').toLowerCase().includes(etiqFilt.q.toLowerCase())))return false;
+    return true;
+  });
+  if(!data.length){ alert('No hay etiquetas. Elige un centro o una línea primero.'); return; }
+
+  var btn=document.getElementById('etq-pdf-btn');
+  if(btn){ btn.disabled=true; btn.textContent='Generando 0 de '+data.length+'...'; }
+
+  var jsPDF=window.jspdf.jsPDF;
+  var doc=new jsPDF({unit:'mm', format:'letter'});
+  var W=216, H=279, C=ETQ_PDF;
+  var ew=(W - C.mx*2 - C.gap*(C.cols-1)) / C.cols;
+  var eh=(H - C.my*2 - C.gap*(C.filas-1)) / C.filas;
+  var porHoja=C.cols*C.filas;
+
+  // Los QR se piden a api.qrserver.com y hay que esperarlos uno por uno.
+  function cargarQR(af){
+    return new Promise(function(res){
+      var img=new Image();
+      img.crossOrigin='anonymous';
+      img.onload=function(){
+        try{
+          var cv=document.createElement('canvas');
+          cv.width=img.width; cv.height=img.height;
+          cv.getContext('2d').drawImage(img,0,0);
+          res(cv.toDataURL('image/png'));
+        }catch(e){ res(null); }
+      };
+      img.onerror=function(){ res(null); };
+      img.src='https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=0&data='
+        + encodeURIComponent(BASE_QR_URL+af);
+    });
+  }
+
+  var i=0;
+  function siguiente(){
+    if(i>=data.length){
+      if(btn){ btn.disabled=false; btn.innerHTML='&#128438; Descargar PDF'; }
+      var nom='etiquetas_'+(etiqFilt.ce||etiqFilt.lin||'cafiver').replace(/[^A-Za-z0-9]/g,'_')+'.pdf';
+      doc.save(nom);
+      return;
+    }
+    var c=data[i];
+    var enHoja=i%porHoja;
+    if(i>0 && enHoja===0) doc.addPage();
+    var col=enHoja%C.cols, fil=Math.floor(enHoja/C.cols);
+    var x=C.mx + col*(ew+C.gap), y=C.my + fil*(eh+C.gap);
+
+    doc.setDrawColor(215); doc.setLineWidth(0.2);
+    doc.rect(x, y, ew, eh);
+
+    cargarQR(c.activoFijo).then(function(png){
+      var qs=Math.min(eh-9, 16);
+      if(png){ try{ doc.addImage(png,'PNG', x+3, y+2, qs, qs); }catch(e){} }
+
+      var tx=x+3+qs+3, tw=ew-(3+qs+3)-3;
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(20);
+      doc.text('AF: '+(c.activoFijo||''), tx, y+6);
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(70);
+      var mod=doc.splitTextToSize(String(c.modelo||''), tw).slice(0,2);
+      doc.text(mod, tx, y+10);
+      doc.setFontSize(6); doc.setTextColor(120);
+      doc.text(String(getCentroNombre(c.centro)||c.centro||''), tx, y+eh-3.5);
+
+      i++;
+      if(btn && i%10===0) btn.textContent='Generando '+i+' de '+data.length+'...';
+      setTimeout(siguiente, 0);
+    });
+  }
+  siguiente();
+}
+
 function renderEtiquetas(){
   var w=document.getElementById('view-etiquetas');if(!w)return;
   // Las lineas salen del catalogo real; antes estaban escritas a mano y
@@ -4558,7 +4642,8 @@ function renderEtiquetas(){
     +'<span style="font-size:12px;color:#9aa0a6">'
       +(_etiqCargando?'Cargando...':(data.length+' etiqueta(s) · '+Math.ceil(data.length/ETIQ_POR_HOJA)+' hoja(s)'))
       +(!etiqFilt.ce&&!etiqFilt.lin?' — elige un centro o una línea':'')+'</span>'
-    +'<button class="btn btn-blue btn-sm" style="margin-left:auto" onclick="printTodasEtiquetas()">🖨 Imprimir todas</button>'
+    +'<button class="btn btn-sm" style="margin-left:auto" onclick="printTodasEtiquetas()">🖨 Imprimir</button>'
+    +'<button class="btn btn-blue btn-sm" id="etq-pdf-btn" onclick="etiquetasPDF()">&#128438; Descargar PDF</button>'
     +'</div>'
     +'<div style="padding:20px;background:#e8eaed">'
     +hojas.map(function(hoja){
