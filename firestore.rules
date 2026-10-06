@@ -34,14 +34,27 @@ service cloud.firestore {
       return rol() == 'admin' || rol() == 'jefe' || rol() == 'director' || rol() == 'gerente';
     }
 
+    // Direccion nacional: puede asignar cualquier rol.
+    function esDireccion() {
+      return rol() == 'admin' || rol() == 'director' || rol() == 'gerente';
+    }
+
     // ── USUARIOS ──────────────────────────────────────────────────────
     // Cada quien lee su propio perfil (la app lo necesita al entrar).
     // Solo un administrador puede crear, editar o desactivar usuarios:
     // esto cierra la escalada de privilegios.
+    // Un coordinador (jefe) solo crea o edita tecnicos y coordinadores: no
+    // puede nombrar Admin a nadie (ni a si mismo) ni tocar a la direccion.
     match /usuarios/{uid} {
-      allow get:   if request.auth != null && (request.auth.uid == uid || esAdmin());
-      allow list:  if esAdmin();
-      allow write: if esAdmin();
+      allow get:    if request.auth != null && (request.auth.uid == uid || esAdmin());
+      allow list:   if esAdmin();
+      allow create: if esDireccion()
+                    || (rol() == 'jefe' && request.resource.data.rol in ['tecnico', 'jefe']);
+      allow update: if esDireccion()
+                    || (rol() == 'jefe'
+                        && resource.data.rol in ['tecnico', 'jefe']
+                        && request.resource.data.rol in ['tecnico', 'jefe']);
+      allow delete: if esDireccion();
     }
 
     // ── ORDENES ───────────────────────────────────────────────────────

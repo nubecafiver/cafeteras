@@ -889,7 +889,7 @@ var storage = firebase.storage();
 // ══ USUARIOS ══
 // Los perfiles (nombre, rol, centros) viven en la coleccion `usuarios`.
 // TECNICOS se llena al entrar con los tecnicos activos (ver cargarTecnicos).
-var TECNICOS = [];
+var TECNICOS = [], TECNICOS_UID = {};   // nombre -> uid (ver cargarTecnicos)
 
 var GRUPO_NOMBRES = {
   '300010001':'Accesorios Cafeteras',
@@ -1268,6 +1268,27 @@ function bTipo(t){
 function bEst(e){var m={'terminado':'pill-ok','en proceso':'pill-pend','pendiente':'pill-acc','urgente':'pill-venc'};return'<span class="pill '+(m[e]||'pill-acc')+'">'+(e||'pendiente')+'</span>';}
 function fmtF(ts){if(!ts)return'—';if(ts.toDate)return ts.toDate().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});return String(ts).slice(0,10);}
 function esc(s){return String(s||'').replace(/'/g,'\u2019').replace(/"/g,'\u201d').replace(/\n/g,' ').slice(0,80);}
+// Foto del modelo: vive en Storage en una ruta fija por modelo, asi que se
+// muestra directo de ahi. Antes se intentaba guardar el enlace en
+// specs_equipos, pero esa coleccion es de solo lectura en las reglas: la
+// escritura fallaba en silencio y la foto no volvia a aparecer.
+function fotoModeloPath(modelo){
+  return 'equipos/fotos/'+String(modelo||'').toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,40)+'.jpg';
+}
+function fotoModeloUrl(modelo){
+  return 'https://firebasestorage.googleapis.com/v0/b/cafeteras-90e78.firebasestorage.app/o/'
+    +encodeURIComponent(fotoModeloPath(modelo))+'?alt=media';
+}
+// specs_equipos completo, una sola lectura por sesion (antes en cada ficha).
+var _specsCache=null;
+function specsEquipos(){
+  if(_specsCache) return Promise.resolve(_specsCache);
+  return db.collection('specs_equipos').get().then(function(s){
+    _specsCache=s.docs.map(function(d){ return d.data(); });
+    return _specsCache;
+  });
+}
+
 function subirFotoEquipo(inputEl, modelo){
   var file = inputEl.files[0];
   if(!file)return;
@@ -1275,8 +1296,7 @@ function subirFotoEquipo(inputEl, modelo){
   var btn = document.getElementById('dp-foto-btn');
   if(btn){btn.textContent='Subiendo...';btn.disabled=true;}
   // Crear key del modelo
-  var key = modelo.toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,40);
-  var ref = storage.ref('equipos/fotos/'+key+'.jpg');
+  var ref = storage.ref(fotoModeloPath(modelo));
   ref.put(file).then(function(snap){
     return snap.ref.getDownloadURL();
   }).then(function(url){
@@ -1285,21 +1305,8 @@ function subirFotoEquipo(inputEl, modelo){
     if(fotoBox){
       fotoBox.style.display='block';
       var img=fotoBox.querySelector('img');
-      if(img)img.src=url;
+      if(img){ img.onerror=null; img.src=url; img.style.display=''; }
     }
-    // Guardar URL en specs_equipos de Firestore
-    var modeloLower=modelo.toLowerCase();
-    db.collection('specs_equipos').get().then(function(snap2){
-      var batch=db.batch();
-      snap2.docs.forEach(function(d){
-        var busqueda=d.data().busqueda||[];
-        var match=busqueda.some(function(b){
-          return modeloLower.includes(b.toLowerCase().slice(0,12))||b.toLowerCase().includes(modeloLower.slice(0,12));
-        });
-        if(match)batch.update(d.ref,{fotoUrl:url});
-      });
-      batch.commit();
-    });
     toast('✅ Foto subida correctamente');
     if(btn){btn.textContent='📷 Cambiar foto';btn.disabled=false;}
   }).catch(function(err){
@@ -1314,11 +1321,27 @@ function buscarEspecsIA(modelo){
   if(!modelo){box.innerHTML='<span style="color:#9aa0a6">Modelo no disponible</span>';return;}
   box.innerHTML='<div style="color:#8b6914">Buscando especificaciones...</div>';
   var modeloLower=modelo.toLowerCase();
-  db.collection('specs_equipos').get().then(function(snap){
+  // Foto subida desde la ficha (ruta fija en Storage); si no hay, la de specs.
+  var fotoBox0=document.getElementById('dp-foto-box');
+  if(fotoBox0){
+    var img0=fotoBox0.querySelector('img');
+    if(img0){
+      // Si no hay foto subida, se usa la de specs (si la hay) como respaldo.
+      img0.dataset.respaldo=''; img0.dataset.fallo='';
+      // Solo se oculta la imagen: el boton "Subir foto" vive en la misma caja.
+      img0.style.display='none';
+      img0.onload=function(){ img0.style.display=''; };
+      img0.onerror=function(){
+        if(img0.dataset.respaldo && img0.src!==img0.dataset.respaldo){ img0.src=img0.dataset.respaldo; return; }
+        img0.dataset.fallo='1'; img0.style.display='none';
+      };
+      img0.src=fotoModeloUrl(modelo);
+    }
+  }
+  specsEquipos().then(function(lista){
     var found=null;
-    snap.docs.forEach(function(d){
+    lista.forEach(function(data){
       if(found)return;
-      var data=d.data();
       var busqueda=data.busqueda||[];
       for(var i=0;i<busqueda.length;i++){
         var b=busqueda[i].toLowerCase();
@@ -1329,11 +1352,10 @@ function buscarEspecsIA(modelo){
       // Mostrar foto desde Firebase Storage
       var fotoBox=document.getElementById('dp-foto-box');
       if(fotoBox&&found.fotoUrl){
-        fotoBox.style.display='block';
         var fotoEl=fotoBox.querySelector('img');
         if(fotoEl){
-          fotoEl.src=found.fotoUrl;
-          fotoEl.onerror=function(){fotoBox.style.display='none';};
+          fotoEl.dataset.respaldo=found.fotoUrl;
+          if(fotoEl.dataset.fallo) fotoEl.src=found.fotoUrl;   // la subida ya fallo
         }
         var lblEl=document.getElementById('dp-foto-label');
         if(lblEl)lblEl.textContent=(found.marca||'')+' '+(found.modelo||'');
@@ -1566,16 +1588,33 @@ function loadData(onReady){
 // se aplica encima del dato del servidor. Si despues la importacion trae un
 // estado distinto al que habia cuando se hizo el cambio, gana la importacion.
 var _estadoManual = {};   // activoFijo -> ultimo movimiento manual de estado
+// Para no leer todos los movimientos en cada entrada, el navegador guarda los
+// que ya leyo y solo pide a Firestore los posteriores al ultimo visto.
+var _EM_KEY='cafiver_estadoManual_v1', _estadosListos=null;
 function cargarEstadosManuales(){
+  var g=null;
+  try{ g=JSON.parse(localStorage.getItem(_EM_KEY)||'null'); }catch(e){}
+  _estadoManual=(g&&g.mapa)||{};
+  var desde=(g&&g.hasta)||0;
   // Solo los movimientos de la consola tienen `ts`; los del servidor no.
-  return db.collection('movimientos').orderBy('ts','desc').limit(2000).get().then(function(s){
-    _estadoManual = {};
+  var q=db.collection('movimientos');
+  if(desde) q=q.where('ts','>',firebase.firestore.Timestamp.fromMillis(desde));
+  _estadosListos=q.orderBy('ts','asc').limit(2000).get().then(function(s){
+    var hasta=desde;
     s.docs.forEach(function(d){
-      var m=d.data(), k=String(m.activoFijo);
-      if(m.estadoNuevo && !_estadoManual[k]) _estadoManual[k]=m;
+      var m=d.data(), ms=(m.ts&&m.ts.toMillis)?m.ts.toMillis():0;
+      if(ms>hasta) hasta=ms;
+      if(m.estadoNuevo) _estadoManual[String(m.activoFijo)]={
+        activoFijo:m.activoFijo, estadoNuevo:m.estadoNuevo, estadoAnterior:m.estadoAnterior||'',
+        estadoServidor:m.estadoServidor, almacenDestino:m.almacenDestino||''
+      };
     });
+    try{ localStorage.setItem(_EM_KEY, JSON.stringify({hasta:hasta, mapa:_estadoManual})); }catch(e){}
   }).catch(function(e){ console.warn('estados manuales:', e.code||e); });
+  return _estadosListos;
 }
+// Las busquedas esperan a que el mapa este listo antes de pintar equipos.
+function trasEstados(x){ return (_estadosListos||Promise.resolve()).then(function(){ return x; }); }
 function conEstadoManual(e){
   if(!e) return e;
   var m=_estadoManual[String(e.activoFijo)];
@@ -1598,11 +1637,9 @@ function cargarCatalogosYDatos(){
   // Los nombres se resuelven puntualmente cuando se necesitan (ver getAlmacenNombre).
   // Clientes YA NO se cargan completos al abrir (eran miles de lecturas por carga).
   // Los equipos ya traen clienteNombre; si falta algún nombre, se busca ese cliente puntual.
-  Promise.all([db.collection('equipos').limit(300).get(), cargarEstadosManuales()]).then(function(r){
-    var s=r[0];
-    equipos=s.docs.map(function(d){return conEstadoManual({id:d.id,...d.data()});});
-    if(curView==='equipos')renderEquipos();
-  }).catch(function(e){console.warn(e);});
+  // Antes se traian 300 equipos cualquiera al entrar (300 lecturas por
+  // sesion) que casi nada usaba: las pantallas consultan lo que necesitan.
+  cargarEstadosManuales();
   db.collection('ordenes').orderBy('creadoEn','desc').limit(200).onSnapshot(function(s){
     ordenes=s.docs.map(function(d){return{id:d.id,...d.data()};});
     if(curView==='dashboard')renderDashboard();
@@ -1624,8 +1661,17 @@ var DOMINIO_INTERNO = 'tecnicos.cafiver.mx';   // el tecnico nunca lo teclea
 var ROLES = [
   { v:'tecnico', n:'Técnico',     d:'Solo su celular. Ve sus órdenes y su ruta.' },
   { v:'jefe',    n:'Coordinador', d:'Escritorio y celular. Ve y asigna en sus centros.' },
-  { v:'admin',   n:'Admin',       d:'Todo el país.' }
+  { v:'admin',   n:'Admin',       d:'Todo el país.' },
+  { v:'gerente',  n:'Gerente',     d:'Todo el país.' },
+  { v:'director', n:'Director',    d:'Todo el país.' }
 ];
+// Roles que no se limitan a centros.
+function rolNacional(r){ return r==='admin' || r==='gerente' || r==='director'; }
+// Un coordinador solo da de alta o edita tecnicos y coordinadores. Antes
+// podia nombrar Admin a cualquiera, incluido el mismo.
+function rolesAsignables(){
+  return esAlcanceNacional() ? ROLES : ROLES.filter(function(R){ return R.v==='tecnico' || R.v==='jefe'; });
+}
 var _usuarios = [], _usrEdit = null, _appAlta = null, _usrFiltro = '';
 
 // Lista de tecnicos para el formulario de orden. Solo un administrador puede
@@ -1635,11 +1681,11 @@ function cargarTecnicos(){
     var sel=document.getElementById('o-tecnico');
     if(sel)sel.innerHTML=TECNICOS.map(function(t){return'<option>'+esc(t)+'</option>';}).join('');
   }
-  TECNICOS=[curUser.name]; pinta();
+  TECNICOS=[curUser.name]; TECNICOS_UID[curUser.name]=curUser.uid; pinta();
   if(!esAdminUsuarios()) return;
   db.collection('usuarios').where('rol','==','tecnico').get().then(function(s){
     var n=[];
-    s.forEach(function(d){ var x=d.data(); if(x.activo!==false && x.nombre) n.push(x.nombre); });
+    s.forEach(function(d){ var x=d.data(); if(x.activo!==false && x.nombre){ n.push(x.nombre); TECNICOS_UID[x.nombre]=d.id; } });
     if(n.length){ TECNICOS=n.sort(function(a,b){return a.localeCompare(b);}); pinta(); }
   }).catch(function(e){ console.warn('tecnicos:',e.code||e); });
 }
@@ -1678,7 +1724,7 @@ function renderUsuarios(){
     +'<div class="tbl-hdr" style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap">'
     +'<b style="font-size:15px">Usuarios</b>'
     +'<input class="fi-sm" id="usr-q" type="search" placeholder="Buscar por nombre, número o centro..." style="flex:1;min-width:200px">'
-    +'<button class="btn" onclick="impAbrir()"><i class="ti ti-file-spreadsheet"></i> Importar Excel</button>'
+    +(esAlcanceNacional() ? '<button class="btn" onclick="impAbrir()"><i class="ti ti-file-spreadsheet"></i> Importar Excel</button>' : '')
     +'<button class="btn btn-blue" onclick="usrNuevo()"><i class="ti ti-plus"></i> Nuevo usuario</button>'
     +'</div>'
     +'<div id="usr-lista" style="padding:6px 4px"><div style="padding:30px;text-align:center;color:var(--cf-text2)">Cargando...</div></div>'
@@ -1733,7 +1779,11 @@ function usrPintar(){
   var html = '<div style="padding:4px 10px 10px;font-size:12px;color:var(--cf-text2)">'
     + lista.length + ' usuario(s)</div>';
 
-  ROLES.concat([{v:'(sin rol)',n:'Sin rol',d:''}]).forEach(function(R){
+  var _grupos = ROLES.concat([{v:'(sin rol)',n:'Sin rol',d:''}]);
+  Object.keys(porRol).forEach(function(r){
+    if(!_grupos.some(function(R){ return R.v===r; })) _grupos.push({v:r, n:r, d:''});
+  });
+  _grupos.forEach(function(R){
     var arr = porRol[R.v]; if(!arr || !arr.length) return;
     html += '<div style="padding:8px 12px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8b6914;font-weight:700">'
       + esc(R.n) + ' · ' + arr.length + '</div>';
@@ -1767,7 +1817,16 @@ function usrCerrar(){ document.getElementById('usr-modal').style.display='none';
 function usrForm(){
   var u = _usrEdit, nuevo = !u;
   var cen = u ? centrosDe(u) : [];
-  var jefes = _usuarios.filter(function(x){ return x.rol==='jefe' || x.rol==='admin'; });
+  // Un coordinador no edita a usuarios de nivel nacional.
+  if(u && rolNacional(u.rol) && !esAlcanceNacional()){
+    document.getElementById('usr-modal-body').innerHTML =
+      '<div style="padding:22px 20px;text-align:center"><div style="font-size:14px;margin-bottom:14px">'
+      +'Solo un Admin, Gerente o Director puede editar a '+esc(u.nombre||'este usuario')+'.</div>'
+      +'<button class="btn btn-blue" style="width:100%;justify-content:center;padding:11px" onclick="usrCerrar()">Entendido</button></div>';
+    document.getElementById('usr-modal').style.display = 'flex';
+    return;
+  }
+  var jefes = _usuarios.filter(function(x){ return x.rol==='jefe' || rolNacional(x.rol); });
 
   // Centros: del catalogo real, para no escribirlos a mano
   var centros = Object.keys(catalogoCentros).length
@@ -1801,7 +1860,7 @@ function usrForm(){
 
     +'<label style="font-size:11px;color:var(--cf-text2);font-weight:600">ROL</label>'
     +'<select class="fi-sm" id="u-rol" style="width:100%;margin:4px 0 4px" onchange="usrRolCambio()">'
-    + ROLES.map(function(R){
+    + rolesAsignables().map(function(R){
         return '<option value="'+R.v+'"'+((u&&u.rol===R.v)?' selected':'')+'>'+R.n+'</option>';
       }).join('')
     +'</select>'
@@ -1862,7 +1921,8 @@ function usrGuardar(){
 
   if(nuevo && !/^\d+$/.test(num)){ err.textContent='El número de empleado debe ser solo dígitos.'; return; }
   if(!nom){ err.textContent='Escribe el nombre completo.'; return; }
-  if(rol !== 'admin' && !cen.length){ err.textContent='Asigna al menos un centro.'; return; }
+  if(!rolesAsignables().some(function(R){ return R.v===rol; })){ err.textContent='No puedes asignar ese rol.'; return; }
+  if(!rolNacional(rol) && !cen.length){ err.textContent='Asigna al menos un centro.'; return; }
   if(nuevo && _usuarios.some(function(u){ return String(u.numeroEmpleado)===num; })){
     err.textContent='Ya existe un usuario con ese número de empleado.'; return;
   }
@@ -2106,6 +2166,7 @@ function impVistaPrevia(){
 function impEspera(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
 async function impAplicar(){
   var r = _imp; if(!r) return;
+  if(!esAlcanceNacional()){ toast('Solo un Admin, Gerente o Director puede importar.'); return; }
   var btn = document.getElementById('imp-ok'), prog = document.getElementById('imp-prog');
   btn.disabled = true; btn.textContent = 'Importando… no cierres esta ventana';
   var bajas = [].slice.call(document.querySelectorAll('.imp-baja:checked')).map(function(c){ return r.bajas[+c.value]; });
@@ -2872,32 +2933,43 @@ function rutaReasignarOK(){
   var c=_reasig.cliente, destinoId=uid+'_'+fecha;
   err.textContent='Reasignando...';
 
-  db.collection('rutas').doc(destinoId).get().then(function(d){
-    var dest = d.exists ? d.data() : {
-      tecnicoUid:uid, tecnicoNombre:(t.nombre||t.email),
-      centro:(t.centro||''), fecha:fecha, clientes:[]
-    };
-    dest.clientes = dest.clientes||[];
-    if(dest.clientes.some(function(x){ return x.clienteNombre===c.clienteNombre; })){
-      err.textContent='Ese técnico ya tiene a ese cliente ese día.';
-      return null;
-    }
-    dest.clientes.push({
-      clienteNombre:c.clienteNombre, clienteNum:c.clienteNum||'',
-      nota:c.nota||'', tipo:c.tipo||'preventivo', visitado:false, estado:'pendiente',
-      reasignadoDe:_rutaEdit.tecnicoNombre, reasignadoDeFecha:_rutaEdit.fecha
+  // Destino y origen se escriben juntos: antes el origen solo cambiaba al
+  // pulsar Guardar y, si no se pulsaba, la parada quedaba en las dos rutas.
+  var origenId=_rutaEdit.tecnicoUid+'_'+_rutaEdit.fecha;
+  var refDest=db.collection('rutas').doc(destinoId), refOrig=db.collection('rutas').doc(origenId);
+  var marca={estado:'reasignado', visitado:false, reasignadoA:(t.nombre||t.email)};
+  db.runTransaction(function(tx){
+    return Promise.all([tx.get(refDest), tx.get(refOrig)]).then(function(r){
+      var d=r[0], o=r[1];
+      var dest = d.exists ? d.data() : {
+        tecnicoUid:uid, tecnicoNombre:(t.nombre||t.email),
+        centro:(t.centro||''), fecha:fecha, clientes:[]
+      };
+      dest.clientes = dest.clientes||[];
+      if(dest.clientes.some(function(x){ return x.clienteNombre===c.clienteNombre; })) return 'dup';
+      dest.clientes.push({
+        clienteNombre:c.clienteNombre, clienteNum:c.clienteNum||'',
+        nota:c.nota||'', tipo:c.tipo||'preventivo', visitado:false, estado:'pendiente',
+        reasignadoDe:_rutaEdit.tecnicoNombre, reasignadoDeFecha:_rutaEdit.fecha
+      });
+      dest.actualizadoEn = firebase.firestore.FieldValue.serverTimestamp();
+      tx.set(refDest, dest, {merge:true});
+      // En el origen queda el rastro, no se borra. Si la ruta de origen aun
+      // no se ha guardado, la marca viaja con el siguiente Guardar.
+      if(o.exists){
+        var oc=(o.data().clientes||[]).map(function(x){
+          return x.clienteNombre===c.clienteNombre ? Object.assign({},x,marca) : x;
+        });
+        tx.update(refOrig, {clientes:oc, actualizadoEn:firebase.firestore.FieldValue.serverTimestamp()});
+      }
+      return 'ok';
     });
-    dest.actualizadoEn = firebase.firestore.FieldValue.serverTimestamp();
-    return db.collection('rutas').doc(destinoId).set(dest,{merge:true});
   }).then(function(r){
-    if(r===null) return;
-    // En el origen queda el rastro, no se borra.
-    _rutaEdit.clientes[_reasig.idx].estado='reasignado';
-    _rutaEdit.clientes[_reasig.idx].visitado=false;
-    _rutaEdit.clientes[_reasig.idx].reasignadoA=(t.nombre||t.email);
+    if(r==='dup'){ err.textContent='Ese técnico ya tiene a ese cliente ese día.'; return; }
+    Object.assign(_rutaEdit.clientes[_reasig.idx], marca);
     rutaReasignarCerrar();
     rutaRefrescarLista();
-    if(typeof toast==='function') toast('Reasignado a '+(t.nombre||t.email)+'. Guarda la ruta para confirmar.');
+    if(typeof toast==='function') toast('Reasignado a '+(t.nombre||t.email)+'.');
   }).catch(function(e2){
     err.textContent='Error: '+e2.message;
   });
@@ -2928,6 +3000,23 @@ function rutaListaHTML(){
 }
 function rutaDelCliente(i){ _rutaEdit.clientes.splice(i,1); rutaRefrescarLista(); }
 
+// Lo que decide el tecnico (visitado / no atendido, motivo) gana sobre la
+// copia del coordinador, salvo que el coordinador haya reasignado la parada.
+function rutaConservarMarcas(locales, servidor){
+  var porNombre={};
+  servidor.forEach(function(s){ porNombre[s.clienteNombre]=s; });
+  return locales.map(function(c){
+    var s=porNombre[c.clienteNombre];
+    if(!s || c.estado==='reasignado') return c;
+    var st=estadoParada(s);
+    if(st!=='visitado' && st!=='no_atendido') return c;
+    var o=Object.assign({},c,{visitado:!!s.visitado, estado:st});
+    if(s.motivo) o.motivo=s.motivo; else delete o.motivo;
+    if(s.marcadoEn) o.marcadoEn=s.marcadoEn;
+    return o;
+  });
+}
+
 function rutaGuardar(){
   var e=_rutaEdit;
   if(!e.tecnicoUid||!e.fecha||!e.clientes.length){ alert('Falta técnico, fecha o clientes.'); return; }
@@ -2938,6 +3027,7 @@ function rutaGuardar(){
       var o={clienteNombre:c.clienteNombre, clienteNum:c.clienteNum||'', nota:c.nota||'',
              tipo:c.tipo||'preventivo', visitado:!!c.visitado, estado:estadoParada(c)};
       if(c.motivo) o.motivo=c.motivo;
+      if(c.marcadoEn) o.marcadoEn=c.marcadoEn;
       if(c.reasignadoA) o.reasignadoA=c.reasignadoA;
       if(c.vieneDe){ o.vieneDe=c.vieneDe; o.vieneDeFecha=c.vieneDeFecha||''; }
       if(c.reasignadoDe){ o.reasignadoDe=c.reasignadoDe; o.reasignadoDeFecha=c.reasignadoDeFecha||''; }
@@ -2945,7 +3035,17 @@ function rutaGuardar(){
     }),
     actualizadoEn: firebase.firestore.FieldValue.serverTimestamp()
   };
-  db.collection('rutas').doc(id).set(data,{merge:true}).then(function(){
+  // El tecnico marca visitas en esta misma ruta desde su celular. Se lee la
+  // version actual y se conservan sus marcas; antes se guardaba la copia
+  // cargada al abrir y se borraba lo que el tecnico habia marcado despues.
+  var ref=db.collection('rutas').doc(id);
+  db.runTransaction(function(tx){
+    return tx.get(ref).then(function(d){
+      if(d.exists) data.clientes=rutaConservarMarcas(data.clientes, d.data().clientes||[]);
+      tx.set(ref,data,{merge:true});
+    });
+  }).then(function(){
+    e.clientes=data.clientes;
     _progRutas[id]=data;
     if(typeof progCerrarModal==='function')progCerrarModal();
     if(curView==='programacion')cargarProgramacion();
@@ -3720,7 +3820,7 @@ function buscarEquiposFirestore(){
     if(tbody)tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Selecciona una línea, un centro, o escribe un activo fijo/serie para buscar.</td></tr>';
     return;
   }
-  Promise.all(queries).then(function(snaps){
+  Promise.all(queries).then(trasEstados).then(function(snaps){
     var seen=new Set(),items=[];
     snaps.forEach(function(s){
       s.docs.forEach(function(d){
@@ -3808,6 +3908,20 @@ function centroPorDefecto(){
   return (eu.length?eu:keys.slice().sort())[0]||'';
 }
 
+// Resultados de Clientes guardados 10 minutos por consulta. Una bodega o un
+// centro son hasta 4,000 lecturas: repetir la misma busqueda (o buscar un
+// nombre dentro del mismo centro) ya no las vuelve a cobrar.
+var _clCache={}, CL_CACHE_MS=10*60*1000;
+function clConsulta(clave, fn){
+  var c=_clCache[clave];
+  if(c && Date.now()-c.t < CL_CACHE_MS) return Promise.resolve(c.docs);
+  return fn().then(function(s){
+    var docs=s.docs.map(function(d){ return {id:d.id, data:d.data()}; });
+    _clCache[clave]={t:Date.now(), docs:docs};
+    return docs;
+  });
+}
+
 function buscarClientes(){
   var tree=document.getElementById('cl-tree'); if(!tree)return;
   var q=((document.getElementById('cl-q')||{}).value||'').trim();
@@ -3816,27 +3930,27 @@ function buscarClientes(){
   var col=db.collection('equipos'), promises=[];
   if(_clModo==='bodega'){
     if(!ce){ tree.innerHTML='<div style="padding:36px;text-align:center;color:#6b7c63">Elige un centro para ver su bodega.</div>'; return; }
-    promises.push(col.where('centro','==',ce).limit(4000).get());
+    promises.push(clConsulta('centro|'+ce, function(){ return col.where('centro','==',ce).limit(4000).get(); }));
   } else {
     if(!q&&!ce){ tree.innerHTML='<div style="padding:36px;text-align:center;color:#6b7c63">Busca por número o nombre de cliente.</div>'; return; }
     if(q&&!isNaN(q)){
-      promises.push(col.where('cliente','==',q).limit(1500).get());
-      promises.push(col.where('activoFijo','==',parseFloat(q)).limit(50).get());
+      promises.push(clConsulta('cliente|'+q, function(){ return col.where('cliente','==',q).limit(1500).get(); }));
+      promises.push(clConsulta('af|'+q, function(){ return col.where('activoFijo','==',parseFloat(q)).limit(50).get(); }));
     } else if(q){
       var variantes=[q,q.toUpperCase(),q.charAt(0).toUpperCase()+q.slice(1).toLowerCase()], visto={};
       variantes.forEach(function(v){ if(visto[v])return; visto[v]=true;
         var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
-        promises.push(col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(600).get());
+        promises.push(clConsulta('nom|'+v, function(){ return col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(600).get(); }));
       });
-      if(ce)promises.push(col.where('centro','==',ce).limit(4000).get());
+      if(ce)promises.push(clConsulta('centro|'+ce, function(){ return col.where('centro','==',ce).limit(4000).get(); }));
     } else if(ce){
-      promises.push(col.where('centro','==',ce).limit(4000).get());
+      promises.push(clConsulta('centro|'+ce, function(){ return col.where('centro','==',ce).limit(4000).get(); }));
     }
   }
   var _tOut=new Promise(function(_,rej){setTimeout(function(){rej(new Error('__timeout__'));},12000);});
-  Promise.race([Promise.all(promises),_tOut]).then(function(snaps){
+  Promise.race([Promise.all(promises),_tOut]).then(trasEstados).then(function(snaps){
     var seen={}, data=[];
-    snaps.forEach(function(s){ s.docs.forEach(function(d){ if(seen[d.id])return; seen[d.id]=true; data.push(conEstadoManual({id:d.id, ...d.data()})); }); });
+    snaps.forEach(function(s){ s.forEach(function(d){ if(seen[d.id])return; seen[d.id]=true; data.push(conEstadoManual(Object.assign({id:d.id}, d.data))); }); });
     var ql=q.toLowerCase(), qNum=(q&&!isNaN(q));
     data=data.filter(function(e){
       if(ce&&e.centro!==ce)return false;
@@ -5245,6 +5359,11 @@ function exportExcelGerencial(){
 
 // ══ NUEVA ORDEN ══
 function openFormOrden(){
+  // Formulario limpio = orden nueva. editOrden vuelve a marcar la edicion
+  // despues de llamar aqui; sin esto, cancelar una edicion y crear una orden
+  // nueva sobrescribia la orden que se estaba editando.
+  window._editandoOrdenId=null; window._editandoFolio=null;
+  document.getElementById('orden-modal-title').textContent='Nueva Orden de Servicio';
   document.getElementById('o-af').value='';document.getElementById('o-serie').value='';
   document.getElementById('o-modelo').value='';document.getElementById('o-centro').value='';
   document.getElementById('o-cliente').value='';document.getElementById('o-email').value='';
@@ -5580,8 +5699,18 @@ function saveOrden(irFirmar){
   // Si es edición, actualizar; si es nuevo, crear
   var promise;
   if(window._editandoOrdenId){
+    var orig=ordenes.find(function(o){return o.id===window._editandoOrdenId;})||{};
     data.folio=window._editandoFolio||data.folio;
-    data.estado=(ordenes.find(function(o){return o.id===window._editandoOrdenId;})||{}).estado||'pendiente';
+    data.estado=orig.estado||'pendiente';
+    // Al editar se conservan la fecha de creacion y la firma, y el tecnico
+    // asignado solo cambia si se eligio otro en el formulario.
+    delete data.creadoEn; delete data.firmado;
+    data.tecnicoUid = (tec===orig.tecnicoNombre) ? (orig.tecnicoUid||'') : (TECNICOS_UID[tec]||'');
+    // El formulario no recarga el checklist Brillante ni el de linea al
+    // editar: si no estan a la vista, no se sobrescriben con vacios.
+    if(orig.formato==='brillante' && formatoOrdenActual!=='brillante'){ delete data.formato; delete data.brillante; }
+    var _ckc=document.getElementById('ck-linea-container');
+    if(!_ckc || _ckc.style.display==='none'){ delete data.checklistLinea; delete data.checklistLineaObs; }
     promise=db.collection('ordenes').doc(window._editandoOrdenId).update(data).then(function(){
       return {id:window._editandoOrdenId};
     });
@@ -5981,7 +6110,7 @@ function procesarEscaneo(af){
   var eq=clientes.find(function(c){return String(c.activoFijo)===String(af);})||equipos.find(function(c){return String(c.activoFijo)===String(af);});
   if(!eq){
     // Buscar en Firestore
-    db.collection('equipos').where('activoFijo','==',parseInt(af)||af).limit(1).get().then(function(s){
+    db.collection('equipos').where('activoFijo','==',parseInt(af)||af).limit(1).get().then(trasEstados).then(function(s){
       if(!s.empty){var d=conEstadoManual({id:s.docs[0].id,...s.docs[0].data()});mostrarPopupScan(d);}
       else toast('❌ Equipo con AF '+af+' no encontrado');
     });
