@@ -1560,6 +1560,34 @@ function loadData(onReady){
 }
 
 // Catálogos pesados + equipos/órdenes — diferido, no bloquea el arranque
+// ══ ESTADO MANUAL DE EQUIPOS ══
+// `equipos` es de solo lectura en las reglas (lo escribe importar.js). Un
+// cambio de estado hecho en la consola se guarda solo como movimiento, y aqui
+// se aplica encima del dato del servidor. Si despues la importacion trae un
+// estado distinto al que habia cuando se hizo el cambio, gana la importacion.
+var _estadoManual = {};   // activoFijo -> ultimo movimiento manual de estado
+function cargarEstadosManuales(){
+  // Solo los movimientos de la consola tienen `ts`; los del servidor no.
+  return db.collection('movimientos').orderBy('ts','desc').limit(2000).get().then(function(s){
+    _estadoManual = {};
+    s.docs.forEach(function(d){
+      var m=d.data(), k=String(m.activoFijo);
+      if(m.estadoNuevo && !_estadoManual[k]) _estadoManual[k]=m;
+    });
+  }).catch(function(e){ console.warn('estados manuales:', e.code||e); });
+}
+function conEstadoManual(e){
+  if(!e) return e;
+  var m=_estadoManual[String(e.activoFijo)];
+  if(!m) return e;
+  if(e._estadoServidor===undefined){ e._estadoServidor=e.estado; e._almacenServidor=e.almacen; }
+  var base = m.estadoServidor!==undefined ? m.estadoServidor : m.estadoAnterior;
+  if((e._estadoServidor||'con_cliente')!==(base||'con_cliente')) return e;   // la importacion ya lo cambio
+  e.estado=m.estadoNuevo;
+  e.almacen=m.almacenDestino||e._almacenServidor;
+  return e;
+}
+
 function cargarCatalogosYDatos(){
   db.collection('centros').get().then(function(s){
     s.docs.forEach(function(d){catalogoCentros[d.id]=d.data();});
@@ -1570,8 +1598,9 @@ function cargarCatalogosYDatos(){
   // Los nombres se resuelven puntualmente cuando se necesitan (ver getAlmacenNombre).
   // Clientes YA NO se cargan completos al abrir (eran miles de lecturas por carga).
   // Los equipos ya traen clienteNombre; si falta algún nombre, se busca ese cliente puntual.
-  db.collection('equipos').limit(300).get().then(function(s){
-    equipos=s.docs.map(function(d){return{id:d.id,...d.data()};});
+  Promise.all([db.collection('equipos').limit(300).get(), cargarEstadosManuales()]).then(function(r){
+    var s=r[0];
+    equipos=s.docs.map(function(d){return conEstadoManual({id:d.id,...d.data()});});
     if(curView==='equipos')renderEquipos();
   }).catch(function(e){console.warn(e);});
   db.collection('ordenes').orderBy('creadoEn','desc').limit(200).onSnapshot(function(s){
@@ -3447,7 +3476,7 @@ function buscarEquiposFirestore(){
       s.docs.forEach(function(d){
         if(!seen.has(d.id)){
           seen.add(d.id);
-          var e={id:d.id,...d.data()};
+          var e=conEstadoManual({id:d.id,...d.data()});
           // Filtros en cliente (se aplican siempre, sin importar por cuál campo se consultó)
           if(eqFiltros.centro&&e.centro!==eqFiltros.centro)return;
           if(eqFiltros.almacen&&eqFiltros.linea&&e.linea!==eqFiltros.linea)return;
@@ -3557,7 +3586,7 @@ function buscarClientes(){
   var _tOut=new Promise(function(_,rej){setTimeout(function(){rej(new Error('__timeout__'));},12000);});
   Promise.race([Promise.all(promises),_tOut]).then(function(snaps){
     var seen={}, data=[];
-    snaps.forEach(function(s){ s.docs.forEach(function(d){ if(seen[d.id])return; seen[d.id]=true; data.push({id:d.id, ...d.data()}); }); });
+    snaps.forEach(function(s){ s.docs.forEach(function(d){ if(seen[d.id])return; seen[d.id]=true; data.push(conEstadoManual({id:d.id, ...d.data()})); }); });
     var ql=q.toLowerCase(), qNum=(q&&!isNaN(q));
     data=data.filter(function(e){
       if(ce&&e.centro!==ce)return false;
@@ -3915,7 +3944,12 @@ function cargarMovimientos(activoFijo){
   var nombres={almacen:'Almacén',centro:'Centro',cliente:'Cliente',estado:'Estado'};
   var iconos={almacen:'ti-building-warehouse',centro:'ti-map-pin',cliente:'ti-user',estado:'ti-flag'};
   db.collection('movimientos').where('activoFijo','==',parseInt(activoFijo)||activoFijo).limit(50).get().then(function(s){
-    var arr=s.docs.map(function(d){return d.data();});
+    var arr=s.docs.map(function(d){
+      var m=d.data();
+      // Los cambios de estado hechos en la consola usan otros campos.
+      if(!m.campo && m.estadoNuevo){ m={campo:'estado',de:m.estadoAnterior,a:m.estadoNuevo,fecha:m.ts||m.fecha}; }
+      return m;
+    });
     arr.sort(function(a,b){return((b.fecha&&b.fecha.seconds)||0)-((a.fecha&&a.fecha.seconds)||0);});
     if(!arr.length){ box.innerHTML='<div style="font-size:12px;color:#9aa0a6">Sin movimientos registrados. Se irán guardando cuando el equipo cambie de almacén, cliente o estado.</div>'; return; }
     box.innerHTML=arr.map(function(m){
@@ -5127,20 +5161,20 @@ function guardarCambioEstado(docId, af, modelo, estadoAnterior){
     ts:firebase.firestore.FieldValue.serverTimestamp(),
     fecha:new Date().toISOString().slice(0,10)
   };
-  // Guardar movimiento
+  // Estado que traia la importacion al momento del cambio (ver conEstadoManual).
+  var eq=findEquipo(docId);
+  mov.estadoServidor = eq ? (eq._estadoServidor!==undefined ? eq._estadoServidor : eq.estado) || '' : estadoAnterior;
+  // Solo se guarda el movimiento: `equipos` es de solo lectura en las reglas.
   db.collection('movimientos').add(mov).then(function(){
-    // Actualizar estado en el documento del equipo
-    var col='equipos'; // nueva estructura: todo en equipos
-    db.collection(col).doc(docId).update({estado:nuevoEstado,almacen:almacen||firebase.firestore.FieldValue.delete()})
-      .then(function(){
-        // Actualizar en memoria
-        var eq=clientes.find(function(x){return x.id===docId;})||equipos.find(function(x){return x.id===docId;});
-        if(eq){eq.estado=nuevoEstado;if(almacen)eq.almacen=almacen;}
-        document.getElementById('modal-estado').remove();
-        toast('✅ Estado actualizado: '+ESTADOS[nuevoEstado].label);
-        if(openEqId===docId)dpTab('estado');
-      });
-  }).catch(function(err){toast('Error: '+err.message);});
+    _estadoManual[String(mov.activoFijo)]=mov;
+    movimientos=[];   // que la vista de movimientos recargue
+    [clientes,equipos,_clientesRes,_equiposRes].forEach(function(arr){
+      (arr||[]).forEach(function(x){ if(x.id===docId||String(x.activoFijo)===String(mov.activoFijo)) conEstadoManual(x); });
+    });
+    var m=document.getElementById('modal-estado'); if(m)m.remove();
+    toast('✅ Estado actualizado: '+ESTADOS[nuevoEstado].label);
+    if(openEqId===docId)dpTab('estado');
+  }).catch(function(err){toast('⚠️ No se pudo guardar: '+err.message);});
 }
 
 function renderMovimientos(){
@@ -5698,7 +5732,7 @@ function procesarEscaneo(af){
   if(!eq){
     // Buscar en Firestore
     db.collection('equipos').where('activoFijo','==',parseInt(af)||af).limit(1).get().then(function(s){
-      if(!s.empty){var d={id:s.docs[0].id,...s.docs[0].data()};mostrarPopupScan(d);}
+      if(!s.empty){var d=conEstadoManual({id:s.docs[0].id,...s.docs[0].data()});mostrarPopupScan(d);}
       else toast('❌ Equipo con AF '+af+' no encontrado');
     });
     return;
