@@ -1,0 +1,27 @@
+rules_version = '2';
+
+// Reglas de Firestore para CAFIVER — Gestión de Equipos.
+//
+// Con sesión iniciada se conserva el acceso que la app usa hoy (consola,
+// app del técnico). Sin sesión solo se permite abrir UNA orden por su ID,
+// que es lo que necesita el comprobante público (orden.html?id=...).
+// El ID lo genera Firestore al azar, así que no se puede adivinar, y como
+// "list" queda cerrado nadie puede descargar todas las órdenes.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function conSesion() {
+      return request.auth != null;
+    }
+
+    match /ordenes/{ordenId} {
+      allow get: if true;
+      allow list, create, update, delete: if conSesion();
+    }
+
+    // Todo lo demás: solo con sesión.
+    match /{document=**} {
+      allow read, write: if conSesion();
+    }
+  }
+}

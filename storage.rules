@@ -1,0 +1,17 @@
+rules_version = '2';
+
+// Reglas de Storage para CAFIVER — Gestión de Equipos.
+//
+// Las fotos se muestran con enlaces directos (...?alt=media) en la consola,
+// la app del técnico y el comprobante público, así que abrir UN archivo por
+// su ruta sigue siendo público. Listar carpetas y subir/borrar archivos
+// requiere sesión: sin esto cualquiera podría recorrer ordenes/ y ver las
+// fotos de todos los clientes.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow get: if true;
+      allow list, write: if request.auth != null;
+    }
+  }
+}
