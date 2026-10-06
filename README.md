@@ -18,11 +18,6 @@ Las fotos de cada orden se guardan en `ordenes/<id de captura>/` y sus enlaces q
 
 ## Reglas de seguridad
 
-`firestore.rules` y `storage.rules` son las reglas recomendadas. **No se publican solas**: hay que copiarlas en la consola de Firebase (proyecto `cafeteras-90e78`):
+`firestore.rules` es copia de las reglas **publicadas** en Firebase (proyecto `cafeteras-90e78`): exige perfil activo en `usuarios`, permisos por rol y deja público solo abrir una orden por su ID (comprobante). Si se cambian en la consola, actualiza también este archivo.
 
-- Firestore Database → Reglas → pegar `firestore.rules` → Publicar
-- Storage → Reglas → pegar `storage.rules` → Publicar
-
-o con la CLI: `firebase deploy --only firestore:rules,storage`.
-
-Antes de publicar, compáralas con las reglas actuales de la consola. Si hoy existen reglas por rol (técnico / jefe / admin), consérvalas y agrega solo lo de `ordenes` (get público, list con sesión) y el `list` con sesión de Storage.
+`storage.rules` es una **propuesta** sin publicar: abrir un archivo por su ruta sigue siendo público (las fotos se muestran con enlace directo), pero listar carpetas y subir archivos requieren sesión. Antes de publicarla, compárala con la de la consola (Storage → Reglas).

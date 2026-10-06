@@ -1,27 +1,122 @@
 rules_version = '2';
-
-// Reglas de Firestore para CAFIVER — Gestión de Equipos.
-//
-// Con sesión iniciada se conserva el acceso que la app usa hoy (consola,
-// app del técnico). Sin sesión solo se permite abrir UNA orden por su ID,
-// que es lo que necesita el comprobante público (orden.html?id=...).
-// El ID lo genera Firestore al azar, así que no se puede adivinar, y como
-// "list" queda cerrado nadie puede descargar todas las órdenes.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function conSesion() {
-      return request.auth != null;
+    // ══════════════════════════════════════════════════════════════════
+    //  ETAPA 1 — cerrar escalada de privilegios y escritura indebida
+    //
+    //  El apiKey viaja en el navegador (es normal en Firebase), asi que
+    //  cualquiera puede crearse una cuenta de Auth. Por eso NO basta con
+    //  pedir sesion: se exige ademas tener documento en `usuarios` y estar
+    //  activo. Una cuenta auto-registrada entra a Auth pero no lee nada.
+    //
+    //  Las colecciones que alimenta el servidor (equipos, config, catalogos)
+    //  quedan SOLO LECTURA: ninguna app del navegador las escribe, eso lo
+    //  hace importar.js con el SDK Admin, que se salta estas reglas.
+    // ══════════════════════════════════════════════════════════════════
+
+    function perfil() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
     }
 
-    match /ordenes/{ordenId} {
-      allow get: if true;
-      allow list, create, update, delete: if conSesion();
+    // Usuario de la casa: con sesion, con perfil y no desactivado.
+    function autorizado() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+        && perfil().activo != false;
     }
 
-    // Todo lo demás: solo con sesión.
+    function rol() {
+      return autorizado() ? perfil().rol : '';
+    }
+
+    function esAdmin() {
+      return rol() == 'admin' || rol() == 'jefe' || rol() == 'director' || rol() == 'gerente';
+    }
+
+    // ── USUARIOS ──────────────────────────────────────────────────────
+    // Cada quien lee su propio perfil (la app lo necesita al entrar).
+    // Solo un administrador puede crear, editar o desactivar usuarios:
+    // esto cierra la escalada de privilegios.
+    match /usuarios/{uid} {
+      allow get:   if request.auth != null && (request.auth.uid == uid || esAdmin());
+      allow list:  if esAdmin();
+      allow write: if esAdmin();
+    }
+
+    // ── ORDENES ───────────────────────────────────────────────────────
+    // Leer UNA por su id sigue siendo publico: es el comprobante que el
+    // cliente abre desde WhatsApp y no tiene cuenta. El id lo genera
+    // Firestore al azar, asi que no se puede adivinar.
+    // Listar la coleccion completa si requiere ser de la casa.
+    match /ordenes/{id} {
+      allow get:    if true;
+      allow list:   if autorizado();
+      allow create: if autorizado();
+      allow update: if autorizado();
+      allow delete: if esAdmin();
+    }
+
+    // ── TRABAJO DIARIO ────────────────────────────────────────────────
+    match /auditorias/{id} {
+      allow read:   if autorizado();
+      allow create: if autorizado();
+      allow update: if autorizado();
+      allow delete: if esAdmin();
+    }
+
+    match /rutas/{id} {
+      allow read:   if autorizado();
+      allow create: if esAdmin();        // las rutas las arma el coordinador
+      allow update: if autorizado();     // el tecnico marca visitado
+      allow delete: if esAdmin();
+    }
+
+    match /movimientos/{id} {
+      allow read:   if autorizado();
+      allow create: if autorizado();
+      allow update, delete: if esAdmin();
+    }
+
+    // ── DATOS DEL SERVIDOR — SOLO LECTURA ─────────────────────────────
+    // Los escribe importar.js / cafiver-resumen.js con el SDK Admin.
+    // Ninguna pantalla del navegador los modifica.
+    match /equipos/{id}       { allow read: if autorizado(); allow write: if false; }
+    match /config/{id}        { allow read: if autorizado(); allow write: if false; }
+    match /resumenLinea/{id}  { allow read: if autorizado(); allow write: if false; }
+    match /centros/{id}       { allow read: if autorizado(); allow write: if false; }
+    match /almacenes/{id}     { allow read: if autorizado(); allow write: if false; }
+    match /clientes/{id}      { allow read: if autorizado(); allow write: if false; }
+    match /materiales/{id}    { allow read: if autorizado(); allow write: if false; }
+    match /specs_equipos/{id} { allow read: if autorizado(); allow write: if false; }
+
+    // Lo consulta la ficha del equipo en el escritorio.
+    match /clientesEquipo/{id} {
+      allow read:  if autorizado();
+      allow write: if esAdmin();
+    }
+
+    // Ubicacion de referencia de cada cliente, capturada en la primera
+    // visita. Cualquier tecnico puede crearla; para corregir una existente
+    // hace falta ser administrador, asi un GPS malo no pisa la buena.
+    match /ubicaciones/{id} {
+      allow read:   if autorizado();
+      allow create: if autorizado();
+      allow update, delete: if esAdmin();
+    }
+
+    // ── DIRECTORIO ────────────────────────────────────────────────────
+    match /directorio/{id} {
+      allow read:  if autorizado();
+      allow write: if esAdmin();
+    }
+
+    // ── TODO LO DEMAS ─────────────────────────────────────────────────
+    // Cualquier coleccion que no este arriba queda cerrada. Si manana
+    // aparece una nueva, hay que agregarla aqui a proposito: es preferible
+    // que falle visible a que quede abierta sin que nadie lo note.
     match /{document=**} {
-      allow read, write: if conSesion();
+      allow read, write: if false;
     }
   }
 }

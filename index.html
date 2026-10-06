@@ -887,16 +887,9 @@ var auth = firebase.auth();
 var storage = firebase.storage();
 
 // ══ USUARIOS ══
-var USERS = {
-  'gerente@cafiver.com.mx':   { name:'Gerente CAFIVER',      rol:'gerente', color:'#1a73e8' },
-  'cmendez@cafiver.com.mx':   { name:'Carlos Méndez',        rol:'tecnico', color:'#34a853' },
-  'jruiz@cafiver.com.mx':     { name:'Jorge Ruiz',           rol:'tecnico', color:'#f9ab00' },
-  'atorres@cafiver.com.mx':   { name:'Andrés Torres',        rol:'tecnico', color:'#ea4335' },
-  'lgarcia@cafiver.com.mx':   { name:'Luis García',          rol:'tecnico', color:'#9c27b0' },
-  'rsosa@cafiver.com.mx':     { name:'Roberto Sosa',         rol:'tecnico', color:'#00bcd4' },
-  'pvega@cafiver.com.mx':     { name:'Patricia Vega',        rol:'tecnico', color:'#ff5722' }
-};
-var TECNICOS = Object.values(USERS).filter(function(u){return u.rol==='tecnico';}).map(function(u){return u.name;});
+// Los perfiles (nombre, rol, centros) viven en la coleccion `usuarios`.
+// TECNICOS se llena al entrar con los tecnicos activos (ver cargarTecnicos).
+var TECNICOS = [];
 
 var GRUPO_NOMBRES = {
   '300010001':'Accesorios Cafeteras',
@@ -1411,10 +1404,10 @@ function doLogin(){
   if(!email||!pass){showLoginErr('Escribe correo y contraseña.');return;}
   btn.textContent='Entrando...';btn.disabled=true;btn.style.opacity='.7';
   auth.signInWithEmailAndPassword(email,pass)
-    .then(function(c){
-      var p=USERS[email]||{name:email.split('@')[0],rol:'tecnico',color:'#1a73e8'};
-      curUser={uid:c.user.uid,email:email,name:p.name,rol:p.rol,color:p.color};
-      enterApp();
+    .then(function(){
+      // No entrar aqui: onAuthStateChanged lee el perfil real de
+      // usuarios/<uid> (rol, centros). Antes se entraba con una lista fija
+      // y un jefe que no estaba en ella quedaba como tecnico.
     })
     .catch(function(e){
       btn.textContent='Iniciar sesión';btn.disabled=false;btn.style.opacity='1';
@@ -1491,8 +1484,7 @@ function enterApp(){
   var nm=document.getElementById('cur-nm');if(nm)nm.textContent=curUser.name;
   var btnL=document.getElementById('login-btn');
   if(btnL){btnL.textContent='Iniciar sesión';btnL.disabled=false;btnL.style.opacity='1';}
-  var sel=document.getElementById('o-tecnico');
-  if(sel)sel.innerHTML=TECNICOS.map(function(t){return'<option>'+t+'</option>';}).join('');
+  cargarTecnicos();
   var fEl=document.getElementById('o-fecha');if(fEl)fEl.value=new Date().toISOString().slice(0,10);
   var hEl=document.getElementById('o-hora');if(hEl)hEl.value=new Date().toTimeString().slice(0,5);
 
@@ -1606,6 +1598,22 @@ var ROLES = [
   { v:'admin',   n:'Admin',       d:'Todo el país.' }
 ];
 var _usuarios = [], _usrEdit = null, _appAlta = null, _usrFiltro = '';
+
+// Lista de tecnicos para el formulario de orden. Solo un administrador puede
+// listar `usuarios` (reglas de Firestore); los demas se ven a si mismos.
+function cargarTecnicos(){
+  function pinta(){
+    var sel=document.getElementById('o-tecnico');
+    if(sel)sel.innerHTML=TECNICOS.map(function(t){return'<option>'+esc(t)+'</option>';}).join('');
+  }
+  TECNICOS=[curUser.name]; pinta();
+  if(!esAdminUsuarios()) return;
+  db.collection('usuarios').where('rol','==','tecnico').get().then(function(s){
+    var n=[];
+    s.forEach(function(d){ var x=d.data(); if(x.activo!==false && x.nombre) n.push(x.nombre); });
+    if(n.length){ TECNICOS=n.sort(function(a,b){return a.localeCompare(b);}); pinta(); }
+  }).catch(function(e){ console.warn('tecnicos:',e.code||e); });
+}
 
 function esAdminUsuarios(){
   var u = window.curUser || {};
@@ -5780,8 +5788,7 @@ auth.onAuthStateChanged(function(user){
       enterApp();
     }
     function _respaldo(){
-      var f=USERS[email]||{name:email.split('@')[0],rol:'tecnico',color:'#1a73e8'};
-      return {name:f.name, rol:f.rol, color:f.color, centros:[], numeroEmpleado:''};
+      return {name:email.split('@')[0], rol:'tecnico', color:'#1a73e8', centros:[], numeroEmpleado:''};
     }
 
     var _tope=setTimeout(function(){
