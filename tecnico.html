@@ -8,6 +8,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="CAFIVER">
 <meta name="theme-color" content="#EEF1EF">
+<link rel="manifest" href="manifest-tecnico.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>CAFIVER Técnico</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600&family=Hanken+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
@@ -417,7 +420,16 @@ function toast(m){var t=$('toast');t.textContent=m;t.classList.add('on');setTime
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function fmt$(n){return '$'+(Number(n)||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function centroNombre(c){return (_catCentros[c]&&_catCentros[c].nombre)||c||'—';}
-function folio(){return 'OS-'+Date.now().toString().slice(-8);}
+// Folio: OS-AAMMDD-XXXXX. Se genera en el telefono (funciona sin senal) con 5
+// caracteres al azar; sin 0/O/1/I para que se lea bien. El formato anterior
+// usaba los ultimos digitos del reloj y se repetia cada pocos minutos.
+function folio(){
+  var A='23456789ABCDEFGHJKLMNPQRSTUVWXYZ', r=new Uint32Array(5), s='';
+  crypto.getRandomValues(r);
+  for(var i=0;i<5;i++) s+=A[r[i]%A.length];
+  var d=new Date(), p=function(n){return ('0'+n).slice(-2);};
+  return 'OS-'+p(d.getFullYear()%100)+p(d.getMonth()+1)+p(d.getDate())+'-'+s;
+}
 
 // ══════════ AUTH ══════════
 function doLogin(){
@@ -1462,12 +1474,15 @@ function subirPendiente(item){
     var fotos=item.fotosB64||[]; var urls=[]; var pend=fotos.length; var hubo=false;
     function guardarDoc(){
       var data=Object.assign({},item.data); data.fotos=urls.filter(Boolean);
+      data.fotosCarpeta='ordenes/'+item.localId;
       if(!data.fotos.length){ reject(new Error('sin fotos')); return; }
       db.collection('ordenes').add(data).then(function(){ resolve(); }).catch(reject);
     }
     if(!fotos.length){ reject(new Error('sin fotos')); return; }
     fotos.forEach(function(dataUrl,i){
-      var path='ordenes/'+item.data.folio+'/foto_'+(i+1)+'_'+item.ts+'_'+i+'.jpg';
+      // Carpeta por captura (localId es unico), no por folio: dos ordenes con
+      // el mismo folio ya no comparten fotos.
+      var path='ordenes/'+item.localId+'/foto_'+(i+1)+'_'+item.ts+'_'+i+'.jpg';
       storage.ref(path).putString(dataUrl,'data_url').then(function(){
         urls[i]='https://firebasestorage.googleapis.com/v0/b/'+BUCKET+'/o/'+encodeURIComponent(path)+'?alt=media';
         if(--pend===0)guardarDoc();
@@ -1674,6 +1689,12 @@ function resumenOrdenTexto(o){
   return t;
 }
 
+</script>
+<script>
+// Instalable y abre sin señal (ver sw.js).
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js').catch(function(e){ console.warn('sw:',e); }); });
+}
 </script>
 </body>
 </html>

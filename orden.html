@@ -113,20 +113,22 @@ function render(o){
    +'<div class="ft">CAFIVER · Gestión de Equipos · Gracias por su preferencia</div>'
    +'</div>';
   document.getElementById('app').innerHTML=html;
-  cargarFotos(o.folio, o.fotos||[]);
+  cargarFotos(o);
 }
 
-function cargarFotos(folio, fallback){
+// Fotos: primero las URLs guardadas en la orden (no requieren permiso de
+// listar), luego su carpeta; por folio solo para ordenes viejas.
+function cargarFotos(o){
   var box=document.getElementById('fotos'); if(!box)return;
   function pinta(urls){
     if(!urls.length){ document.getElementById('fotos-sec').style.display='none'; return; }
     box.innerHTML='<div class="fotos">'+urls.map(function(u){return '<img src="'+u+'" onclick="lb(\''+u.replace(/'/g,"\\'")+'\')">';}).join('')+'</div>';
   }
-  storage.ref('ordenes/'+folio).listAll().then(function(res){
-    if(res.items&&res.items.length){
-      pinta(res.items.map(function(it){return 'https://firebasestorage.googleapis.com/v0/b/'+BUCKET+'/o/'+encodeURIComponent(it.fullPath)+'?alt=media';}));
-    } else { pinta((fallback||[]).filter(function(u){return u&&u.indexOf('/o/')>0;})); }
-  }).catch(function(){ pinta((fallback||[]).filter(function(u){return u&&u.indexOf('/o/')>0;})); });
+  var guardadas=(o.fotos||[]).filter(function(u){return u&&u.indexOf('/o/')>0;});
+  if(guardadas.length){ pinta(guardadas); return; }
+  storage.ref(o.fotosCarpeta||('ordenes/'+o.folio)).listAll().then(function(res){
+    pinta((res.items||[]).map(function(it){return 'https://firebasestorage.googleapis.com/v0/b/'+BUCKET+'/o/'+encodeURIComponent(it.fullPath)+'?alt=media';}));
+  }).catch(function(){ pinta([]); });
 }
 </script>
 </body>
