@@ -18,6 +18,6 @@ Las fotos de cada orden se guardan en `ordenes/<id de captura>/` y sus enlaces q
 
 ## Reglas de seguridad
 
-`firestore.rules` es copia de las reglas **publicadas** en Firebase (proyecto `cafeteras-90e78`): exige perfil activo en `usuarios`, permisos por rol y deja público solo abrir una orden por su ID (comprobante). Si se cambian en la consola, actualiza también este archivo.
+`firestore.rules` parte de las reglas **publicadas** en Firebase (proyecto `cafeteras-90e78`): exige perfil activo en `usuarios`, permisos por rol y deja público solo abrir una orden por su ID (comprobante). **Pendiente de publicar:** el bloque `usuarios`, que impide que un coordinador (jefe) nombre Admin a alguien o edite a la dirección. Si se cambian en la consola, actualiza también este archivo.
 
 `storage.rules` es una **propuesta** sin publicar: abrir un archivo por su ruta sigue siendo público (las fotos se muestran con enlace directo), pero listar carpetas y subir archivos requieren sesión. Antes de publicarla, compárala con la de la consola (Storage → Reglas).
