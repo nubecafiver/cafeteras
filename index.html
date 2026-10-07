@@ -547,7 +547,6 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
     <button class="tnav" id="tnav-cumplimiento" onclick="switchView('cumplimiento')"><span><i class="ti ti-gauge"></i></span><span class="tnav-txt"> Cumplimiento</span></button>
     <button class="tnav" id="tnav-reportes" onclick="switchView('reportes')"><span><i class="ti ti-report"></i></span><span class="tnav-txt"> Reportes</span></button>
     <button class="tnav" id="tnav-auditoria" onclick="switchView('auditoria')"><span><i class="ti ti-clipboard-check"></i></span><span class="tnav-txt"> Auditoría</span></button>
-    <button class="tnav" id="tnav-qr" onclick="switchView('qr')"><span><i class="ti ti-qrcode"></i></span><span class="tnav-txt"> QR</span></button>
     <button class="tnav" id="tnav-etiquetas" onclick="switchView('etiquetas')"><span><i class="ti ti-tags"></i></span><span class="tnav-txt"> Etiquetas</span></button>
     <button class="tnav" id="tnav-usuarios" onclick="switchView('usuarios')"><span><i class="ti ti-users"></i></span><span class="tnav-txt"> Usuarios</span></button>
     <div class="topbar-right" style="display:flex;align-items:center;gap:10px">
@@ -1143,22 +1142,15 @@ function setStatus(msg,cls){var el=document.getElementById('scanner-status');if(
 
 // Helpers de catálogos
 function actualizarSelectsCentros(){
-  // Poblar los selects solo con los centros que tienen equipos (centrosEnUso).
-  // Si aún no cargó config/general, mostrar todo el catálogo como respaldo.
-  var usar=(centrosEnUso&&Object.keys(centrosEnUso).length)?centrosEnUso:null;
-  var entradas=Object.entries(catalogoCentros).filter(function(e){
-    return usar?Object.prototype.hasOwnProperty.call(usar,e[0]):true;
-  });
-  var opciones='<option value="">Todos los centros</option>'
-    +entradas
-      .sort(function(a,b){return(a[1].nombre||a[0])<(b[1].nombre||b[0])?-1:1;})
-      .map(function(e){return'<option value="'+e[0]+'">'+e[0]+' — '+(e[1].nombre||e[0])+'</option>';})
-      .join('');
+  // Poblar los selects solo con los centros que tienen equipos (optsCentros
+  // usa centrosEnUso, con el catalogo completo como respaldo).
+  // optsCentros respeta los centros del usuario (antes se ponia la lista
+  // nacional completa y un coordinador veia centros ajenos).
   ['eq-centro','cl-ce','etiq-ce','rep-ce'].forEach(function(id){
     var sel=document.getElementById(id);
     if(sel){
       var val=sel.value;
-      sel.innerHTML=opciones;
+      sel.innerHTML=optsCentros(val, (id==='cl-ce'&&typeof _clModo!=='undefined'&&_clModo==='clientes')?'EU':'');
       if(val)sel.value=val;
     }
   });
@@ -1181,8 +1173,12 @@ function optsCentros(selected, prefijo){
       .filter(function(e){return usar?Object.prototype.hasOwnProperty.call(usar,e[0]):true;})
       .map(function(e){return[e[0],e[1]];});
   }
-  if(prefijo){ pares=pares.filter(function(p){return String(p[0]).toUpperCase().indexOf(prefijo.toUpperCase())===0;}); }
   if(_mios.length){ pares=pares.filter(function(p){ return _mios.indexOf(p[0])>=0; }); }
+  // El prefijo es una preferencia: si deja al usuario sin centros, se ignora.
+  if(prefijo){
+    var conPref=pares.filter(function(p){return String(p[0]).toUpperCase().indexOf(prefijo.toUpperCase())===0;});
+    if(conPref.length) pares=conPref;
+  }
   pares.sort(function(a,b){return a[1]<b[1]?-1:1;});
   return '<option value="">Todos los centros</option>'
     +pares.map(function(p){return'<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[0]+' — '+p[1]+'</option>';}).join('');
@@ -1267,6 +1263,8 @@ function bTipo(t){
 }
 function bEst(e){var m={'terminado':'pill-ok','en proceso':'pill-pend','pendiente':'pill-acc','urgente':'pill-venc'};return'<span class="pill '+(m[e]||'pill-acc')+'">'+(e||'pendiente')+'</span>';}
 function fmtF(ts){if(!ts)return'—';if(ts.toDate)return ts.toDate().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});return String(ts).slice(0,10);}
+// Escape HTML completo para texto que viene de Firestore.
+function escH(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function esc(s){return String(s||'').replace(/'/g,'\u2019').replace(/"/g,'\u201d').replace(/\n/g,' ').slice(0,80);}
 // Foto del modelo: vive en Storage en una ruta fija por modelo, asi que se
 // muestra directo de ahi. Antes se intentaba guardar el enlace en
@@ -1465,10 +1463,10 @@ function enterApp(){
   // Firestore. Esto es orden, para que cada quien vea lo suyo.
   try{
     var _rol=String(curUser.rol||'').toLowerCase();
-    var VISTAS_TECNICO=['equipos','ordenes','rutas','qr'];
+    var VISTAS_TECNICO=['equipos','ordenes','rutas'];
     var TODAS=['dashboard','equipos','clientes','directorio','ordenes','rutas',
                'programacion','movimientos','analisis','cumplimiento','reportes',
-               'auditoria','qr','etiquetas','usuarios'];
+               'auditoria','etiquetas','usuarios'];
     var permitidas = (_rol==='tecnico') ? VISTAS_TECNICO.slice() : TODAS.slice();
     if(!esAdminUsuarios()) permitidas = permitidas.filter(function(v){ return v!=='usuarios'; });
     TODAS.forEach(function(v){
@@ -1507,7 +1505,7 @@ function enterApp(){
   var btnL=document.getElementById('login-btn');
   if(btnL){btnL.textContent='Iniciar sesión';btnL.disabled=false;btnL.style.opacity='1';}
   cargarTecnicos();
-  var fEl=document.getElementById('o-fecha');if(fEl)fEl.value=new Date().toISOString().slice(0,10);
+  var fEl=document.getElementById('o-fecha');if(fEl)fEl.value=fechaLocal();
   var hEl=document.getElementById('o-hora');if(hEl)hEl.value=new Date().toTimeString().slice(0,5);
 
   // 4. Función para mostrar app y ocultar splash
@@ -1767,6 +1765,8 @@ function usrPintar(){
   var box = document.getElementById('usr-lista'); if(!box) return;
   var q = _usrFiltro.trim().toLowerCase();
   var lista = _usuarios.filter(function(u){
+    // Un coordinador ve a la gente de sus centros (y a si mismo).
+    if(misCentros().length && u.uid!==curUser.uid && !centrosDe(u).some(enMiAlcance)) return false;
     if(!q) return true;
     return (String(u.nombre||'')+' '+String(u.numeroEmpleado||'')+' '+centrosDe(u).join(' ')+' '+String(u.email||''))
       .toLowerCase().indexOf(q) >= 0;
@@ -2215,7 +2215,7 @@ async function impAplicar(){
   if(passes.length){
     var ws = XLSX.utils.json_to_sheet(passes), wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Contraseñas');
-    XLSX.writeFile(wb, 'contrasenas_iniciales_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    XLSX.writeFile(wb, 'contrasenas_iniciales_'+fechaLocal()+'.xlsx');
   }
   _imp = null;
   impModal('<div style="padding:22px 20px">'
@@ -2326,16 +2326,12 @@ function cumMin(o){
 function renderCumplimiento(){
   var w=document.getElementById('view-cumplimiento'); if(!w) return;
 
-  if(!cumFiltros.desde){
-    var d=new Date(); d.setDate(1);
-    cumFiltros.desde=d.toISOString().slice(0,10);
-    cumFiltros.hasta=new Date().toISOString().slice(0,10);
-  }
+  if(!cumFiltros.desde) cumFiltros.desde=inicioMes();
+  if(!cumFiltros.hasta) cumFiltros.hasta=fechaLocal();
 
-  var data = ordenes.filter(function(o){
-    var d=cumFechaOrd(o); if(!d) return false;
-    if(cumFiltros.desde && d < new Date(cumFiltros.desde+'T00:00:00')) return false;
-    if(cumFiltros.hasta && d > new Date(cumFiltros.hasta+'T23:59:59')) return false;
+  var _per = ordenesPeriodo(cumFiltros.desde, cumFiltros.hasta, function(){ if(curView==='cumplimiento')renderCumplimiento(); });
+  if(!_per){ ordPeriodoCargando(w); return; }
+  var data = _per.filter(function(o){
     if(cumFiltros.centro && o.centro!==cumFiltros.centro) return false;
     return true;
   });
@@ -2366,7 +2362,7 @@ function renderCumplimiento(){
       +(sub?'<div style="font-size:11px;color:var(--cf-text2);margin-top:2px">'+sub+'</div>':'')+'</div>';
   }
 
-  var centros = Object.keys(catalogoCentros).length ? Object.keys(catalogoCentros).sort() : [];
+  var centros = (Object.keys(catalogoCentros).length ? Object.keys(catalogoCentros).sort() : []).filter(enMiAlcance);
 
   w.innerHTML =
     '<div style="max-width:1200px;margin:0 auto">'
@@ -2451,17 +2447,11 @@ function renderCumplimiento(){
 // no tiene sentido traerlos cada vez que se cambia un filtro.
 function cumCargarRutas(){
   var box=document.getElementById('cum-rutas'); if(box) box.innerHTML='<div style="font-size:12px;color:var(--cf-text2)">Leyendo rutas...</div>';
-  // Sin where de rango: Firestore pediria un indice compuesto y por unas
-  // cuantas rutas no vale el tramite. Se traen y se filtran aqui.
-  db.collection('rutas').limit(500).get().then(function(s){
+  // Rango sobre un solo campo (fecha): no necesita indice compuesto. Antes
+  // se traian 500 rutas cualquiera y se filtraban aqui, y se perdian rutas.
+  db.collection('rutas').where('fecha','>=',cumFiltros.desde).where('fecha','<=',cumFiltros.hasta).limit(3000).get().then(function(s){
       _cumRutas=[];
-      s.forEach(function(d){
-        var r=d.data();
-        if(!r.fecha) return;
-        if(cumFiltros.desde && r.fecha < cumFiltros.desde) return;
-        if(cumFiltros.hasta && r.fecha > cumFiltros.hasta) return;
-        _cumRutas.push(r);
-      });
+      s.forEach(function(d){ var r=d.data(); if(r.fecha && enMiAlcance(r.centro)) _cumRutas.push(r); });
       cumPintarRutas();
     }).catch(function(e){
       if(box) box.innerHTML='<div style="font-size:12px;color:#b00">No se pudieron leer las rutas: '+esc(e.message)+'</div>';
@@ -2470,7 +2460,12 @@ function cumCargarRutas(){
 
 function cumPintarRutas(){
   var box=document.getElementById('cum-rutas'); if(!box) return;
-  var rs=(_cumRutas||[]).filter(function(r){ return !cumFiltros.centro || r.centro===cumFiltros.centro; });
+  // Se vuelve a filtrar por fecha: si se cambian las fechas despues de
+  // calcular, la tabla no debe mostrar el periodo anterior.
+  var rs=(_cumRutas||[]).filter(function(r){
+    return (!cumFiltros.centro || r.centro===cumFiltros.centro)
+      && (!cumFiltros.desde || r.fecha>=cumFiltros.desde) && (!cumFiltros.hasta || r.fecha<=cumFiltros.hasta);
+  });
   if(!rs.length){ box.innerHTML='<div style="font-size:12px;color:var(--cf-text2)">Sin rutas en el periodo.</div>'; return; }
 
   var porTec={};
@@ -2531,6 +2526,56 @@ function esAlcanceNacional(){
 }
 
 // Centros del usuario. Vacio = sin limite (solo para alcance nacional).
+// ══ ORDENES POR PERIODO (Analisis, Reportes, Cumplimiento) ══
+// La lista global `ordenes` son solo las 200 mas recientes de todo el pais:
+// los reportes de un mes salian incompletos. Aqui se piden las del periodo
+// elegido, recortadas a los centros del usuario, y se guardan 5 minutos.
+// Una orden puede venir de la lista viva (200 recientes) o de un periodo
+// cargado con fechas: se busca en ambos.
+function buscarOrden(id){
+  var o=ordenes.find(function(x){ return x.id===id; });
+  if(o) return o;
+  for(var k in _ordPer){ var d=_ordPer[k].docs; if(d){ o=d.find(function(x){ return x.id===id; }); if(o) return o; } }
+  return undefined;
+}
+function fechaLocal(d){ d=d||new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function inicioMes(){ var d=new Date(); d.setDate(1); return fechaLocal(d); }
+var _ordPer={}, ORD_PER_MS=5*60*1000, ORD_PER_MAX=3000;
+// Devuelve las ordenes si ya estan; si no, las pide, devuelve null y llama a
+// alListo() cuando llegan.
+function ordenesPeriodo(desde, hasta, alListo){
+  desde=desde||inicioMes(); hasta=hasta||fechaLocal();
+  var k=desde+'|'+hasta, c=_ordPer[k];
+  if(c && c.docs && Date.now()-c.t<ORD_PER_MS) return c.docs;
+  if(c && c.cargando){ c.esperan.push(alListo); return null; }
+  _ordPer[k]={cargando:true, esperan:[alListo]};
+  var TS=firebase.firestore.Timestamp;
+  db.collection('ordenes')
+    .where('creadoEn','>=',TS.fromDate(new Date(desde+'T00:00:00')))
+    .where('creadoEn','<=',TS.fromDate(new Date(hasta+'T23:59:59')))
+    .orderBy('creadoEn','desc').limit(ORD_PER_MAX).get()
+    .then(function(s){
+      var docs=s.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .filter(function(o){ return enMiAlcance(o.centro); });
+      docs.lleno = s.size>=ORD_PER_MAX;
+      return docs;
+    }, function(e){ var d=[]; d.error=e.message; return d; })
+    .then(function(docs){
+      var esperan=_ordPer[k].esperan;
+      _ordPer[k]={t:Date.now(), docs:docs};
+      esperan.forEach(function(f){ try{ f(); }catch(e){ console.warn(e); } });
+    });
+  return null;
+}
+function ordPeriodoAviso(docs){
+  if(docs.error) return '<div style="background:#FDECEA;border:1px solid #F5C2BC;border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:12px">No se pudieron cargar las órdenes del periodo: '+escH(docs.error)+'</div>';
+  if(docs.lleno) return '<div style="background:#F6F0DD;border:1px solid #E4C65A;border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:12px">El periodo tiene más de '+ORD_PER_MAX.toLocaleString('es-MX')+' órdenes; se muestran las más recientes. Acorta las fechas para ver el total exacto.</div>';
+  return '';
+}
+function ordPeriodoCargando(w, txt){
+  w.innerHTML='<div class="tbl-box" style="padding:40px;text-align:center;color:#6b7c63">'+(txt||'Cargando órdenes del periodo...')+'</div>';
+}
+
 function misCentros(){
   if(esAlcanceNacional()) return [];
   var c = (window.curUser && curUser.centros) || [];
@@ -2572,6 +2617,9 @@ function chipAlcance(){
 }
 
 function switchView(v){
+  // QR se junto con Etiquetas: la pantalla QR leia una lista que nunca se
+  // llenaba y siempre salia vacia. Etiquetas genera los mismos QR.
+  if(v==='qr') v='etiquetas';
   curView=v;
   ['dashboard','equipos','clientes','directorio','ordenes','rutas','programacion','analisis','auditoria','preventivos','qr','reportes','resumen','etiquetas','movimientos','usuarios','cumplimiento'].forEach(function(x){
     var w=document.getElementById('view-'+x);if(w)w.classList.toggle('hidden',x!==v);
@@ -2603,8 +2651,17 @@ var _rutasRecientes=[];
 
 function renderRutas(){
   var w=document.getElementById('view-rutas'); if(!w)return;
+  // El tecnico no arma rutas (las reglas no le dejan listar usuarios ni
+  // crear rutas): antes veia esta pantalla vacia y sin explicacion.
+  if(String((curUser&&curUser.rol)||'').toLowerCase()==='tecnico'){
+    w.innerHTML='<div class="tbl-box" style="padding:28px 24px;max-width:560px;margin:0 auto;text-align:center">'
+      +'<div style="font-size:18px;font-weight:600;margin-bottom:8px">Tu ruta del día está en la app del técnico</div>'
+      +'<div style="font-size:13px;color:var(--cf-text2);margin-bottom:16px">Ahí ves tus clientes de hoy, marcas tus visitas y levantas órdenes, aunque no tengas señal. Tu coordinador arma la ruta desde aquí.</div>'
+      +'<a class="btn btn-blue" style="display:inline-flex;justify-content:center;padding:11px 18px;text-decoration:none" href="tecnico.html">Abrir app del técnico</a></div>';
+    return;
+  }
   if(!_tecnicos.length){ rutaCargarTecnicos(); }
-  var hoy=new Date().toISOString().slice(0,10);
+  var hoy=fechaLocal();
   if(!_rutaEdit) _rutaEdit={tecnicoUid:'',tecnicoNombre:'',centro:'',fecha:hoy,clientes:[]};
   var e=_rutaEdit;
   w.innerHTML=
@@ -2646,14 +2703,21 @@ function renderRutas(){
   rutaCargarRecientes();
 }
 
+var _tecCargados=false;
 function rutaCargarTecnicos(){
+  if(_tecCargados) return;
+  _tecCargados=true;
   // Leer todos los usuarios y filtrar por rol del lado del cliente (evita problemas de mayúsculas/acentos)
   db.collection('usuarios').limit(300).get().then(function(s){
     var todos=s.docs.map(function(d){return {uid:d.id,...d.data()};});
     _usuariosTotal=todos.length;
     _tecnicos=todos.filter(function(u){
       var r=(u.rol||'').toString().toLowerCase();
-      return r.indexOf('tecnic')>=0 || r.indexOf('técnic')>=0;
+      if(!(r.indexOf('tecnic')>=0 || r.indexOf('técnic')>=0)) return false;
+      if(u.activo===false) return false;
+      // Un coordinador solo programa a los tecnicos de sus centros.
+      var cs=centrosDe(u);
+      return !misCentros().length || cs.some(enMiAlcance);
     });
     _tecnicos.sort(function(a,b){return (a.nombre||'').localeCompare(b.nombre||'');});
     console.log('Usuarios:',todos.length,'· Técnicos:',_tecnicos.length);
@@ -2666,6 +2730,7 @@ function rutaCargarTecnicos(){
     }
     if(curView==='programacion')renderProgramacion();
   }).catch(function(e){
+    _tecCargados=false;   // permitir reintentar
     console.error('Error leyendo usuarios:',e);
     var w=document.getElementById('view-programacion');
     if(w&&curView==='programacion'){
@@ -3058,7 +3123,7 @@ var _progFecha=null, _progCentro='', _progRutas={};
 function renderProgramacion(){
   var w=document.getElementById('view-programacion'); if(!w)return;
   if(!_tecnicos.length){ rutaCargarTecnicos(); }
-  if(!_progFecha) _progFecha=new Date().toISOString().slice(0,10);
+  if(!_progFecha) _progFecha=fechaLocal();
   // centros con técnicos
   var centros={}; _tecnicos.forEach(function(t){ if(t.centro)centros[t.centro]=1; });
   if(!_progCentro && Object.keys(centros).length) _progCentro=Object.keys(centros).sort()[0];
@@ -3120,6 +3185,9 @@ function progAsignar(uid){
   var t=_tecnicos.find(function(x){return x.uid===uid;});
   if(!t)return;
   _rutaEdit={tecnicoUid:uid, tecnicoNombre:(t.nombre||t.email), centro:(t.centro||''), fecha:_progFecha, clientes:[]};
+  // La pantalla Rutas usa los mismos ids (ruta-q, ruta-lista...). Si se abrio
+  // antes, sus copias ocultas ganaban y esta ventana dejaba de responder.
+  var _vr=document.getElementById('view-rutas'); if(_vr) _vr.innerHTML='';
   document.getElementById('prog-modal-title').textContent='Asignar clientes · '+(t.nombre||t.email)+' · '+_progFecha;
   document.getElementById('ruta-result').innerHTML='<div style="color:#9aa0a6;font-size:12px;padding:8px">Busca un cliente para agregarlo.</div>';
   // cargar ruta existente de ese día
@@ -3139,7 +3207,7 @@ function progRenderLista(){
 
 function rutaCargarRecientes(){
   var box=document.getElementById('ruta-recientes'); if(!box)return;
-  var hoy=new Date().toISOString().slice(0,10);
+  var hoy=fechaLocal();
   db.collection('rutas').where('fecha','>=',hoy).limit(50).get().then(function(s){
     var arr=s.docs.map(function(d){return {id:d.id,...d.data()};});
     arr.sort(function(a,b){return (a.fecha||'').localeCompare(b.fecha||'')||(a.tecnicoNombre||'').localeCompare(b.tecnicoNombre||'');});
@@ -3246,7 +3314,8 @@ async function cargarStatsDashboard(){
     modelosUnicos=0;
   }
 
-  var ords=ordenes;
+  // Ordenes de los centros del usuario (antes, de todo el pais).
+  var ords=ordenes.filter(function(o){ return enMiAlcance(o.centro); });
   var ahora=new Date(), mes=ahora.getMonth(), anio=ahora.getFullYear();
   var ordMes=ords.filter(function(o){
     if(!o.creadoEn)return false;
@@ -3298,10 +3367,12 @@ async function cargarStatsDashboard(){
     +'<div style="font-size:10px;font-weight:700;color:#4a5e42;text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px">Parque de equipos</div>'
     +'<div class="db-kpi-grid" style="grid-template-columns:repeat(5,1fr)">'
     +dbKpi('Total universo',totalEq.toLocaleString(),'equipos en SAP','#111315','☕','')
-    +dbKpi('Clase nuevo',(porClase.CSNUEVO||0).toLocaleString(),'CSNUEVO','#111315','✨','claseActivo:CSNUEVO')
-    +dbKpi('Clase usado',(porClase.CSUSADO||0).toLocaleString(),'CSUSADO','#111315','♻️','claseActivo:CSUSADO')
-    +dbKpi('Cafetera',(porClase.CAFETERA||0).toLocaleString(),'CAFETERA','#111315','☕','claseActivo:CAFETERA')
-    +dbKpi('Hotelera',(porClase.HOTELERA||0).toLocaleString(),'HOTELERA','#111315','🏨','claseActivo:HOTELERA')
+    // Las clases son solo conteo: Equipos no puede buscar por clase (y son
+    // miles de equipos), asi que ya no muestran un "Ver" que no llevaba a nada.
+    +dbKpi('Clase nuevo',(porClase.CSNUEVO||0).toLocaleString(),'CSNUEVO','#111315','✨','')
+    +dbKpi('Clase usado',(porClase.CSUSADO||0).toLocaleString(),'CSUSADO','#111315','♻️','')
+    +dbKpi('Cafetera',(porClase.CAFETERA||0).toLocaleString(),'CAFETERA','#111315','☕','')
+    +dbKpi('Hotelera',(porClase.HOTELERA||0).toLocaleString(),'HOTELERA','#111315','🏨','')
     +'</div>'
     // Los 4 KPIs son CLASES DE ACTIVO de SAP y particionan el universo.
     // La antiguedad real vive en otro campo (nuevoUsado): CAFETERA y
@@ -3405,7 +3476,7 @@ async function cargarStatsDashboard(){
       var _codigos={};
       Object.keys(CENTROS).forEach(function(c){_codigos[c]=1;});
       Object.keys(porCentro).forEach(function(c){_codigos[c]=1;});   // incluir centros con equipos aunque falten del catálogo
-      var entries=Object.keys(_codigos).map(function(cod){
+      var entries=Object.keys(_codigos).filter(enMiAlcance).map(function(cod){
         return{codigo:cod,nombre:CENTROS[cod]||cod,num:porCentro[cod]||0,val:(valorNeto&&valorNeto[cod])||0};
       }).sort(function(a,b){return b.val-a.val;});
       var mx=entries.length&&entries[0].val?entries[0].val:1;
@@ -3526,6 +3597,7 @@ function dbModeloClick(el){
   var m=el.getAttribute('data-modelo')||'';
   if(!m)return;
   eqFiltros={q:'',linea:'',centro:'',estado:'',claseActivo:'',modelo:m};
+  eqVistaLinea=null;
   switchView('equipos');
 }
 function dbKpiClick(el){
@@ -3533,6 +3605,7 @@ function dbKpiClick(el){
   var parts=filtro.split(':');
   var campo=parts[0], valor=parts.slice(1).join(':');
   eqFiltros={q:'',linea:'',centro:'',estado:'',claseActivo:'',modelo:''};
+  eqVistaLinea=null;
   if(campo==='estado')eqFiltros.estado=valor;
   else if(campo==='linea')eqFiltros.linea=valor;
   else if(campo==='claseActivo')eqFiltros.claseActivo=valor;
@@ -3799,7 +3872,16 @@ function buscarEquiposFirestore(){
   if(q){
     var af=parseInt(q);
     if(!isNaN(af))queries.push(col.where('activoFijo','==',af).limit(50).get());
-    else queries.push(col.where('serie','==',q).limit(50).get());
+    else {
+      queries.push(col.where('serie','==',q).limit(50).get());
+      // Modelo: busca los que EMPIEZAN con el texto (tal cual y en mayusculas).
+      // Antes el buscador decia "Modelo" pero solo buscaba por serie exacta.
+      [q, q.toUpperCase()].filter(function(v,i,a){ return a.indexOf(v)===i; }).forEach(function(v){
+        var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
+        // Sin acotarCentro: rango + 'in' pediria indice compuesto. El centro se filtra abajo.
+        queries.push(col.where('modelo','>=',v).where('modelo','<',vHi).limit(100).get());
+      });
+    }
   }else if(eqFiltros.almacen){
     // Un almacen tiene a lo mucho ~1,300 equipos: se trae completo y la linea
     // se filtra del lado del cliente (evita indice compuesto en Firestore).
@@ -3828,6 +3910,7 @@ function buscarEquiposFirestore(){
           seen.add(d.id);
           var e=conEstadoManual({id:d.id,...d.data()});
           // Filtros en cliente (se aplican siempre, sin importar por cuál campo se consultó)
+          if(!enMiAlcance(e.centro))return;   // la busqueda por AF/serie no se acota en Firestore
           if(eqFiltros.centro&&e.centro!==eqFiltros.centro)return;
           if(eqFiltros.almacen&&eqFiltros.linea&&e.linea!==eqFiltros.linea)return;
           if(q&&isNaN(parseInt(q))&&e.serie!==q){
@@ -3864,7 +3947,7 @@ function renderEquiposTabla(data){
       +'<td><div style="display:flex;gap:3px">'
       +'<button class="icon-btn" onclick="event.stopPropagation();openPanel(\''+e.id+'\',\'cl\')" title="Ver ficha">👁</button>'
       +'<button class="icon-btn" onclick="event.stopPropagation();abrirOrdenDesde('+e.activoFijo+',\''+esc(e.modelo)+'\',\''+e.centro+'\',\'\')" title="Nueva orden">📋</button>'
-      +'<button class="icon-btn" onclick="event.stopPropagation();printEtiquetaAF('+e.activoFijo+',\''+esc(e.modelo)+'\',\''+e.centro+'\')" title="Etiqueta">🏷</button>'
+      +'<button class="icon-btn" onclick="event.stopPropagation();printEtiquetaAF(\''+esc(e.activoFijo)+'\',\''+esc(e.modelo)+'\',\''+e.centro+'\')" title="Etiqueta">🏷</button>'
       +'</div></td></tr>';
   }).join(''):'<tr><td colspan="7" style="text-align:center;padding:20px;color:#9aa0a6">Sin resultados</td></tr>';
   if(footer)footer.textContent=data.length>0?data.length+' equipo(s) encontrado(s)'+(data.length>=300?' — refina la búsqueda (tope 300)':''):'Sin resultados para estos filtros';
@@ -3902,6 +3985,7 @@ function clSetModo(m){ _clModo=m; _clAbierto={}; _clData=[]; renderClientes(); }
 function clToggle(k){ _clAbierto[k]=!_clAbierto[k]; if(_clModo==='bodega')renderBodegaTree(_clData); else renderClientesTree(_clData); }
 
 function centroPorDefecto(){
+  if(misCentros().length) return misCentros().slice().sort()[0];
   var keys=(typeof centrosEnUso!=='undefined'&&centrosEnUso&&Object.keys(centrosEnUso).length)?Object.keys(centrosEnUso):Object.keys(catalogoCentros||{});
   if(!keys.length)return '';
   var eu=keys.filter(function(k){return /^EU/i.test(k);}).sort();
@@ -3953,6 +4037,7 @@ function buscarClientes(){
     snaps.forEach(function(s){ s.forEach(function(d){ if(seen[d.id])return; seen[d.id]=true; data.push(conEstadoManual(Object.assign({id:d.id}, d.data))); }); });
     var ql=q.toLowerCase(), qNum=(q&&!isNaN(q));
     data=data.filter(function(e){
+      if(!enMiAlcance(e.centro))return false;
       if(ce&&e.centro!==ce)return false;
       var ubi=e.ubicacion||(e.estado==='con_cliente'?'cliente':(e.estado==='bodega'?'bodega':''));
       if(_clModo==='bodega'){ if(ubi!=='bodega')return false; }
@@ -4354,7 +4439,7 @@ function dpTab(tab, eObj, col){
       +'<div><div style="font-size:11px;font-weight:700;color:#9aa0a6;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Código QR del equipo</div>'
       +'<div style="font-family:monospace;font-size:13px;font-weight:700;color:#1a73e8;margin-bottom:6px">AF: '+e.activoFijo+'</div>'
       +'<div style="display:flex;gap:6px">'
-      +'<button class="btn btn-sm" onclick="printEtiquetaAF('+e.activoFijo+',\''+esc(e.modelo)+'\',\''+e.centro+'\')">🏷 Imprimir etiqueta</button>'
+      +'<button class="btn btn-sm" onclick="printEtiquetaAF(\''+esc(e.activoFijo)+'\',\''+esc(e.modelo)+'\',\''+e.centro+'\')">🏷 Imprimir etiqueta</button>'
       +'<button class="btn btn-blue btn-sm" onclick="abrirOrdenDesde('+e.activoFijo+',\''+esc(e.modelo)+'\',\''+e.centro+'\',\''+esc(nmCliente)+'\')">📋 Nueva orden</button>'
       +'</div></div></div>'
       +'<div class="dp-sec-t">Datos del equipo</div>'
@@ -4446,32 +4531,18 @@ function dpTab(tab, eObj, col){
         hist.filter(function(h){return h.tipo==='preventivo';}).map(function(h){return'<div style="padding:8px 0;border-bottom:1px solid #f0f2f5"><div style="font-size:12px;font-weight:600">'+fmtF(h.creadoEn)+'</div><div style="font-size:11px;color:#9aa0a6">'+h.tecnicoNombre+' · '+fmt$(h.costoTotal)+'</div></div>';}).join('')
         :'<div style="font-size:12px;color:#9aa0a6;padding:8px 0">Sin PM registrados aún</div>');
   }else if(tab==='estado'){
-    var movEq=movimientos.filter(function(m){return String(m.activoFijo)===String(e.activoFijo);}).sort(function(a,b){return(b.ts&&b.ts.seconds||0)-(a.ts&&a.ts.seconds||0);});
     var estadoActual=e.estado||'con_cliente';
     var estInfo=ESTADOS[estadoActual]||{label:estadoActual,color:'#9aa0a6',bg:'#f0f2f5',icon:'⚪'};
-    var movHtml='<div style="font-size:12px;color:#9aa0a6;padding:8px 0">Sin movimientos registrados.</div>';
-    if(movEq.length){
-      movHtml='<div>';
-      movEq.forEach(function(m,i){
-        var est2=ESTADOS[m.estadoNuevo]||{label:m.estadoNuevo||'—',color:'#9aa0a6',icon:'⚪'};
-        var eant2=ESTADOS[m.estadoAnterior]||{label:m.estadoAnterior||'—',icon:'⚪'};
-        movHtml+='<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f0f2f5">'
-          +'<div style="width:32px;height:32px;border-radius:50%;background:'+est2.bg+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+est2.icon+'</div>'
-          +'<div style="flex:1"><div style="font-size:12px;font-weight:700;color:'+est2.color+'">'+est2.label+'</div>'
-          +'<div style="font-size:11px;color:#5f6368">'+eant2.icon+' '+eant2.label+' → '+est2.icon+' '+est2.label+'</div>'
-          +(m.almacenDestino?'<div style="font-size:11px;color:#9aa0a6">Almacén: <b>'+m.almacenDestino+'</b></div>':'')
-          +(m.motivo?'<div style="font-size:11px;color:#9aa0a6;font-style:italic">'+m.motivo+'</div>':'')
-          +'<div style="font-size:10px;color:#c8cad0;margin-top:2px">'+fmtF(m.ts)+' — '+(m.usuario||'—')+'</div>'
-          +'</div></div>';
-      });
-      movHtml+='</div>';
-    }
+    // Historial de estados de ESTE equipo (antes salia de una lista global
+    // que casi siempre estaba vacia).
+    var movHtml='<div id="dp-movs-est" style="font-size:12px;color:#9aa0a6;padding:8px 0">Cargando historial...</div>';
+    setTimeout(function(){ cargarMovsEstado(e.activoFijo); }, 0);
     body.innerHTML=
       '<div class="dp-sec-t">Estado actual</div>'
       +'<div style="display:flex;align-items:center;gap:12px;padding:14px;background:'+estInfo.bg+';border:1px solid '+estInfo.color+'44;border-radius:12px;margin-bottom:16px">'
       +'<span style="font-size:32px">'+estInfo.icon+'</span>'
       +'<div><div style="font-size:16px;font-weight:700;color:'+estInfo.color+'">'+estInfo.label+'</div>'
-      +'<div style="font-size:11px;color:#9aa0a6">AF: '+e.activoFijo+' · '+(movEq.length?'Último cambio: '+fmtF(movEq[0].ts):'Sin historial')+'</div>'
+      +'<div style="font-size:11px;color:#9aa0a6">AF: '+escH(e.activoFijo)+'</div>'
       +'</div></div>'
       +'<div class="dp-sec-t">Cambiar estado</div>'
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">'
@@ -4484,7 +4555,7 @@ function dpTab(tab, eObj, col){
           +est3.label+(isActive?' ✓':'')+'</button>';
       }).join('')
       +'</div>'
-      +'<div class="dp-sec-t">Historial ('+movEq.length+')</div>'
+      +'<div class="dp-sec-t">Historial</div>'
       +movHtml;
   }
 }
@@ -4492,10 +4563,24 @@ function dpTab(tab, eObj, col){
 // ══ ÓRDENES ══
 function renderOrdenes(){
   var w=document.getElementById('view-ordenes');if(!w)return;
-  var q=document.getElementById('ord-q')?document.getElementById('ord-q').value.toLowerCase():'';
+  // La vista se repinta al escribir y cuando llegan ordenes nuevas: se
+  // recuerda si el buscador tenia el cursor para devolverselo.
+  var _qEl=document.getElementById('ord-q'), _qFoco=!!_qEl&&document.activeElement===_qEl;
+  var qRaw=_qEl?_qEl.value:'';
+  var q=qRaw.toLowerCase();
   var tipo=ordFiltros.tipo, est=ordFiltros.estado;
   function fechaOrd(o){ return o.creadoEn?(o.creadoEn.toDate?o.creadoEn.toDate():new Date(o.creadoEn)):null; }
-  var data=ordenes.filter(function(o){
+  // Sin fechas: las 200 mas recientes, en vivo. Con fechas: todas las del
+  // periodo (antes solo se filtraban esas 200).
+  var fuente=ordenes;
+  if(ordFiltros.desde||ordFiltros.hasta){
+    fuente=ordenesPeriodo(ordFiltros.desde||ordFiltros.hasta, ordFiltros.hasta||fechaLocal(), function(){ if(curView==='ordenes')renderOrdenes(); });
+    if(!fuente){ ordPeriodoCargando(w); return; }
+  }
+  // Cada quien ve lo suyo: el coordinador sus centros, el tecnico sus ordenes.
+  var _esTec=String((curUser&&curUser.rol)||'').toLowerCase()==='tecnico';
+  fuente=fuente.filter(function(o){ return enMiAlcance(o.centro) && (!_esTec || o.tecnicoUid===curUser.uid); });
+  var data=fuente.filter(function(o){
     if(tipo&&o.tipo!==tipo)return false;
     if(est&&o.estado!==est)return false;
     if(ordFiltros.tecnico&&(o.tecnicoNombre||'')!==ordFiltros.tecnico)return false;
@@ -4510,7 +4595,7 @@ function renderOrdenes(){
   });
   // Opciones de técnicos y centros presentes en las órdenes
   var tecs={}, ces={};
-  ordenes.forEach(function(o){ if(o.tecnicoNombre)tecs[o.tecnicoNombre]=1; if(o.centro)ces[o.centro]=1; });
+  fuente.forEach(function(o){ if(o.tecnicoNombre)tecs[o.tecnicoNombre]=1; if(o.centro)ces[o.centro]=1; });
   // Resumen para el jefe
   var totFact=data.reduce(function(a,o){return a+(o.costoTotal||0);},0);
   var porTec={};
@@ -4546,7 +4631,7 @@ function renderOrdenes(){
     +'<div class="tbl-box">'
     +'<div class="tbl-hdr"><span class="tbl-hdr-title">Órdenes de Servicio — '+data.length+'</span>'
     +'<div class="tbl-tools">'
-    +'<input class="fi-sm" type="text" id="ord-q" placeholder="🔍 Folio, modelo, activo, cliente..." style="width:230px" oninput="renderOrdenes()" value="'+(q||'')+'">'
+    +'<input class="fi-sm" type="text" id="ord-q" placeholder="🔍 Folio, modelo, activo, cliente..." style="width:230px" oninput="renderOrdenes()" value="'+escH(qRaw)+'">'
     +'<button class="btn btn-blue btn-sm" onclick="openFormOrden()">+ Nueva Orden</button>'
     +'</div></div>'
     +'<div style="overflow-x:auto"><table><thead><tr><th>Folio</th><th>Fecha</th><th>Tipo</th><th>Activo Fijo</th><th>Modelo</th><th>Cliente</th><th>Centro</th><th>Técnico</th><th>Estado</th><th>Costo</th><th>Acción</th></tr></thead><tbody>'
@@ -4565,6 +4650,7 @@ function renderOrdenes(){
       +'</tr>';}).join('')
       :'<tr><td colspan="11" class="empty-state">Sin órdenes para estos filtros</td></tr>')
     +'</tbody></table></div></div>';
+  if(_qFoco){ var _n=document.getElementById('ord-q'); if(_n){ _n.focus(); _n.setSelectionRange(_n.value.length,_n.value.length); } }
 }
 
 // ══════════════════════════ ANÁLISIS DE ÓRDENES ══════════════════════════
@@ -4572,12 +4658,10 @@ var anFiltros={desde:'',hasta:''};
 function renderAnalisis(){
   var w=document.getElementById('view-analisis'); if(!w)return;
   function fechaOrd(o){ return o.creadoEn?(o.creadoEn.toDate?o.creadoEn.toDate():new Date(o.creadoEn)):null; }
-  var data=ordenes.filter(function(o){
-    if(anFiltros.desde||anFiltros.hasta){ var d=fechaOrd(o); if(!d)return false;
-      if(anFiltros.desde && d<new Date(anFiltros.desde+'T00:00:00'))return false;
-      if(anFiltros.hasta && d>new Date(anFiltros.hasta+'T23:59:59'))return false; }
-    return true;
-  });
+  if(!anFiltros.desde) anFiltros.desde=inicioMes();
+  if(!anFiltros.hasta) anFiltros.hasta=fechaLocal();
+  var data=ordenesPeriodo(anFiltros.desde, anFiltros.hasta, function(){ if(curView==='analisis')renderAnalisis(); });
+  if(!data){ ordPeriodoCargando(w); return; }
   // Agregados
   var totFact=0, totOrd=data.length, prev=0, corr=0;
   var porTec={}, porCentro={}, porCliente={}, porMes={};
@@ -4590,7 +4674,7 @@ function renderAnalisis(){
     var d=fechaOrd(o); if(d){ var mk=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2); porMes[mk]=porMes[mk]||{n:0,f:0}; porMes[mk].n++; porMes[mk].f+=v; }
   });
   var ticket=totOrd?totFact/totOrd:0;
-  var nTec=Object.keys(porTec).length;
+  var nTec=Object.keys(porTec).filter(function(k){ return k!=="Sin asignar"; }).length;
 
   function kpi(lbl,val,sub){ return '<div class="tbl-box" style="padding:18px 20px"><div style="font-size:11px;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.06em">'+lbl+'</div><div style="font-family:\'Source Serif 4\',serif;font-size:27px;color:var(--cf-text);margin-top:4px">'+val+'</div>'+(sub?'<div style="font-size:11px;color:var(--cf-text2);margin-top:2px">'+sub+'</div>':'')+'</div>'; }
 
@@ -4638,7 +4722,7 @@ function renderAnalisis(){
       +'</svg>';
   } else { lineSvg='<div style="color:var(--cf-text2);font-size:12px;padding:20px 0">Sin datos por mes</div>'; }
 
-  w.innerHTML=
+  w.innerHTML=ordPeriodoAviso(data)+
     '<div style="max-width:1300px;margin:0 auto">'
     // Encabezado + filtros fecha
     +'<div class="tbl-box" style="padding:18px 22px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:end;flex-wrap:wrap;gap:12px">'
@@ -4647,7 +4731,7 @@ function renderAnalisis(){
       +'<div style="display:flex;gap:10px;align-items:end">'
         +'<div><div style="font-size:12px;color:var(--cf-text2);margin-bottom:5px">Desde</div><input class="fi-sm" type="date" value="'+anFiltros.desde+'" onchange="anFiltros.desde=this.value;renderAnalisis()"></div>'
         +'<div><div style="font-size:12px;color:var(--cf-text2);margin-bottom:5px">Hasta</div><input class="fi-sm" type="date" value="'+anFiltros.hasta+'" onchange="anFiltros.hasta=this.value;renderAnalisis()"></div>'
-        +((anFiltros.desde||anFiltros.hasta)?'<button class="btn btn-sm" onclick="anFiltros={desde:\'\',hasta:\'\'};renderAnalisis()">Limpiar</button>':'')
+        +((anFiltros.desde!==inicioMes()||anFiltros.hasta!==fechaLocal())?'<button class="btn btn-sm" onclick="anFiltros={desde:\'\',hasta:\'\'};renderAnalisis()">Este mes</button>':'')
       +'</div>'
     +'</div>'
     // KPIs
@@ -4739,8 +4823,9 @@ function renderAuditoria(){
     +'</div>';
 }
 function cargarAuditorias(){
-  db.collection('auditorias').limit(300).get().then(function(s){
-    _auditorias=s.docs.map(function(d){return {id:d.id,...d.data()};});
+  // Las 300 mas recientes (antes 300 cualquiera), de los centros del usuario.
+  db.collection('auditorias').orderBy('creadoEn','desc').limit(300).get().then(function(s){
+    _auditorias=s.docs.map(function(d){return {id:d.id,...d.data()};}).filter(function(a){ return enMiAlcance(a.centro); });
     _auditorias.sort(function(a,b){ var fa=(a.creadoEn&&a.creadoEn.seconds)||0, fb=(b.creadoEn&&b.creadoEn.seconds)||0; return fb-fa; });
     _audCargado=true;
     if(curView==='auditoria')renderAuditoria();
@@ -4915,9 +5000,9 @@ function makeQRUrl(af){return'https://api.qrserver.com/v1/create-qr-code/?size=8
 function etiqHTML(af,modelo,centro){
   return'<div class="einfo">'
     +'<img class="eqr" src="'+makeQRUrl(af)+'" alt="QR" loading="lazy">'
-    +'<div class="eid">AF: '+af+'</div>'
-    +'<div class="enombre">'+modelo+'</div>'
-    +'<div class="ecentro">'+getCentroNombre(centro)+'</div>'
+    +'<div class="eid">AF: '+escH(af)+'</div>'
+    +'<div class="enombre">'+escH(modelo)+'</div>'
+    +'<div class="ecentro">'+escH(getCentroNombre(centro))+'</div>'
     +'</div>';
 }
 // Antes leia de la variable `clientes`, que se declara vacia y nadie llena:
@@ -5088,53 +5173,63 @@ function renderEtiquetas(){
       for(var j=0;j<ETIQ_POR_HOJA;j++){
         var c=hoja[j];
         if(!c){items+='<div class="etiq vacia"></div>';}
-        else{items+='<div class="etiq" onclick="printEtiquetaAF('+c.activoFijo+',\''+esc(c.modelo)+'\',\''+c.centro+'\')" title="Clic para imprimir">'+etiqHTML(c.activoFijo,c.modelo,c.centro)+'</div>';}
+        else{items+='<div class="etiq" onclick="printEtiquetaAF(\''+esc(c.activoFijo)+'\',\''+esc(c.modelo)+'\',\''+c.centro+'\')" title="Clic para imprimir">'+etiqHTML(c.activoFijo,c.modelo,c.centro)+'</div>';}
       }
       return'<div class="etiq-hoja">'+items+'</div>';
     }).join('')
     +'<div style="text-align:center;font-size:11px;color:#9aa0a6;margin-top:8px">Clic en una etiqueta para imprimirla individualmente</div>'
     +'</div>';
 }
+// Imprimir en una ventana aparte. La pagina principal tiene reglas de
+// impresion (body *{display:none}) pensadas para la ficha, que dejaban en
+// blanco cualquier otra impresion.
+var ETIQ_CSS='.etiq-hoja{background:#fff;width:21.59cm;margin:0 auto;padding:1cm;display:grid;grid-template-columns:repeat(3,5cm);grid-auto-rows:2.5cm;gap:0;page-break-after:always}'
+  +'.etiq,.print-etiq-single{width:5cm;height:2.5cm;border:.5pt solid #ddd;display:flex;align-items:center;padding:1.5mm 2mm;gap:2mm;background:#fff;overflow:hidden}'
+  +'.eqr{width:13mm;height:13mm}.einfo{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.5mm}'
+  +'.eid{font-size:6pt;font-weight:700;letter-spacing:.3px;text-align:center;font-family:Arial,sans-serif;color:#000}'
+  +'.enombre{font-size:4.5pt;color:#555;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:20mm;font-family:Arial,sans-serif}'
+  +'.ecentro{font-size:4pt;color:#888;text-align:center;font-family:Arial,sans-serif}.etiq.vacia{border:none}';
+function imprimirEnVentana(titulo, cuerpo, css){
+  var win=window.open('','_blank','width=900,height=1100');
+  if(!win){ toast('⚠️ El navegador bloqueó la ventana de impresión. Permite ventanas emergentes para este sitio.'); return; }
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+escH(titulo)+'</title>'
+    +'<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#fff}'+(css||'')+'</style></head><body>'
+    +cuerpo
+    // Espera a que carguen las imagenes (QR) antes de imprimir.
+    +'<script>window.onload=function(){setTimeout(function(){window.print();},200);};<\/script>'
+    +'</body></html>');
+  win.document.close();
+}
 function printEtiquetaAF(af,modelo,centro){
-  var div=document.createElement('div');div.className='print-etiq-single';
-  div.innerHTML=etiqHTML(af,modelo,centro);
-  document.body.appendChild(div);
-  setTimeout(function(){
-    var style=document.createElement('style');style.id='pet-style';
-    style.textContent='@media print{body>*:not(.print-etiq-single){display:none!important;}.print-etiq-single{position:fixed!important;top:0!important;left:0!important;display:flex!important;}@page{size:5cm 2.5cm;margin:0;}}';
-    document.head.appendChild(style);window.print();
-    setTimeout(function(){document.body.removeChild(div);var s=document.getElementById('pet-style');if(s)document.head.removeChild(s);},500);
-  },600);
+  imprimirEnVentana('Etiqueta '+af, '<div class="print-etiq-single">'+etiqHTML(af,modelo,centro)+'</div>',
+    ETIQ_CSS+'.print-etiq-single{border:none}@page{size:5cm 2.5cm;margin:0}');
 }
 function printEtiqueta(docId){
-  var e=clientes.find(function(x){return x.id===docId;})||equipos.find(function(x){return x.id===docId;});
+  var buscar=function(arr){ return (arr||[]).find(function(x){return x.id===docId;}); };
+  var e=buscar(_etiqDatos)||buscar(_equiposRes)||buscar(_clientesRes);
   if(e)printEtiquetaAF(e.activoFijo,e.modelo,e.centro);
 }
 function printTodasEtiquetas(){
-  var style=document.createElement('style');style.id='pth-style';
-  style.textContent='@media print{body>*{display:none!important;}#view-etiquetas{display:block!important;overflow:visible!important;background:#fff!important;}.etiq-hoja{box-shadow:none!important;page-break-after:always;}.etiq{border:.5pt solid #999!important;}@page{size:letter;margin:1cm;}}';
-  document.head.appendChild(style);window.print();
-  setTimeout(function(){var s=document.getElementById('pth-style');if(s)document.head.removeChild(s);},500);
+  // Todas las etiquetas cargadas (no solo las que caben en pantalla), 30 por hoja.
+  var d=_etiqDatos||[];
+  if(!d.length){ toast('No hay etiquetas para imprimir.'); return; }
+  var hojas='';
+  for(var i=0;i<d.length;i+=30){
+    hojas+='<div class="etiq-hoja">'+d.slice(i,i+30).map(function(c){ return '<div class="etiq">'+etiqHTML(c.activoFijo,c.modelo,c.centro)+'</div>'; }).join('')+'</div>';
+  }
+  imprimirEnVentana('Etiquetas CAFIVER', hojas, ETIQ_CSS+'@page{size:letter;margin:0}');
 }
 
 // ══ REPORTES ══
-function renderReportes(){
-  var w=document.getElementById('view-reportes');if(!w)return;
-  var total=ordenes.length;
-  var ingr=ordenes.reduce(function(a,o){return a+(o.costoTotal||0);},0);
-  var corr=ordenes.filter(function(o){return o.tipo==='correctivo';}).length;
-  var prev=ordenes.filter(function(o){return o.tipo==='preventivo';}).length;
-  var inst=ordenes.filter(function(o){return o.tipo==='instalacion';}).length;
-  var reti=ordenes.filter(function(o){return o.tipo==='retiro';}).length;
-  var byTec={};ordenes.forEach(function(o){if(!byTec[o.tecnicoNombre||'—']){byTec[o.tecnicoNombre||'—']={n:0,c:0};}byTec[o.tecnicoNombre||'—'].n++;byTec[o.tecnicoNombre||'—'].c+=o.costoTotal||0;});
-  var byCe={};ordenes.forEach(function(o){if(!byCe[o.centro||'—']){byCe[o.centro||'—']={n:0,c:0};}byCe[o.centro||'—'].n++;byCe[o.centro||'—'].c+=o.costoTotal||0;});
-  // ── Tabla de equipos por centro y línea: PRECALCULADA en config/general ──
-  // (antes se escaneaban los ~48k equipos aquí: ~49,000 lecturas por visita)
+// Tabla de equipos por centro y linea, PRECALCULADA en config/general
+// (antes se escaneaban los ~48k equipos: ~49,000 lecturas por visita).
+// La usan la pantalla y los Excel; se recorta a los centros del usuario.
+function repTablaEquipos(){
   var cfg=_statsConfig||{};
   var CL=cfg.centroLinea||{};
   var LINEAS=(cfg.lineasCat&&cfg.lineasCat.length)?cfg.lineasCat:Object.keys(cfg.porLinea||{}).sort();
   var tabByCe={};
-  Object.keys(CL).forEach(function(ce){
+  Object.keys(CL).filter(enMiAlcance).forEach(function(ce){
     var alms=CL[ce];
     tabByCe[ce]={ce:ce,rows:[],totals:{}};
     Object.keys(alms).forEach(function(alm){
@@ -5146,6 +5241,25 @@ function renderReportes(){
       tabByCe[ce].totals.total=(tabByCe[ce].totals.total||0)+(a.total||0);
     });
   });
+  var lista=Object.values(tabByCe).sort(function(a,b){return(CENTROS[a.ce]||a.ce)<(CENTROS[b.ce]||b.ce)?-1:1;});
+  return {LINEAS:LINEAS, tabByCe:tabByCe, lista:lista};
+}
+var _repCe='', _repOrdenes=[];
+function renderReportes(){
+  var w=document.getElementById('view-reportes');if(!w)return;
+  // Las ordenes son las del periodo elegido (mismo periodo que Analisis).
+  if(!anFiltros.desde) anFiltros.desde=inicioMes();
+  if(!anFiltros.hasta) anFiltros.hasta=fechaLocal();
+  var ords=ordenesPeriodo(anFiltros.desde, anFiltros.hasta, function(){ if(curView==='reportes')renderReportes(); });
+  if(!ords){ ordPeriodoCargando(w); return; }
+  _repOrdenes=ords;
+  var total=ords.length;
+  var ingr=ords.reduce(function(a,o){return a+(o.costoTotal||0);},0);
+  var corr=ords.filter(function(o){return o.tipo==='correctivo';}).length;
+  var prev=ords.filter(function(o){return o.tipo==='preventivo';}).length;
+  var byTec={};ords.forEach(function(o){var k=o.tecnicoNombre||'—';if(!byTec[k]){byTec[k]={n:0,c:0};}byTec[k].n++;byTec[k].c+=o.costoTotal||0;});
+  var byCe={};ords.forEach(function(o){if(!byCe[o.centro||'—']){byCe[o.centro||'—']={n:0,c:0};}byCe[o.centro||'—'].n++;byCe[o.centro||'—'].c+=o.costoTotal||0;});
+  var TE=repTablaEquipos(), LINEAS=TE.LINEAS, tabByCe=TE.tabByCe;
   var totalGeneral={total:0};
   LINEAS.forEach(function(l){totalGeneral[l]=0;});
   Object.values(tabByCe).forEach(function(ce){
@@ -5154,12 +5268,17 @@ function renderReportes(){
   });
 
   w.innerHTML=
-    '<div style="font-size:18px;font-weight:700;color:#1c1e21;margin-bottom:18px">Reportes y Exportación</div>'
+    '<div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:18px">'
+    +'<div style="font-size:18px;font-weight:700;color:#1c1e21;flex:1">Reportes y Exportación</div>'
+    +'<div><div style="font-size:11px;color:var(--cf-text2);margin-bottom:4px">Órdenes desde</div><input class="fi-sm" type="date" value="'+anFiltros.desde+'" onchange="anFiltros.desde=this.value;renderReportes()"></div>'
+    +'<div><div style="font-size:11px;color:var(--cf-text2);margin-bottom:4px">Hasta</div><input class="fi-sm" type="date" value="'+anFiltros.hasta+'" onchange="anFiltros.hasta=this.value;renderReportes()"></div>'
+    +'</div>'
+    +ordPeriodoAviso(ords)
     +'<div class="stats-grid">'
-    +'<div class="stat-card"><div class="lbl">Total órdenes</div><div class="val blue">'+total+'</div></div>'
+    +'<div class="stat-card"><div class="lbl">Órdenes del periodo</div><div class="val blue">'+total+'</div></div>'
     +'<div class="stat-card"><div class="lbl">Correctivos</div><div class="val red">'+corr+'</div></div>'
     +'<div class="stat-card"><div class="lbl">Preventivos</div><div class="val green">'+prev+'</div></div>'
-    +'<div class="stat-card"><div class="lbl">Ingresos totales</div><div class="val green" style="font-size:18px">'+fmt$(ingr)+'</div></div>'
+    +'<div class="stat-card"><div class="lbl">Ingresos del periodo</div><div class="val green" style="font-size:18px">'+fmt$(ingr)+'</div></div>'
     +'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">'
     +'<div class="tbl-box"><div class="tbl-hdr"><span class="tbl-hdr-title">Por técnico</span></div>'
@@ -5200,16 +5319,16 @@ function renderReportes(){
     +'<div class="tbl-box" style="margin-bottom:16px">'
     +'<div class="tbl-hdr"><span class="tbl-hdr-title">Detalle por Plaza y Almacén</span>'
     +'<div style="display:flex;gap:8px;align-items:center">'
-    +'<select class="fi-sm" id="rep-ce-filter" onchange="renderReportes()" style="width:180px">'
+    +'<select class="fi-sm" id="rep-ce-filter" onchange="_repCe=this.value;renderReportes()" style="width:180px">'
     +'<option value="">Todos los centros</option>'
-    +Object.values(tabByCe).sort(function(a,b){return(CENTROS[a.ce]||a.ce)<(CENTROS[b.ce]||b.ce)?-1:1;}).map(function(ceData){
-      return'<option value="'+ceData.ce+'">'+(getCentroNombre(ceData.ce))+'</option>';
+    +TE.lista.map(function(ceData){
+      return'<option value="'+escH(ceData.ce)+'"'+(_repCe===ceData.ce?' selected':'')+'>'+escH(getCentroNombre(ceData.ce))+'</option>';
     }).join("")
     +"</select>"
     +'<button class="btn btn-sm btn-blue" onclick="exportExcelPlazas()">⬇ Excel</button>'
     +'</div></div>'
     +(function(){
-      var filtCe=document.getElementById('rep-ce-filter')?document.getElementById('rep-ce-filter').value:'';
+      var filtCe=_repCe;
       var ceList=Object.values(tabByCe).sort(function(a,b){return(CENTROS[a.ce]||a.ce)<(CENTROS[b.ce]||b.ce)?-1:1;});
       if(filtCe)ceList=ceList.filter(function(x){return x.ce===filtCe;});
       return'<div style="overflow-x:auto"><table style="font-size:11px"><thead><tr>'
@@ -5240,78 +5359,62 @@ function renderReportes(){
     })()
     +'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;padding:16px">'
-    +'<div style="background:#f7f9ff;border:1px solid #e8eaed;border-radius:12px;padding:16px"><div style="font-size:28px;margin-bottom:8px">📋</div><div style="font-weight:600;margin-bottom:4px">Órdenes de Servicio</div><div style="font-size:12px;color:#9aa0a6;margin-bottom:12px">Detalle completo de órdenes, costos y técnicos</div><button class="btn btn-blue" style="width:100%;justify-content:center" onclick="exportExcelOrdenes()">⬇ Descargar</button></div>'
-    +'<div style="background:#f7f9ff;border:1px solid #e8eaed;border-radius:12px;padding:16px"><div style="font-size:28px;margin-bottom:8px">☕</div><div style="font-weight:600;margin-bottom:4px">Equipos por Centro</div><div style="font-size:12px;color:#9aa0a6;margin-bottom:12px">Clientes con equipo asignado</div><button class="btn btn-blue" style="width:100%;justify-content:center" onclick="exportExcelEquipos()">⬇ Descargar</button></div>'
-    +'<div style="background:#f7f9ff;border:1px solid #e8eaed;border-radius:12px;padding:16px"><div style="font-size:28px;margin-bottom:8px">📊</div><div style="font-weight:600;margin-bottom:4px">Reporte Gerencial</div><div style="font-size:12px;color:#9aa0a6;margin-bottom:12px">KPIs por técnico, centro y período</div><button class="btn btn-blue" style="width:100%;justify-content:center" onclick="exportExcelGerencial()">⬇ Descargar</button></div>'
+    +'<div style="background:#f7f9ff;border:1px solid #e8eaed;border-radius:12px;padding:16px"><div style="font-size:28px;margin-bottom:8px">📋</div><div style="font-weight:600;margin-bottom:4px">Órdenes de Servicio</div><div style="font-size:12px;color:#9aa0a6;margin-bottom:12px">Órdenes del periodo elegido arriba, con costos y técnicos</div><button class="btn btn-blue" style="width:100%;justify-content:center" onclick="exportExcelOrdenes()">⬇ Descargar</button></div>'
+    +'<div style="background:#f7f9ff;border:1px solid #e8eaed;border-radius:12px;padding:16px"><div style="font-size:28px;margin-bottom:8px">☕</div><div style="font-weight:600;margin-bottom:4px">Equipos por Centro</div><div style="font-size:12px;color:#9aa0a6;margin-bottom:12px">Equipo por equipo del centro elegido en «Detalle por Plaza»</div><button class="btn btn-blue" style="width:100%;justify-content:center" onclick="exportExcelEquipos()">⬇ Descargar</button></div>'
+    +'<div style="background:#f7f9ff;border:1px solid #e8eaed;border-radius:12px;padding:16px"><div style="font-size:28px;margin-bottom:8px">📊</div><div style="font-weight:600;margin-bottom:4px">Reporte Gerencial</div><div style="font-size:12px;color:#9aa0a6;margin-bottom:12px">KPIs del periodo por técnico y centro</div><button class="btn btn-blue" style="width:100%;justify-content:center" onclick="exportExcelGerencial()">⬇ Descargar</button></div>'
     +'</div></div>';
 }
 
 function exportExcel(){exportExcelOrdenes();}
 
 function exportExcelConcentrado(){
-  var LINEAS=['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'];
+  // Misma tabla que en pantalla (config/general). Antes leia la lista
+  // `clientes`, que nunca se llena, y bajaba un Excel en ceros.
+  var TE=repTablaEquipos(), LINEAS=TE.LINEAS;
+  if(!TE.lista.length){ toast('Sin datos de equipos. Ejecuta node cafiver-resumen.js en el servidor.'); return; }
   var wb=XLSX.utils.book_new();
   var rows=[['','','','CLIENTES CON EQUIPOS'],['No.','Plaza','Clientes'].concat(LINEAS).concat(['Total general'])];
-  var tabC={};
-  clientes.forEach(function(cl){
-    var ce=cl.centro||'—';
-    if(!tabC[ce]){tabC[ce]={ce:ce,alms:new Set(),total:0}; LINEAS.forEach(function(l){tabC[ce][l]=0;});}
-    tabC[ce].alms.add(String(cl.almacen||''));
-    var lin=cl.linea||'—';
-    if(lin.startsWith('Caf')&&lin.includes('soluble'))lin='Cafe soluble';
-    if(tabC[ce][lin]!==undefined)tabC[ce][lin]++;
-    tabC[ce].total++;
+  TE.lista.forEach(function(r,i){
+    rows.push([i+1,getCentroNombre(r.ce),r.rows.length].concat(LINEAS.map(function(l){return r.totals[l]||0;})).concat([r.totals.total||0]));
   });
-  var sorted=Object.values(tabC).sort(function(a,b){return(CENTROS[a.ce]||a.ce)<(CENTROS[b.ce]||b.ce)?-1:1;});
-  sorted.forEach(function(r,i){
-    rows.push([i+1,getCentroNombre(r.ce),r.alms.size].concat(LINEAS.map(function(l){return r[l]||0;})).concat([r.total]));
-  });
-  var totRow=['','TOTAL',sorted.reduce(function(a,r){return a+r.alms.size;},0)];
-  LINEAS.forEach(function(l){totRow.push(sorted.reduce(function(a,r){return a+(r[l]||0);},0));});
-  totRow.push(sorted.reduce(function(a,r){return a+r.total;},0));
+  var totRow=['','TOTAL',TE.lista.reduce(function(a,r){return a+r.rows.length;},0)];
+  LINEAS.forEach(function(l){totRow.push(TE.lista.reduce(function(a,r){return a+(r.totals[l]||0);},0));});
+  totRow.push(TE.lista.reduce(function(a,r){return a+(r.totals.total||0);},0));
   rows.push(totRow);
   var ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=[{wch:6},{wch:18},{wch:10}].concat(LINEAS.map(function(){return{wch:14};})).concat([{wch:14}]);
   XLSX.utils.book_append_sheet(wb,ws,'Concentrado');
-  XLSX.writeFile(wb,'CAFIVER_Concentrado_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  XLSX.writeFile(wb,'CAFIVER_Concentrado_'+fechaLocal()+'.xlsx');
   toast('✅ Excel concentrado descargado');
 }
 
 function exportExcelPlazas(){
-  var LINEAS=['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'];
+  var TE=repTablaEquipos(), LINEAS=TE.LINEAS;
+  var lista=_repCe ? TE.lista.filter(function(x){ return x.ce===_repCe; }) : TE.lista;
+  if(!lista.length){ toast('Sin datos de equipos. Ejecuta node cafiver-resumen.js en el servidor.'); return; }
   var wb=XLSX.utils.book_new();
   var rows=[['CAFIVER — Clientes con Equipos por Plazas','Generado:',new Date().toLocaleDateString('es-MX')],[]];
   rows.push(['Plaza','Centro','Almacén'].concat(LINEAS).concat(['Total']));
-  var tabCentro2={};
-  clientes.forEach(function(c){
-    var ce=c.centro||'—';
-    var alm=String(c.almacen||'—');
-    var key=ce+'|'+alm;
-    if(!tabCentro2[key])tabCentro2[key]={ce:ce,alm:alm,total:0};
-    LINEAS.forEach(function(l){tabCentro2[key][l]=tabCentro2[key][l]||0;});
-    var lin=c.linea||'—';
-    if(lin.startsWith('Caf')&&lin.includes('soluble'))lin='Cafe soluble';
-    if(tabCentro2[key][lin]!==undefined)tabCentro2[key][lin]++;
-    tabCentro2[key].total++;
-  });
-  Object.values(tabCentro2).sort(function(a,b){return a.ce<b.ce?-1:1;}).forEach(function(r){
-    rows.push([getCentroNombre(r.ce),r.ce,r.alm].concat(LINEAS.map(function(l){return r[l]||0;})).concat([r.total]));
+  lista.forEach(function(ce){
+    ce.rows.slice().sort(function(a,b){return String(a.alm)<String(b.alm)?-1:1;}).forEach(function(r){
+      rows.push([getCentroNombre(ce.ce),ce.ce,r.alm].concat(LINEAS.map(function(l){return r[l]||0;})).concat([r.total||0]));
+    });
   });
   var ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=[{wch:20},{wch:8},{wch:12}].concat(LINEAS.map(function(){return{wch:14};})).concat([{wch:10}]);
   XLSX.utils.book_append_sheet(wb,ws,'Por Plazas');
-  XLSX.writeFile(wb,'CAFIVER_Equipos_Por_Plazas_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  XLSX.writeFile(wb,'CAFIVER_Equipos_Por_Plazas_'+fechaLocal()+'.xlsx');
   toast('✅ Excel por plazas descargado');
 }
 function exportExcelOrdenes(){
   var wb=XLSX.utils.book_new();
-  var rows=[['CAFIVER — Órdenes de Servicio','Generado:',new Date().toLocaleDateString('es-MX')],[]];
+  var rows=[['CAFIVER — Órdenes de Servicio','Periodo:',anFiltros.desde+' a '+anFiltros.hasta],[]];
   rows.push(['Folio','Fecha','Tipo','Activo Fijo','No. Serie','Modelo','Centro','Cliente','Técnico','Estado','M. de Obra','Refacciones','Viáticos','Total','Descripción']);
-  ordenes.forEach(function(o){rows.push([o.folio,fmtF(o.creadoEn),o.tipo,o.activoFijo,o.serie,o.modelo,CENTROS[o.centro]||o.centro,o.cliente,o.tecnicoNombre,o.estado,o.costoManoObra||0,o.costoRefacciones||0,o.costoViaticos||0,o.costoTotal||0,o.descripcion]);});
+  _repOrdenes.forEach(function(o){rows.push([o.folio,fmtF(o.creadoEn),o.tipo,o.activoFijo,o.serie,o.modelo,CENTROS[o.centro]||o.centro,o.cliente,o.tecnicoNombre,o.estado,o.costoManoObra||0,o.costoRefacciones||0,o.costoViaticos||0,o.costoTotal||0,o.descripcion]);});
   var ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:14},{wch:12},{wch:12},{wch:12},{wch:14},{wch:26},{wch:18},{wch:24},{wch:18},{wch:12},{wch:12},{wch:12},{wch:10},{wch:12},{wch:30}];
   XLSX.utils.book_append_sheet(wb,ws,'Órdenes');
   // Hoja por técnico
-  var pt={};ordenes.forEach(function(o){
+  var pt={};_repOrdenes.forEach(function(o){
     var k=o.tecnicoNombre||'—';
     if(!pt[k])pt[k]={correctivo:0,preventivo:0,instalacion:0,retiro:0,tot:0,ing:0};
     var t=pt[k];
@@ -5322,38 +5425,47 @@ function exportExcelOrdenes(){
     ...Object.entries(pt).map(function(e){return[e[0],e[1].correctivo,e[1].preventivo,e[1].instalacion,e[1].retiro,e[1].tot,e[1].ing];})];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows2),'Por Técnico');
   // Hoja por centro
-  var pc={};ordenes.forEach(function(o){if(!pc[o.centro||'—'])pc[o.centro||'—']={n:0,ing:0};pc[o.centro||'—'].n++;pc[o.centro||'—'].ing+=o.costoTotal||0;});
+  var pc={};_repOrdenes.forEach(function(o){if(!pc[o.centro||'—'])pc[o.centro||'—']={n:0,ing:0};pc[o.centro||'—'].n++;pc[o.centro||'—'].ing+=o.costoTotal||0;});
   var rows3=[['Centro','Nombre','Órdenes','Ingresos'],...Object.entries(pc).map(function(e){return[e[0],getCentroNombre(e[0]),e[1].n,e[1].ing];})];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows3),'Por Centro');
-  XLSX.writeFile(wb,'CAFIVER_Ordenes_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  XLSX.writeFile(wb,'CAFIVER_Ordenes_'+anFiltros.desde+'_a_'+anFiltros.hasta+'.xlsx');
   toast('✅ Excel de órdenes descargado');
 }
 function exportExcelEquipos(){
-  var wb=XLSX.utils.book_new();
-  var rows=[['CAFIVER — Equipos con Cliente','Generado:',new Date().toLocaleDateString('es-MX')],[]];
-  rows.push(['No.','Activo Fijo','No. Serie','Modelo','Línea','Centro','Nombre Centro','Cliente / Almacén']);
-  clientes.forEach(function(c){rows.push([c.no,c.activoFijo,c.serie,c.modelo,c.linea,c.centro,CENTROS[c.centro]||c.centro,c.clienteNombre||c.razonSocial||String(c.clienteClave||c.almacen||'')]);});
-  var ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:8},{wch:12},{wch:14},{wch:30},{wch:16},{wch:8},{wch:20},{wch:28}];
-  XLSX.utils.book_append_sheet(wb,ws,'Equipos');
-  XLSX.writeFile(wb,'CAFIVER_Equipos_'+new Date().toISOString().slice(0,10)+'.xlsx');
-  toast('✅ Excel de equipos descargado');
+  // Detalle equipo por equipo: se pide a Firestore el centro elegido en
+  // "Detalle por Plaza" (todo el pais serian ~48,000 lecturas).
+  if(!_repCe){ toast('Elige un centro en "Detalle por Plaza y Almacén" para descargar sus equipos.'); return; }
+  toast('Preparando equipos de '+getCentroNombre(_repCe)+'...');
+  clConsulta('centro|'+_repCe, function(){ return db.collection('equipos').where('centro','==',_repCe).limit(4000).get(); }).then(function(docs){
+    var wb=XLSX.utils.book_new();
+    var rows=[['CAFIVER — Equipos de '+getCentroNombre(_repCe),'Generado:',new Date().toLocaleDateString('es-MX')],[]];
+    rows.push(['No.','Activo Fijo','No. Serie','Modelo','Línea','Estado','Centro','Cliente / Almacén']);
+    docs.forEach(function(d,i){
+      var c=conEstadoManual(Object.assign({id:d.id}, d.data));
+      rows.push([i+1,c.activoFijo,c.serie,c.modelo,c.linea,(ESTADOS[c.estado]||{}).label||c.estado||'',c.centro,c.clienteNombre||c.razonSocial||String(c.clienteClave||c.almacen||'')]);
+    });
+    var ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:8},{wch:12},{wch:14},{wch:30},{wch:16},{wch:14},{wch:8},{wch:28}];
+    XLSX.utils.book_append_sheet(wb,ws,'Equipos');
+    XLSX.writeFile(wb,'CAFIVER_Equipos_'+_repCe+'_'+fechaLocal()+'.xlsx');
+    toast('✅ Excel de equipos descargado ('+docs.length+')');
+  }).catch(function(e){ toast('⚠️ No se pudo descargar: '+e.message); });
 }
 function exportExcelGerencial(){
   var wb=XLSX.utils.book_new();
-  var total=ordenes.length,ingr=ordenes.reduce(function(a,o){return a+(o.costoTotal||0);},0);
-  var term=ordenes.filter(function(o){return o.estado==='terminado';}).length;
-  var kpis=[['CAFIVER — Reporte Gerencial','Generado:',new Date().toLocaleDateString('es-MX'),curUser?'Por: '+curUser.name:''],[]
-    ,['KPIs GENERALES','','',''],['Total órdenes',total,'',''],['Correctivos',ordenes.filter(function(o){return o.tipo==='correctivo';}).length,'',''],['Preventivos',ordenes.filter(function(o){return o.tipo==='preventivo';}).length,'',''],['Instalaciones',ordenes.filter(function(o){return o.tipo==='instalacion';}).length,'',''],['Retiros',ordenes.filter(function(o){return o.tipo==='retiro';}).length,'',''],['Completadas',term,'',''],['Pendientes',total-term,'',''],['Total ingresos',ingr,'',''],['Promedio por orden',total?Math.round(ingr/total):0,'',''],[]
+  var total=_repOrdenes.length,ingr=_repOrdenes.reduce(function(a,o){return a+(o.costoTotal||0);},0);
+  var term=_repOrdenes.filter(function(o){return o.estado==='terminado';}).length;
+  var kpis=[['CAFIVER — Reporte Gerencial','Periodo:',anFiltros.desde+' a '+anFiltros.hasta,curUser?'Por: '+curUser.name:''],[]
+    ,['KPIs GENERALES','','',''],['Total órdenes',total,'',''],['Correctivos',_repOrdenes.filter(function(o){return o.tipo==='correctivo';}).length,'',''],['Preventivos',_repOrdenes.filter(function(o){return o.tipo==='preventivo';}).length,'',''],['Instalaciones',_repOrdenes.filter(function(o){return o.tipo==='instalacion';}).length,'',''],['Retiros',_repOrdenes.filter(function(o){return o.tipo==='retiro';}).length,'',''],['Completadas',term,'',''],['Pendientes',total-term,'',''],['Total ingresos',ingr,'',''],['Promedio por orden',total?Math.round(ingr/total):0,'',''],[]
     ,['POR TÉCNICO','Órdenes','Ingresos','']
   ];
-  var pt={};ordenes.forEach(function(o){if(!pt[o.tecnicoNombre||'—'])pt[o.tecnicoNombre||'—']={n:0,c:0};pt[o.tecnicoNombre||'—'].n++;pt[o.tecnicoNombre||'—'].c+=o.costoTotal||0;});
+  var pt={};_repOrdenes.forEach(function(o){if(!pt[o.tecnicoNombre||'—'])pt[o.tecnicoNombre||'—']={n:0,c:0};pt[o.tecnicoNombre||'—'].n++;pt[o.tecnicoNombre||'—'].c+=o.costoTotal||0;});
   Object.entries(pt).sort(function(a,b){return b[1].n-a[1].n;}).forEach(function(e){kpis.push([e[0],e[1].n,e[1].c,'']);});
   kpis.push([],['POR CENTRO','Órdenes','Ingresos','']);
-  var pc={};ordenes.forEach(function(o){if(!pc[o.centro||'—'])pc[o.centro||'—']={n:0,c:0};pc[o.centro||'—'].n++;pc[o.centro||'—'].c+=o.costoTotal||0;});
+  var pc={};_repOrdenes.forEach(function(o){if(!pc[o.centro||'—'])pc[o.centro||'—']={n:0,c:0};pc[o.centro||'—'].n++;pc[o.centro||'—'].c+=o.costoTotal||0;});
   Object.entries(pc).sort(function(a,b){return b[1].n-a[1].n;}).forEach(function(e){kpis.push([getCentroNombre(e[0]),e[1].n,e[1].c,'']);});
   var ws=XLSX.utils.aoa_to_sheet(kpis);ws['!cols']=[{wch:28},{wch:14},{wch:16},{wch:20}];
   XLSX.utils.book_append_sheet(wb,ws,'Gerencial');
-  XLSX.writeFile(wb,'CAFIVER_Gerencial_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  XLSX.writeFile(wb,'CAFIVER_Gerencial_'+anFiltros.desde+'_a_'+anFiltros.hasta+'.xlsx');
   toast('✅ Reporte gerencial descargado');
 }
 
@@ -5371,7 +5483,7 @@ function openFormOrden(){
   document.getElementById('o-obs').value='';document.getElementById('o-mo').value='';
   document.getElementById('o-ref').value='';document.getElementById('o-viat').value='';
   document.getElementById('o-total').textContent='$0.00';
-  document.getElementById('o-fecha').value=new Date().toISOString().slice(0,10);
+  document.getElementById('o-fecha').value=fechaLocal();
   document.getElementById('o-hora').value=new Date().toTimeString().slice(0,5);
   document.getElementById('o-tipo').value='correctivo';
   document.getElementById('o-prioridad').value='normal';
@@ -5528,7 +5640,7 @@ function guardarCambioEstado(docId, af, modelo, estadoAnterior){
     usuario:curUser?curUser.name:'',
     usuarioEmail:curUser?curUser.email:'',
     ts:firebase.firestore.FieldValue.serverTimestamp(),
-    fecha:new Date().toISOString().slice(0,10)
+    fecha:fechaLocal()
   };
   // Estado que traia la importacion al momento del cambio (ver conEstadoManual).
   var eq=findEquipo(docId);
@@ -5536,7 +5648,7 @@ function guardarCambioEstado(docId, af, modelo, estadoAnterior){
   // Solo se guarda el movimiento: `equipos` es de solo lectura en las reglas.
   db.collection('movimientos').add(mov).then(function(){
     _estadoManual[String(mov.activoFijo)]=mov;
-    movimientos=[];   // que la vista de movimientos recargue
+    _movCargado=false;   // que la vista de movimientos recargue
     [clientes,equipos,_clientesRes,_equiposRes].forEach(function(arr){
       (arr||[]).forEach(function(x){ if(x.id===docId||String(x.activoFijo)===String(mov.activoFijo)) conEstadoManual(x); });
     });
@@ -5546,76 +5658,113 @@ function guardarCambioEstado(docId, af, modelo, estadoAnterior){
   }).catch(function(err){toast('⚠️ No se pudo guardar: '+err.message);});
 }
 
+// Movimientos: los de la consola (estadoAnterior/estadoNuevo, `ts`) y los
+// del servidor (campo/de/a, `fecha` Timestamp) se juntan en un solo formato.
+var _movCargado=false;
+function movMs(x){ if(!x) return 0; if(x.toMillis) return x.toMillis(); var t=Date.parse(x); return isNaN(t)?0:t; }
+function movNormal(m){
+  if(m.estadoNuevo) return {id:m.id, ms:movMs(m.ts||m.fecha), activoFijo:m.activoFijo, modelo:m.modelo||'',
+    campo:'estado', de:m.estadoAnterior, a:m.estadoNuevo, usuario:m.usuario||'', motivo:m.motivo||'', almacen:m.almacenDestino||''};
+  return {id:m.id, ms:movMs(m.fecha||m.ts), activoFijo:m.activoFijo, modelo:m.modelo||'',
+    campo:m.campo||'', de:m.de, a:m.a, usuario:m.usuario||'Sistema (SAP)', motivo:m.motivo||'', almacen:''};
+}
+function cargarMovsEstado(af){
+  db.collection('movimientos').where('activoFijo','==',parseInt(af)||af).limit(50).get().then(function(s){
+    var box=document.getElementById('dp-movs-est'); if(!box)return;
+    var arr=s.docs.map(function(d){ return movNormal(Object.assign({id:d.id},d.data())); })
+      .filter(function(m){ return m.campo==='estado'; }).sort(function(a,b){ return b.ms-a.ms; });
+    if(!arr.length){ box.textContent='Sin movimientos registrados.'; return; }
+    box.style.cssText='';
+    box.innerHTML=arr.map(function(m){
+      var est2=ESTADOS[m.a]||{label:m.a||'—',color:'#9aa0a6',bg:'#f0f2f5',icon:'⚪'};
+      var eant2=ESTADOS[m.de]||{label:m.de||'—',icon:'⚪'};
+      return '<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f0f2f5">'
+        +'<div style="width:32px;height:32px;border-radius:50%;background:'+est2.bg+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+est2.icon+'</div>'
+        +'<div style="flex:1"><div style="font-size:12px;font-weight:700;color:'+est2.color+'">'+escH(est2.label)+'</div>'
+        +'<div style="font-size:11px;color:#5f6368">'+eant2.icon+' '+escH(eant2.label)+' → '+est2.icon+' '+escH(est2.label)+'</div>'
+        +(m.almacen?'<div style="font-size:11px;color:#9aa0a6">Almacén: <b>'+escH(m.almacen)+'</b></div>':'')
+        +(m.motivo?'<div style="font-size:11px;color:#9aa0a6;font-style:italic">'+escH(m.motivo)+'</div>':'')
+        +'<div style="font-size:10px;color:#c8cad0;margin-top:2px">'+(m.ms?new Date(m.ms).toLocaleDateString('es-MX'):'—')+' — '+escH(m.usuario||'—')+'</div>'
+        +'</div></div>';
+    }).join('');
+  }).catch(function(err){ var box=document.getElementById('dp-movs-est'); if(box) box.textContent='No se pudo cargar el historial: '+err.message; });
+}
+
 function renderMovimientos(){
   var w=document.getElementById('view-movimientos');if(!w)return;
-  // Cargar movimientos desde Firestore si no están en memoria
-  if(movimientos.length===0){
+  if(!_movCargado){
+    _movCargado=true;
     w.innerHTML='<div class="tbl-box" style="padding:40px;text-align:center;color:#6b7c63">Cargando movimientos...</div>';
-    db.collection('movimientos').orderBy('fecha','desc').limit(200).get().then(function(s){
-      movimientos=s.docs.map(function(d){return{id:d.id,...d.data()};});
+    // Dos consultas: `fecha` mezcla texto y fechas segun quien escribio, asi
+    // que se piden los recientes de cada tipo y se ordenan aqui.
+    var c=db.collection('movimientos');
+    Promise.all([c.orderBy('ts','desc').limit(200).get(), c.orderBy('fecha','desc').limit(200).get()]).then(function(r){
+      var vistos={}, arr=[];
+      r.forEach(function(s){ s.docs.forEach(function(d){ if(vistos[d.id])return; vistos[d.id]=1; arr.push(movNormal(Object.assign({id:d.id},d.data()))); }); });
+      movimientos=arr.sort(function(x,y){ return y.ms-x.ms; });
       renderMovimientos();
-    }).catch(function(e){w.innerHTML='<div style="padding:20px;color:red">Error: '+e.message+'</div>';});
+    }).catch(function(e){ _movCargado=false; w.innerHTML='<div style="padding:20px;color:red">Error: '+escH(e.message)+'</div>'; });
     return;
   }
-  var qFilt=document.getElementById('mov-q')?document.getElementById('mov-q').value.toLowerCase():'';
-  var estFilt=document.getElementById('mov-est')?document.getElementById('mov-est').value:'';
-  var data=movimientos.filter(function(m){
-    if(estFilt&&m.estadoNuevo!==estFilt)return false;
-    if(qFilt&&!(String(m.activoFijo||'').includes(qFilt)||(m.modelo||'').toLowerCase().includes(qFilt)||(m.usuario||'').toLowerCase().includes(qFilt)))return false;
-    return true;
-  });
-  var html='<div class="tbl-box">'
+  // La caja de busqueda se pinta una vez; al escribir solo cambia la tabla.
+  w.innerHTML='<div class="tbl-box">'
     +'<div class="tbl-hdr" style="display:flex;align-items:center;gap:12px;padding:12px 16px;flex-wrap:wrap">'
     +'<div class="tbl-hdr-title">Historial de movimientos</div>'
-    +'<input id="mov-q" type="text" placeholder="Buscar activo, modelo..." oninput="renderMovimientos()" style="flex:1;min-width:180px;padding:6px 10px;border:1px solid var(--cf-border);border-radius:8px;font-size:12px;background:var(--cf-cream)">'
-    +'<select id="mov-est" onchange="renderMovimientos()" style="padding:6px 10px;border:1px solid var(--cf-border);border-radius:8px;font-size:12px;background:var(--cf-cream)">'
-    +'<option value="">Todos los estados</option>'
-    +'<option value="con_cliente">Con cliente</option>'
-    +'<option value="disponible">Disponible</option>'
-    +'<option value="reparacion">En reparación</option>'
-    +'<option value="retiro">En retiro</option>'
-    +'<option value="baja">Baja</option>'
-    +'</select></div>'
-    +'<table style="width:100%;border-collapse:collapse">'
-    +'<thead><tr>'
-    +'<th style="text-align:left;padding:8px 12px">Fecha</th>'
-    +'<th style="text-align:left;padding:8px 12px">Activo Fijo</th>'
-    +'<th style="text-align:left;padding:8px 12px">Modelo</th>'
-    +'<th style="text-align:left;padding:8px 12px">Estado anterior</th>'
-    +'<th style="text-align:left;padding:8px 12px">Estado nuevo</th>'
-    +'<th style="text-align:left;padding:8px 12px">Usuario</th>'
-    +'<th style="text-align:left;padding:8px 12px">Motivo</th>'
-    +'</tr></thead><tbody>'
-    +(data.length?data.map(function(m){
-      return'<tr style="border-bottom:1px solid rgba(42,74,30,.07)">'
-        +'<td style="padding:6px 12px;font-size:11px;color:#8b6914">'+fmtF(m.fecha)+'</td>'
-        +'<td style="padding:6px 12px;font-family:monospace;font-weight:700;color:#2a4a1e;font-size:12px">'+m.activoFijo+'</td>'
-        +'<td style="padding:6px 12px;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(m.modelo||'—')+'</td>'
-        +'<td style="padding:6px 12px">'+bEstad(m.estadoAnterior)+'</td>'
-        +'<td style="padding:6px 12px">'+bEstad(m.estadoNuevo)+'</td>'
-        +'<td style="padding:6px 12px;font-size:11px;color:#4a5e42">'+(m.usuario||'—')+'</td>'
-        +'<td style="padding:6px 12px;font-size:11px;color:#6b7c63;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(m.motivo||'—')+'</td>'
-        +'</tr>';
-    }).join(''):'<tr><td colspan="7" style="padding:40px;text-align:center;color:#6b7c63">Sin movimientos registrados</td></tr>')
-    +'</tbody></table></div>';
-  w.innerHTML=html;
+    +'<input id="mov-q" type="text" placeholder="Buscar activo, modelo, usuario..." oninput="movPintar()" style="flex:1;min-width:180px;padding:6px 10px;border:1px solid var(--cf-border);border-radius:8px;font-size:12px;background:var(--cf-cream)">'
+    +'<select id="mov-est" onchange="movPintar()" style="padding:6px 10px;border:1px solid var(--cf-border);border-radius:8px;font-size:12px;background:var(--cf-cream)">'
+    +'<option value="">Todos los cambios</option>'
+    + Object.keys(ESTADOS).map(function(k){ return '<option value="'+k+'">Estado → '+ESTADOS[k].label+'</option>'; }).join('')
+    +'<option value="@almacen">Cambio de almacén</option><option value="@cliente">Cambio de cliente</option><option value="@centro">Cambio de centro</option>'
+    +'</select>'
+    +'<button class="btn btn-sm" onclick="exportExcelMovimientos()"><i class="ti ti-file-spreadsheet"></i> Excel</button>'
+    +'<button class="btn btn-sm" onclick="_movCargado=false;renderMovimientos()">Actualizar</button></div>'
+    +'<table style="width:100%;border-collapse:collapse"><thead><tr>'
+    +'<th style="text-align:left;padding:8px 12px">Fecha</th><th style="text-align:left;padding:8px 12px">Activo Fijo</th>'
+    +'<th style="text-align:left;padding:8px 12px">Modelo</th><th style="text-align:left;padding:8px 12px">Cambio</th>'
+    +'<th style="text-align:left;padding:8px 12px">Antes</th><th style="text-align:left;padding:8px 12px">Después</th>'
+    +'<th style="text-align:left;padding:8px 12px">Usuario</th><th style="text-align:left;padding:8px 12px">Motivo</th>'
+    +'</tr></thead><tbody id="mov-tbody"></tbody></table></div>';
+  movPintar();
+}
+var MOV_CAMPOS={estado:'Estado', almacen:'Almacén', cliente:'Cliente', centro:'Centro'};
+function movValor(m,v){ return m.campo==='estado' ? bEstad(v) : '<span style="font-size:12px">'+escH(v==null||v===''?'—':v)+'</span>'; }
+function movPintar(){
+  var tb=document.getElementById('mov-tbody'); if(!tb)return;
+  var q=((document.getElementById('mov-q')||{}).value||'').toLowerCase();
+  var f=(document.getElementById('mov-est')||{}).value||'';
+  var data=movimientos.filter(function(m){
+    if(f){ if(f.charAt(0)==='@'){ if(m.campo!==f.slice(1))return false; } else if(m.campo!=='estado'||m.a!==f) return false; }
+    if(q&&!(String(m.activoFijo||'').includes(q)||(m.modelo||'').toLowerCase().includes(q)||(m.usuario||'').toLowerCase().includes(q)))return false;
+    return true;
+  });
+  tb.innerHTML=data.length?data.map(function(m){
+    return'<tr style="border-bottom:1px solid rgba(42,74,30,.07)">'
+      +'<td style="padding:6px 12px;font-size:11px;color:#8b6914">'+(m.ms?new Date(m.ms).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—')+'</td>'
+      +'<td style="padding:6px 12px;font-family:monospace;font-weight:700;color:#2a4a1e;font-size:12px">'+escH(m.activoFijo)+'</td>'
+      +'<td style="padding:6px 12px;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(m.modelo||'—')+'</td>'
+      +'<td style="padding:6px 12px;font-size:12px">'+escH(MOV_CAMPOS[m.campo]||m.campo||'—')+'</td>'
+      +'<td style="padding:6px 12px">'+movValor(m,m.de)+'</td>'
+      +'<td style="padding:6px 12px">'+movValor(m,m.a)+'</td>'
+      +'<td style="padding:6px 12px;font-size:11px;color:#4a5e42">'+escH(m.usuario||'—')+'</td>'
+      +'<td style="padding:6px 12px;font-size:11px;color:#6b7c63;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(m.motivo||'—')+'</td>'
+      +'</tr>';
+  }).join(''):'<tr><td colspan="8" style="padding:40px;text-align:center;color:#6b7c63">Sin movimientos registrados</td></tr>';
 }
 
 
 function exportExcelMovimientos(){
   var wb=XLSX.utils.book_new();
   var rows=[['CAFIVER — Historial de Movimientos','Generado:',new Date().toLocaleDateString('es-MX')],[]];
-  rows.push(['Fecha','Activo Fijo','Modelo','Estado Anterior','Estado Nuevo','Almacén Destino','Motivo','Usuario']);
+  rows.push(['Fecha','Activo Fijo','Modelo','Cambio','Antes','Después','Almacén Destino','Motivo','Usuario']);
+  var lbl=function(m,v){ return m.campo==='estado'&&ESTADOS[v] ? ESTADOS[v].label : (v==null?'':v); };
   movimientos.forEach(function(m){
-    rows.push([fmtF(m.ts),m.activoFijo,m.modelo,
-      ESTADOS[m.estadoAnterior]?ESTADOS[m.estadoAnterior].label:m.estadoAnterior,
-      ESTADOS[m.estadoNuevo]?ESTADOS[m.estadoNuevo].label:m.estadoNuevo,
-      m.almacenDestino||'',m.motivo||'',m.usuario||'']);
+    rows.push([m.ms?new Date(m.ms).toLocaleDateString('es-MX'):'',m.activoFijo,m.modelo,
+      MOV_CAMPOS[m.campo]||m.campo, lbl(m,m.de), lbl(m,m.a), m.almacen||'', m.motivo||'', m.usuario||'']);
   });
   var ws=XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:14},{wch:12},{wch:28},{wch:16},{wch:16},{wch:14},{wch:30},{wch:18}];
+  ws['!cols']=[{wch:14},{wch:12},{wch:28},{wch:12},{wch:16},{wch:16},{wch:14},{wch:30},{wch:18}];
   XLSX.utils.book_append_sheet(wb,ws,'Movimientos');
-  XLSX.writeFile(wb,'CAFIVER_Movimientos_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  XLSX.writeFile(wb,'CAFIVER_Movimientos_'+fechaLocal()+'.xlsx');
   toast('✅ Excel de movimientos descargado');
 }
 
@@ -5645,7 +5794,7 @@ function capturaGeo(){
 }
 
 function editOrden(ordId){
-  var ord=ordenes.find(function(o){return o.id===ordId;});
+  var ord=buscarOrden(ordId);
   if(!ord){toast('Orden no encontrada');return;}
   // Abrir formulario con datos de la orden
   openFormOrden();
@@ -5659,7 +5808,7 @@ function editOrden(ordId){
   document.getElementById('o-email').value=ord.emailCliente||'';
   document.getElementById('o-tipo').value=ord.tipo||'correctivo';
   document.getElementById('o-tecnico').value=ord.tecnicoNombre||TECNICOS[0];
-  document.getElementById('o-fecha').value=ord.fechaServicio||new Date().toISOString().slice(0,10);
+  document.getElementById('o-fecha').value=ord.fechaServicio||fechaLocal();
   document.getElementById('o-hora').value=ord.horaInicio||'';
   document.getElementById('o-prioridad').value=ord.prioridad||'normal';
   document.getElementById('o-desc').value=ord.descripcion||'';
@@ -5699,7 +5848,7 @@ function saveOrden(irFirmar){
   // Si es edición, actualizar; si es nuevo, crear
   var promise;
   if(window._editandoOrdenId){
-    var orig=ordenes.find(function(o){return o.id===window._editandoOrdenId;})||{};
+    var orig=buscarOrden(window._editandoOrdenId)||{};
     data.folio=window._editandoFolio||data.folio;
     data.estado=orig.estado||'pendiente';
     // Al editar se conservan la fecha de creacion y la firma, y el tecnico
@@ -5739,7 +5888,7 @@ function saveOrden(irFirmar){
 
 // ══ FIRMA ══
 function abrirFirma(ordId){
-  var o=ordenes.find(function(x){return x.id===ordId;});
+  var o=buscarOrden(ordId);
   if(o)ordenActual={id:ordId,...o};
   document.getElementById('firma-folio').textContent=ordenActual.folio||ordId.slice(0,10);
   document.getElementById('firma-nombre').value='';
@@ -5769,7 +5918,8 @@ function finalizarOrden(){
       firmaClienteData:sigPad?sigPad.toDataURL():null
     }).then(function(){
       closeFirma();
-      toast('✅ Orden cerrada. Enviado a '+(ordenActual.emailCliente||'cliente'));
+      // No se envia correo: el comprobante se comparte con el boton Compartir.
+      toast('✅ Orden cerrada y firmada. Comparte el comprobante desde la orden.');
     }).catch(function(e){toast('⚠️ Error: '+e.message);});
   }
 }
@@ -5928,7 +6078,7 @@ function buildFormatoOrden(ord){
 }
 
 function verOrden(ordId){
-  var o=ordId?ordenes.find(function(x){return x.id===ordId;}):ordenActual;
+  var o=ordId?buscarOrden(ordId):ordenActual;
   if(!o){toast('No se encontró la orden');return;}
   ordenActual=o;
   var G='var(--cf-green)', TX='var(--cf-text)', T2='var(--cf-text2)', BD='var(--cf-border)';
@@ -6032,7 +6182,7 @@ function ordCampo(lbl,val,col){ return '<div><div style="font-size:11px;color:va
 function cerrarVerOrden(){ document.getElementById('ord-modal').style.display='none'; }
 function ordLightbox(url){ document.getElementById('ord-lightbox-img').src=url; document.getElementById('ord-lightbox').style.display='flex'; }
 function compartirOrden(ordId){
-  var o=ordenes.find(function(x){return x.id===ordId;})||ordenActual; if(!o)return;
+  var o=buscarOrden(ordId)||ordenActual; if(!o)return;
   var link='https://nubecafiver.github.io/cafeteras/orden.html?id='+ordId;
   var txt='CAFIVER — Comprobante de servicio\nOrden '+o.folio+' · '+(o.cliente||'')+'\nVer comprobante: '+link;
   if(navigator.share){ navigator.share({title:'Orden '+o.folio,text:txt,url:link}).catch(function(){}); }
@@ -6041,10 +6191,11 @@ function compartirOrden(ordId){
 }
 
 function printOrden(ordId){
-  var ord=ordId?ordenes.find(function(o){return o.id===ordId;})||ordenActual:ordenActual;
+  var ord=ordId?buscarOrden(ordId)||ordenActual:ordenActual;
   if(!ord){toast('No se encontro la orden');return;}
   var contenido=buildFormatoOrden(ord);
-  var win=window.open('','_blank','width=850,height:1100');
+  var win=window.open('','_blank','width=850,height=1100');
+  if(!win){ toast('⚠️ El navegador bloqueó la ventana de impresión. Permite ventanas emergentes para este sitio.'); return; }
   win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8">'
     +'<title>Orden '+ord.folio+'</title>'
     +'<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">'

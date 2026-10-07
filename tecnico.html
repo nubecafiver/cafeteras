@@ -554,10 +554,14 @@ function cargarInicio(){
   }).catch(function(){ var el=$('k-hoy'); if(el)el.textContent='—'; });
 }
 // ══════════ MI RUTA DE HOY (asignada por el jefe) ══════════
+// Fecha de hoy en hora local (YYYY-MM-DD). Con toISOString era la fecha UTC:
+// despues de las 6 pm en Mexico ya contaba como el dia siguiente. La consola
+// usa la misma funcion, asi que los ids de ruta (uid_fecha) coinciden.
+function fechaLocal(d){ d=d||new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
 var _rutaHoy=null, _rutaHoyId=null;
 function cargarRutaHoy(){
   var box=$('ruta-hoy'); if(!box)return;
-  var hoy=new Date().toISOString().slice(0,10);
+  var hoy=fechaLocal();
   _rutaHoyId=CUR.uid+'_'+hoy;
   db.collection('rutas').doc(_rutaHoyId).get().then(function(d){
     if(!d.exists||!(d.data().clientes||[]).length){ _rutaHoy=null; box.innerHTML=''; return; }
@@ -1159,7 +1163,7 @@ function abrirFormOrden(){
   var cliNum=e.cliente||'', cliNom=e.clienteNombre||'';
   _ordFormato = esBrillante(cliNum,cliNom)?'brillante':'estandar';
   $('sheet-title').textContent='Nueva orden';
-  var hoy=new Date().toISOString().slice(0,10);
+  var hoy=fechaLocal();
   var hora=new Date().toTimeString().slice(0,5);
   $('sheet-body').innerHTML =
     '<div class="frow"><label>Activo fijo</label><input class="fld" id="o-af" value="'+esc(e.activoFijo||'')+'" placeholder="No. activo"></div>'
