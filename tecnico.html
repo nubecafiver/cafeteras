@@ -575,16 +575,26 @@ function cargarInicio(){
   renderPendientes();
   // KPI de equipos: 1 sola lectura (config/general precalculado) en vez de leer 1000 docs
   function fmtN(n){ return (n||n===0)?Number(n).toLocaleString('es-MX'):'—'; }
+  // Suma de todos los centros de su alcance (antes solo leia el primero)
+  function totalEquipos(){
+    var pc = _cfgGeneral && _cfgGeneral.porCentro;
+    if(!pc) return null;
+    var cen = misCentros();
+    if(!cen.length){ var t=0; Object.keys(pc).forEach(function(k){ t+=Number(pc[k])||0; }); return t; }
+    var su=0, hay=false;
+    cen.forEach(function(c){ if(pc[c]!=null){ su+=Number(pc[c])||0; hay=true; } });
+    return hay ? su : null;
+  }
   if(_cfgGeneral){
-    $('k-equipos').textContent = fmtN(_cfgGeneral.porCentro&&_cfgGeneral.porCentro[MI_CENTRO]);
+    $('k-equipos').textContent = fmtN(totalEquipos());
   } else {
     db.collection('config').doc('general').get().then(function(d){
       _cfgGeneral = d.exists?d.data():{};
-      $('k-equipos').textContent = fmtN(_cfgGeneral.porCentro&&_cfgGeneral.porCentro[MI_CENTRO]);
+      $('k-equipos').textContent = fmtN(totalEquipos());
     }).catch(function(){ $('k-equipos').textContent='—'; });
   }
   var qo = db.collection('ordenes');
-  qo = MI_CENTRO ? qo.where('centro','==',MI_CENTRO) : qo.where('tecnicoUid','==',CUR.uid);
+  qo = misCentros().length ? acotarCentro(qo) : qo.where('tecnicoUid','==',CUR.uid);
   qo.where('estado','==','pendiente').limit(50).get().then(function(s){
     $('k-abiertas').textContent = s.size;
     var arr=s.docs.map(function(d){return {id:d.id,...d.data()};});
@@ -1203,7 +1213,7 @@ function copiarAlPortapapeles(txt){
 function cargarPM(){
   $('pm-list').innerHTML='<div class="spin"></div>';
   var qo=db.collection('ordenes');
-  qo = MI_CENTRO ? qo.where('centro','==',MI_CENTRO) : qo.where('tecnicoUid','==',CUR.uid);
+  qo = misCentros().length ? acotarCentro(qo) : qo.where('tecnicoUid','==',CUR.uid);
   qo.where('tipo','==','preventivo').limit(50).get().then(function(s){
     var arr=s.docs.map(function(d){return {id:d.id,...d.data()};}).filter(function(o){return o.estado!=='terminado';});
     if(!arr.length){ $('pm-list').innerHTML='<div class="clay card-pad" style="text-align:center;color:var(--muted);font-size:13px">Sin preventivos pendientes en tu oficina.</div>'; return; }
