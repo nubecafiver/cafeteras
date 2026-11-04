@@ -2313,7 +2313,19 @@ function cumFechaOrd(o){
   return o.creadoEn.toDate ? o.creadoEn.toDate() : new Date(o.creadoEn);
 }
 
+// Un tiempo marcado como dudoso (la orden se cerro horas despues del
+// escaneo) no entra al promedio: se cuenta aparte.
+function cumDudoso(o){
+  if(o.tiempoDudoso === true) return true;
+  var m = (typeof o.duracionMin === 'number') ? o.duracionMin : null;
+  return (m != null && m > 240);
+}
+// Las ordenes anteriores a esta version median "tiempo con el formulario
+// abierto", no tiempo de servicio. Mezclarlas con las nuevas daria un
+// promedio que no significa nada, asi que se cuentan aparte.
+function cumPrevia(o){ return !o.tiempoOrigen; }
 function cumMin(o){
+  if(cumPrevia(o) || cumDudoso(o)) return null;
   if(typeof o.duracionMin === 'number') return o.duracionMin;
   // Respaldo: si hay inicio y fin pero no el calculado.
   if(o.inicioReal && o.finReal){
@@ -2337,13 +2349,16 @@ function renderCumplimiento(){
   });
 
   // ── Agregado por tecnico ──
-  var porTec={}, totDur=[], conGps=0, gpsOK=0, sinDatos=0;
+  var porTec={}, totDur=[], conGps=0, gpsOK=0, sinDatos=0, dudosas=0, sinEscaneo=0, previas=0;
   data.forEach(function(o){
     var t=o.tecnicoNombre||'Sin asignar';
-    porTec[t]=porTec[t]||{n:0, dur:[], gps:0, gpsOK:0, lejos:[], sinDatos:0};
+    porTec[t]=porTec[t]||{n:0, dur:[], gps:0, gpsOK:0, lejos:[], sinDatos:0, dudosas:0, sinEsc:0, previas:0};
     var T=porTec[t]; T.n++;
     var m=cumMin(o);
     if(m!=null){ T.dur.push(m); totDur.push(m); } else T.sinDatos++;
+    if(cumDudoso(o)){ T.dudosas++; dudosas++; }
+    if(o.tiempoOrigen==='sin_escaneo'){ T.sinEsc++; sinEscaneo++; }
+    if(cumPrevia(o)){ T.previas++; previas++; }
     if(typeof o.distanciaCliente === 'number'){
       T.gps++; conGps++;
       if(o.asistenciaOK===true || o.distanciaCliente<=150){ T.gpsOK++; gpsOK++; }
@@ -2368,7 +2383,7 @@ function renderCumplimiento(){
     '<div style="max-width:1200px;margin:0 auto">'
     +'<div class="tbl-box" style="padding:18px 22px;margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'
       +'<div><div style="font-family:\'Source Serif 4\',serif;font-size:20px">Cumplimiento de técnicos</div>'
-      +'<div style="font-size:12px;color:var(--cf-text2)">Tiempo de servicio, asistencia por GPS y rutas atendidas.</div></div>'
+      +'<div style="font-size:12px;color:var(--cf-text2)">El tiempo corre desde que el técnico escanea el QR de la máquina hasta que guarda la orden. Arriba de 4 h se descarta del promedio.</div></div>'
       +'<div style="flex:1"></div>'
       +'<div><div style="font-size:11px;color:var(--cf-text2);margin-bottom:4px">Desde</div>'
       +'<input class="fi-sm" type="date" value="'+cumFiltros.desde+'" onchange="cumFiltros.desde=this.value;renderCumplimiento()"></div>'
@@ -2383,11 +2398,13 @@ function renderCumplimiento(){
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:14px">'
       + kpiC('Órdenes', data.length.toLocaleString(), Object.keys(porTec).length+' técnicos')
       + kpiC('Duración promedio', prom!=null?(prom+' min'):'—',
-             totDur.length ? (totDur.length+' con tiempo medido') : 'aún sin datos')
+             totDur.length ? (totDur.length+' de '+data.length+' · desde el escaneo del QR') : 'aún sin datos')
       + kpiC('Asistencia confirmada', pctGps!=null?(pctGps+'%'):'—',
              conGps ? (gpsOK+' de '+conGps+' con GPS') : 'aún sin datos',
              pctGps!=null ? (pctGps>=80?'#3E5A40':(pctGps>=60?'#8A6D12':'#B4453A')) : null)
-      + kpiC('Sin medición', sinDatos.toLocaleString(), 'órdenes previas a la versión nueva')
+      + kpiC('Sin tiempo medido', (sinEscaneo+dudosas+previas).toLocaleString(),
+             (sinEscaneo+' sin escanear · '+dudosas+' fuera de rango · '+previas+' de la versión anterior'),
+             (sinEscaneo+dudosas+previas) ? '#8A6D12' : null)
     +'</div>'
 
     + ((!totDur.length && !conGps)
@@ -2406,7 +2423,8 @@ function renderCumplimiento(){
         +'<th style="padding:6px 4px">Técnico</th><th style="padding:6px 4px;text-align:right">Órdenes</th>'
         +'<th style="padding:6px 4px;text-align:right">Duración prom.</th>'
         +'<th style="padding:6px 4px;text-align:right">Asistencia</th>'
-        +'<th style="padding:6px 4px;text-align:right">Fuera del cliente</th></tr>'
+        +'<th style="padding:6px 4px;text-align:right">Fuera del cliente</th>'
+        +'<th style="padding:6px 4px;text-align:right">Sin medir</th></tr>'
         + Object.entries(porTec).sort(function(a,b){return b[1].n-a[1].n;}).map(function(e){
             var T=e[1];
             var p = T.dur.length ? Math.round(T.dur.reduce(function(a,b){return a+b;},0)/T.dur.length) : null;
@@ -2419,8 +2437,10 @@ function renderCumplimiento(){
               +'<td style="padding:9px 4px;text-align:right;color:'+col+';font-weight:600">'
               +(pc!=null?(pc+'% ('+T.gpsOK+'/'+T.gps+')'):'<span style="color:var(--cf-text2)">—</span>')+'</td>'
               +'<td style="padding:9px 4px;text-align:right">'+(T.lejos.length?('<b style="color:#B4453A">'+T.lejos.length+'</b>'):'0')+'</td>'
+              +'<td style="padding:9px 4px;text-align:right">'
+              +((T.sinEsc+T.dudosas+T.previas)?('<b style="color:#8A6D12">'+(T.sinEsc+T.dudosas+T.previas)+'</b>'):'0')+'</td>'
               +'</tr>'
-              + (T.lejos.length ? '<tr><td colspan="5" style="padding:0 4px 10px 18px">'
+              + (T.lejos.length ? '<tr><td colspan="6" style="padding:0 4px 10px 18px">'
                  + T.lejos.slice(0,6).map(function(x){
                      return '<div style="font-size:11px;color:#8A6D12">· '+esc(x.cliente)+' — a '+x.m.toLocaleString()+' m'+(x.folio?(' ('+esc(x.folio)+')'):'')+'</div>';
                    }).join('')

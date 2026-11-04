@@ -39,6 +39,20 @@ service cloud.firestore {
       return rol() == 'admin' || rol() == 'director' || rol() == 'gerente';
     }
 
+    // ── Alcance por centro ──────────────────────────────────────────
+    // El candado de centro no puede vivir solo en el navegador: cualquiera
+    // con la consola puede escribir directo. Un tecnico de EUCA no debe
+    // poder levantar una orden sobre un equipo de EUBA.
+    function alcanceNacional() {
+      return rol() == 'admin' || rol() == 'director' || rol() == 'gerente';
+    }
+    function misCentros() {
+      return autorizado() && perfil().centros is list ? perfil().centros : [];
+    }
+    function centroPermitido(c) {
+      return alcanceNacional() || c in misCentros();
+    }
+
     // ── USUARIOS ──────────────────────────────────────────────────────
     // Cada quien lee su propio perfil (la app lo necesita al entrar).
     // Solo un administrador puede crear, editar o desactivar usuarios:
@@ -64,17 +78,18 @@ service cloud.firestore {
     // Listar la coleccion completa si requiere ser de la casa.
     match /ordenes/{id} {
       allow get:    if true;
-      allow list:   if autorizado();
-      allow create: if autorizado();
-      allow update: if autorizado();
+      allow list:   if autorizado() && centroPermitido(resource.data.centro);
+      allow create: if autorizado() && centroPermitido(request.resource.data.centro);
+      allow update: if autorizado() && centroPermitido(resource.data.centro);
       allow delete: if esAdmin();
     }
 
     // ── TRABAJO DIARIO ────────────────────────────────────────────────
     match /auditorias/{id} {
-      allow read:   if autorizado();
-      allow create: if autorizado();
-      allow update: if autorizado();
+      allow get:    if autorizado();
+      allow list:   if autorizado() && centroPermitido(resource.data.centro);
+      allow create: if autorizado() && centroPermitido(request.resource.data.centro);
+      allow update: if autorizado() && centroPermitido(resource.data.centro);
       allow delete: if esAdmin();
     }
 
