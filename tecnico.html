@@ -312,7 +312,7 @@ function misCentros(){
   if(!Array.isArray(c)) c = [];
   c = c.filter(Boolean);
   if(!c.length && CUR && CUR.centro) c = [CUR.centro];
-  return c.slice(0, 10);                      // Firestore 'in' admite 10
+  return c.slice(0, 30);                      // Firestore 'in' admite 30 valores
 }
 function enMiAlcance(centro){
   var cen = misCentros();
