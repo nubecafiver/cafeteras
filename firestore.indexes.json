@@ -1,0 +1,37 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "linea",  "order": "ASCENDING" },
+        { "fieldPath": "centro", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "modelo", "order": "ASCENDING" },
+        { "fieldPath": "centro", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "almacen", "order": "ASCENDING" },
+        { "fieldPath": "centro",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tecnicoUid", "order": "ASCENDING" },
+        { "fieldPath": "estado",     "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
