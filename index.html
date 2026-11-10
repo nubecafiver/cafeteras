@@ -879,7 +879,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
 // Va ANTES de Firebase a proposito: si una libreria de CDN no carga, el
 // script muere ahi y lo que venga despues nunca corre. Declarada aqui, la
 // version se ve aunque el tablero falle al arrancar.
-var APP_VERSION = '2026-11-10.2';
+var APP_VERSION = '2026-11-10.3';
 
 // ══════════════════════════════════════════
 // FIREBASE — cafeteras-90e78
@@ -1146,7 +1146,7 @@ function folio(){
   return 'OS-'+p(d.getFullYear()%100)+p(d.getMonth()+1)+p(d.getDate())+'-'+s;
 }
 function nowStr(){return new Date().toLocaleString('es-MX',{dateStyle:'short',timeStyle:'short'});}
-function fmt$(n){return n?'$'+Number(n).toLocaleString('es-MX',{minimumFractionDigits:2}):'—';}
+function fmt$(n){if(n===0)return'$0.00';return n?'$'+Number(n).toLocaleString('es-MX',{minimumFractionDigits:2}):'—';}
 function ini(n){return(n||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2);}
 function cleanObj(o){return JSON.parse(JSON.stringify(o,function(k,v){return v===undefined?null:v;}));}
 function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove('show');},3200);}
@@ -1467,7 +1467,14 @@ function enterApp(){
     var _av=document.getElementById('cur-av');
     var _ce=(curUser.centros&&curUser.centros.length)?curUser.centros.join(', '):'';
     if(_nm) _nm.textContent = curUser.name||curUser.email;
-    if(_sb) _sb.textContent = (curUser.rol||'') + (_ce?(' · '+_ce):'');
+    if(_sb){
+      if(sinCentrosAsignados()){
+        _sb.innerHTML = '<span style="color:#B4453A;font-weight:700">'
+          + escH(curUser.rol||'') + ' · sin centro asignado</span>';
+      } else {
+        _sb.textContent = (curUser.rol||'') + (_ce?(' · '+_ce):'');
+      }
+    }
     if(_av) _av.textContent = String(curUser.name||curUser.email).trim().charAt(0).toUpperCase();
   }catch(e){}
 
@@ -1652,7 +1659,7 @@ function cargarCatalogosYDatos(){
   // Antes se traian 300 equipos cualquiera al entrar (300 lecturas por
   // sesion) que casi nada usaba: las pantallas consultan lo que necesitan.
   cargarEstadosManuales();
-  db.collection('ordenes').orderBy('creadoEn','desc').limit(200).onSnapshot(function(s){
+  acotarCentro(db.collection('ordenes')).orderBy('creadoEn','desc').limit(200).onSnapshot(function(s){
     ordenes=s.docs.map(function(d){return{id:d.id,...d.data()};});
     if(curView==='dashboard')renderDashboard();
     if(curView==='ordenes')renderOrdenes();
@@ -2357,6 +2364,7 @@ function renderCumplimiento(){
 
   var _per = ordenesPeriodo(cumFiltros.desde, cumFiltros.hasta, function(){ if(curView==='cumplimiento')renderCumplimiento(); });
   if(!_per){ ordPeriodoCargando(w); return; }
+  var _avisoPer = ordPeriodoAviso(_per);
   var data = _per.filter(function(o){
     if(cumFiltros.centro && o.centro!==cumFiltros.centro) return false;
     return true;
@@ -2395,6 +2403,7 @@ function renderCumplimiento(){
 
   w.innerHTML =
     '<div style="max-width:1200px;margin:0 auto">'
+    + _avisoPer
     +'<div class="tbl-box" style="padding:18px 22px;margin-bottom:14px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">'
       +'<div><div style="font-family:\'Source Serif 4\',serif;font-size:20px">Cumplimiento de técnicos</div>'
       +'<div style="font-size:12px;color:var(--cf-text2)">El tiempo corre desde que el técnico escanea el QR de la máquina hasta que guarda la orden. Arriba de 4 h se descarta del promedio.</div></div>'
@@ -2554,6 +2563,13 @@ function cumPintarRutas(){
 //  mas de 4 centros, asi que cabe de sobra.
 // ══════════════════════════════════════════════════════════════════════════
 
+// Un jefe o tecnico SIN centros no debe ver el pais entero. misCentros()
+// devuelve [] en dos casos muy distintos — rol nacional (sin restriccion) y
+// perfil sin centros (deberia ser "nada") — y acotarCentro/enMiAlcance
+// trataban ambos como "todo". Ahora se distinguen.
+function sinCentrosAsignados(){
+  return !esAlcanceNacional() && !misCentros().length;
+}
 function esAlcanceNacional(){
   var r = String((window.curUser && curUser.rol) || '').toLowerCase();
   return r === 'admin' || r === 'director' || r === 'gerente';
@@ -2584,7 +2600,7 @@ function ordenesPeriodo(desde, hasta, alListo){
   if(c && c.cargando){ c.esperan.push(alListo); return null; }
   _ordPer[k]={cargando:true, esperan:[alListo]};
   var TS=firebase.firestore.Timestamp;
-  db.collection('ordenes')
+  acotarCentro(db.collection('ordenes'))
     .where('creadoEn','>=',TS.fromDate(new Date(desde+'T00:00:00')))
     .where('creadoEn','<=',TS.fromDate(new Date(hasta+'T23:59:59')))
     .orderBy('creadoEn','desc').limit(ORD_PER_MAX).get()
@@ -2596,7 +2612,10 @@ function ordenesPeriodo(desde, hasta, alListo){
     }, function(e){ var d=[]; d.error=e.message; return d; })
     .then(function(docs){
       var esperan=_ordPer[k].esperan;
-      _ordPer[k]={t:Date.now(), docs:docs};
+      // Un error NO se cachea: si se guarda, reintentar durante 5 minutos
+      // devuelve el mismo cero y parece que nadie trabajo.
+      if(docs && docs.error) delete _ordPer[k];
+      else _ordPer[k]={t:Date.now(), docs:docs};
       esperan.forEach(function(f){ try{ f(); }catch(e){ console.warn(e); } });
     });
   return null;
@@ -2619,12 +2638,18 @@ function misCentros(){
 // Agrega el filtro a una consulta de Firestore si hace falta.
 function acotarCentro(q, campo){
   var cen = misCentros();
-  if(!cen.length) return q;                 // nacional, o usuario sin centros
-  return q.where(campo || 'centro', 'in', cen);
+  // Un perfil sin centros que NO es nacional no debe ver nada. Antes caia
+  // en el mismo camino que un director y se llevaba el parque completo.
+  if(sinCentrosAsignados()) return q.where(campo || 'centro', '==', '\u0000nada');
+  if(!cen.length) return q;                 // alcance nacional de verdad
+  // Un solo centro usa '==': mas barato y no necesita el mismo indice.
+  return (cen.length===1) ? q.where(campo || 'centro', '==', cen[0])
+                          : q.where(campo || 'centro', 'in', cen);
 }
 
 // Para filtrar en memoria lo que ya se trajo.
 function enMiAlcance(centro){
+  if(sinCentrosAsignados()) return false;
   var cen = misCentros();
   if(!cen.length) return true;
   return cen.indexOf(centro) >= 0;
@@ -3195,9 +3220,10 @@ function progFilaTecnico(t){
       +'<div style="flex:1;display:flex;gap:6px;flex-wrap:wrap;min-width:200px">'
         +(cl.length?cl.map(function(c,i){
           var _ti=tipoInfo(c.tipo);
-          var col=c.visitado?'#EDF1ED':_ti.rbg;
-          var txt=c.visitado?'#3E5A40':_ti.rfg;
-          return '<span title="'+esc((c.tipo||'')+(c.nota?(' · '+c.nota):''))+'" style="background:'+col+';color:'+txt+';font-size:11px;padding:4px 9px;border-radius:14px;'+(c.visitado?'text-decoration:line-through':'')+'">'+esc(c.clienteNombre)+'</span>';
+          var _vis=estadoParada(c)==='visitado';
+          var col=_vis?'#EDF1ED':_ti.rbg;
+          var txt=_vis?'#3E5A40':_ti.rfg;
+          return '<span title="'+esc((c.tipo||'')+(c.nota?(' · '+c.nota):''))+'" style="background:'+col+';color:'+txt+';font-size:11px;padding:4px 9px;border-radius:14px;'+(estadoParada(c)?(estadoParada(c)==='visitado'?'text-decoration:line-through':''):'')+'">'+esc(c.clienteNombre)+'</span>';
         }).join(''):'<span style="font-size:12px;color:var(--cf-text2);align-self:center">—</span>')
       +'</div>'
       +'<button class="btn btn-sm btn-blue" onclick="progAsignar(\''+t.uid+'\')">+ Asignar clientes</button>'
@@ -3248,7 +3274,7 @@ function rutaCargarRecientes(){
     if(!arr.length){ box.innerHTML='<div style="color:var(--cf-text2);font-size:13px">No hay rutas asignadas de hoy en adelante.</div>'; return; }
     box.innerHTML='<div style="overflow-x:auto"><table><thead><tr><th>Fecha</th><th>Técnico</th><th>Centro</th><th>Clientes</th><th>Visitados</th></tr></thead><tbody>'
       +arr.map(function(r){
-        var vis=(r.clientes||[]).filter(function(c){return c.visitado;}).length;
+        var vis=(r.clientes||[]).filter(function(c){return estadoParada(c)==='visitado';}).length;
         return '<tr><td style="font-size:12px">'+esc(r.fecha)+'</td><td style="font-size:12px">'+esc(r.tecnicoNombre||'')+'</td><td>'+bCe(r.centro)+'</td>'
           +'<td style="font-weight:600">'+(r.clientes||[]).length+'</td>'
           +'<td><span style="color:'+(vis===(r.clientes||[]).length&&vis>0?'#3E5A40':'#8A6D12')+';font-weight:600">'+vis+' / '+(r.clientes||[]).length+'</span></td></tr>';
@@ -3261,6 +3287,13 @@ function rutaCargarRecientes(){
 // ══ DASHBOARD ══
 function renderDashboard(){
   var w=document.getElementById('view-dashboard');if(!w)return;
+  // avisoSinCentros() y chipAlcance() existian desde hace tiempo pero no se
+  // llamaban desde ningun lado: un coordinador sin centros veia el pais
+  // entero sin una sola señal de que algo estaba mal.
+  if(sinCentrosAsignados()){
+    w.innerHTML = '<div class="db-wrap">'+avisoSinCentros()+'</div>';
+    return;
+  }
   var hoy=new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   // Skeleton solo si el dashboard está vacío (primera pintura). En refrescos ya
   // hay contenido, así que cargarStatsDashboard actualiza sin parpadeo ni blanco.
@@ -3549,7 +3582,7 @@ async function cargarStatsDashboard(){
         var mx=Math.max.apply(null,Object.values(porModelo));
         var cols=['#2a4a1e','#3d6b2c','#8b6914','#5a8f42','#6b4423','#4a7a6b','#2d5a3d','#7a6b2a','#5a4a3e','#3d6b4a'];
         var c=cols[i%10];
-        return'<div style="cursor:pointer;padding:5px 0;border-bottom:1px solid rgba(42,74,30,.08)" onclick="dbModeloClick(this)" data-modelo="'+esc(e[0])+'">'
+        return'<div style="cursor:pointer;padding:5px 0;border-bottom:1px solid rgba(42,74,30,.08)" onclick="dbModeloClick(this)" data-modelo="'+escH(e[0])+'">'
           +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">'
           +'<span style="font-size:11px;color:#2a4a1e;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:78%" title="'+esc(e[0])+'">'+e[0]+'</span>'
           +'<span style="font-size:11px;font-weight:700;color:'+c+'">'+e[1].toLocaleString()+'</span></div>'
@@ -3627,6 +3660,13 @@ function dbKpi(label,val,sub,color,icon,filtro){
     +'</div>';
 }
 
+// Lee el modelo de un data-attribute en vez de incrustarlo en el onclick:
+// un apostrofo o unas comillas en el nombre rompian el atributo entero.
+function buscarEspecsIADe(el){
+  var m=el.getAttribute('data-modelo')||'';
+  if(m) buscarEspecsIA(m);
+}
+var _eqTruncado=false;   // true cuando la lista de Equipos salio recortada
 function dbModeloClick(el){
   var m=el.getAttribute('data-modelo')||'';
   if(!m)return;
@@ -3899,38 +3939,39 @@ function buscarEquiposFirestore(){
   var q=(eqFiltros.q||'').trim();
   var col=db.collection('equipos');
   var queries=[];
+  var _eqTopes=[];        // el tope de cada consulta, para saber si se recorto
   var LIM=300;
   var LINEAS_GRANDES=['Cafeteras Hoteleras','Cafet. Superautomática','Thermos'];
   // Firestore exige índice compuesto al combinar dos campos (p.ej. linea + centro).
   // Para evitarlo: consultamos por UN solo campo y el centro se filtra en el cliente.
   if(q){
     var af=parseInt(q);
-    if(!isNaN(af))queries.push(col.where('activoFijo','==',af).limit(50).get());
+    if(!isNaN(af)){ queries.push(col.where('activoFijo','==',af).limit(50).get()); _eqTopes.push(50); }
     else {
-      queries.push(col.where('serie','==',q).limit(50).get());
+      queries.push(col.where('serie','==',q).limit(50).get()); _eqTopes.push(50);
       // Modelo: busca los que EMPIEZAN con el texto (tal cual y en mayusculas).
       // Antes el buscador decia "Modelo" pero solo buscaba por serie exacta.
       [q, q.toUpperCase()].filter(function(v,i,a){ return a.indexOf(v)===i; }).forEach(function(v){
         var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
         // Sin acotarCentro: rango + 'in' pediria indice compuesto. El centro se filtra abajo.
-        queries.push(col.where('modelo','>=',v).where('modelo','<',vHi).limit(100).get());
+        queries.push(col.where('modelo','>=',v).where('modelo','<',vHi).limit(100).get()); _eqTopes.push(100);
       });
     }
   }else if(eqFiltros.almacen){
     // Un almacen tiene a lo mucho ~1,300 equipos: se trae completo y la linea
     // se filtra del lado del cliente (evita indice compuesto en Firestore).
-    queries.push(acotarCentro(col.where('almacen','==',eqFiltros.almacen)).limit(1500).get());
+    queries.push(acotarCentro(col.where('almacen','==',eqFiltros.almacen)).limit(1500).get()); _eqTopes.push(1500);
   }else if(eqFiltros.modelo){
-    queries.push(acotarCentro(col.where('modelo','==',eqFiltros.modelo)).limit(LIM).get());
+    queries.push(acotarCentro(col.where('modelo','==',eqFiltros.modelo)).limit(LIM).get()); _eqTopes.push(LIM);
   }else if(eqFiltros.linea){
     // Líneas enormes: exigir centro para no traer miles de golpe
     if(LINEAS_GRANDES.indexOf(eqFiltros.linea)>=0 && !eqFiltros.centro){
       if(tbody)tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#8b6914">"'+eqFiltros.linea+'" tiene muchos equipos. Elige también un <b>centro</b> para acotar la búsqueda.</td></tr>';
       return;
     }
-    queries.push(acotarCentro(col.where('linea','==',eqFiltros.linea)).limit(LIM).get());
+    queries.push(acotarCentro(col.where('linea','==',eqFiltros.linea)).limit(LIM).get()); _eqTopes.push(LIM);
   }else if(eqFiltros.centro){
-    queries.push(col.where('centro','==',eqFiltros.centro).limit(LIM).get());
+    queries.push(col.where('centro','==',eqFiltros.centro).limit(LIM).get()); _eqTopes.push(LIM);
   }else{
     // Sin ningún filtro: NO consultar (evita leer de más al entrar)
     if(tbody)tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:#9aa0a6">Selecciona una línea, un centro, o escribe un activo fijo/serie para buscar.</td></tr>';
@@ -3938,6 +3979,9 @@ function buscarEquiposFirestore(){
   }
   Promise.all(queries).then(trasEstados).then(function(snaps){
     var seen=new Set(),items=[];
+    // Si CUALQUIER consulta volvio llena, lo que se muestra esta recortado,
+    // aunque despues del filtro por centro queden pocos.
+    _eqTruncado = snaps.some(function(s,i){ return s.size >= (_eqTopes[i]||Infinity); });
     snaps.forEach(function(s){
       s.docs.forEach(function(d){
         if(!seen.has(d.id)){
@@ -3984,7 +4028,16 @@ function renderEquiposTabla(data){
       +'<button class="icon-btn" onclick="event.stopPropagation();printEtiquetaAF(\''+esc(e.activoFijo)+'\',\''+esc(e.modelo)+'\',\''+e.centro+'\')" title="Etiqueta">🏷</button>'
       +'</div></td></tr>';
   }).join(''):'<tr><td colspan="7" style="text-align:center;padding:20px;color:#9aa0a6">Sin resultados</td></tr>';
-  if(footer)footer.textContent=data.length>0?data.length+' equipo(s) encontrado(s)'+(data.length>=300?' — refina la búsqueda (tope 300)':''):'Sin resultados para estos filtros';
+  if(footer){
+    if(!data.length){
+      footer.textContent='Sin resultados para estos filtros';
+    } else if(_eqTruncado){
+      footer.innerHTML='<b style="color:#8A6D12">'+data.length+' equipo(s) — lista recortada.</b> '
+        +'Hay más de los que caben en una consulta: acota por centro o almacén para verlos todos.';
+    } else {
+      footer.textContent=data.length+' equipo(s) encontrado(s)';
+    }
+  }
 }
 
 // ══ CLIENTES ══
@@ -4507,7 +4560,7 @@ function dpTab(tab, eObj, col){
       +'<div id="dp-specs-box" style="margin-top:12px;padding:12px;background:var(--cf-cream);border-radius:10px;border:1px solid var(--cf-border)">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
       +'<div style="font-size:11px;font-weight:700;color:#4a5e42;text-transform:uppercase;letter-spacing:.06em">✨ Especificaciones técnicas</div>'
-      +'<button onclick="buscarEspecsIA(\''+e.modelo+'\')" style="font-size:10px;padding:3px 10px;border:1px solid var(--cf-border);border-radius:6px;background:var(--cf-white);cursor:pointer;font-family:Inter,sans-serif;color:#2a4a1e;font-weight:600">Recargar</button>'
+      +'<button data-modelo="'+escH(e.modelo||'')+'" onclick="buscarEspecsIADe(this)" style="font-size:10px;padding:3px 10px;border:1px solid var(--cf-border);border-radius:6px;background:var(--cf-white);cursor:pointer;font-family:Inter,sans-serif;color:#2a4a1e;font-weight:600">Recargar</button>'
       +'</div>'
       +'<div id="dp-specs-content" style="font-size:12px;color:#4a5e42;line-height:1.6">Buscando especificaciones...</div>'
       +'</div>';
@@ -4606,10 +4659,18 @@ function renderOrdenes(){
   function fechaOrd(o){ return o.creadoEn?(o.creadoEn.toDate?o.creadoEn.toDate():new Date(o.creadoEn)):null; }
   // Sin fechas: las 200 mas recientes, en vivo. Con fechas: todas las del
   // periodo (antes solo se filtraban esas 200).
-  var fuente=ordenes;
+  var fuente=ordenes, _avisoOrd='';
   if(ordFiltros.desde||ordFiltros.hasta){
     fuente=ordenesPeriodo(ordFiltros.desde||ordFiltros.hasta, ordFiltros.hasta||fechaLocal(), function(){ if(curView==='ordenes')renderOrdenes(); });
     if(!fuente){ ordPeriodoCargando(w); return; }
+    _avisoOrd = ordPeriodoAviso(fuente);
+  } else if(ordenes && ordenes.length>=200){
+    // Sin fechas la fuente son las 200 mas recientes del snapshot. Con 37 mil
+    // equipos eso cubre pocos dias, y el pie no decia nada: el coordinador
+    // leia "7 ordenes" como si fuera todo su mes.
+    _avisoOrd = '<div style="background:#FBEEC8;border:1px solid #E4C65A;border-radius:10px;padding:10px 12px;'
+      +'font-size:12px;margin-bottom:12px;color:#5C4A0F">Mostrando solo las <b>200 órdenes más recientes</b>. '
+      +'Elige un rango de fechas arriba para ver el periodo completo.</div>';
   }
   // Cada quien ve lo suyo: el coordinador sus centros, el tecnico sus ordenes.
   var _esTec=String((curUser&&curUser.rol)||'').toLowerCase()==='tecnico';
@@ -4636,7 +4697,7 @@ function renderOrdenes(){
   data.forEach(function(o){ var t=o.tecnicoNombre||'Sin asignar'; if(!porTec[t])porTec[t]={n:0,fact:0,pend:0}; porTec[t].n++; porTec[t].fact+=(o.costoTotal||0); if(o.estado!=='terminado')porTec[t].pend++; });
   var tecRank=Object.entries(porTec).sort(function(a,b){return b[1].n-a[1].n;});
 
-  w.innerHTML=
+  w.innerHTML= _avisoOrd +
     // Resumen jefe
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">'
     +'<div class="tbl-box" style="padding:16px 18px"><div style="font-size:11px;color:var(--cf-text2);text-transform:uppercase;letter-spacing:.06em">Órdenes filtradas</div><div style="font-family:\'Source Serif 4\',serif;font-size:26px;color:var(--cf-green);margin-top:4px">'+data.length+'</div></div>'
@@ -4726,14 +4787,14 @@ function renderAnalisis(){
   }
 
   // ── Dona preventivo vs correctivo (SVG) ──
-  var tot=prev+corr||1, pP=prev/tot, aP=Math.round(pP*360);
+  var totReal=prev+corr, tot=totReal||1, pP=prev/tot, aP=Math.round(pP*360);
   function polar(cx,cy,r,ang){ var a=(ang-90)*Math.PI/180; return [cx+r*Math.cos(a),cy+r*Math.sin(a)]; }
   function arc(cx,cy,r,a0,a1){ var p0=polar(cx,cy,r,a0),p1=polar(cx,cy,r,a1); var large=(a1-a0)>180?1:0; return 'M'+cx+','+cy+' L'+p0[0]+','+p0[1]+' A'+r+','+r+' 0 '+large+' 1 '+p1[0]+','+p1[1]+' Z'; }
   var dona='<svg viewBox="0 0 120 120" style="width:120px;height:120px">'
     +'<path d="'+arc(60,60,54,0,aP||0.001)+'" fill="#3E5A40"></path>'
     +'<path d="'+arc(60,60,54,aP,360)+'" fill="#C9A227"></path>'
     +'<circle cx="60" cy="60" r="32" fill="#fff"></circle>'
-    +'<text x="60" y="58" text-anchor="middle" style="font-size:15px;font-weight:700;fill:#111315">'+tot+'</text>'
+    +'<text x="60" y="58" text-anchor="middle" style="font-size:15px;font-weight:700;fill:#111315">'+totReal+'</text>'
     +'<text x="60" y="72" text-anchor="middle" style="font-size:8px;fill:#6B6F72">órdenes</text>'
     +'</svg>';
 
@@ -4858,7 +4919,7 @@ function renderAuditoria(){
 }
 function cargarAuditorias(){
   // Las 300 mas recientes (antes 300 cualquiera), de los centros del usuario.
-  db.collection('auditorias').orderBy('creadoEn','desc').limit(300).get().then(function(s){
+  acotarCentro(db.collection('auditorias')).orderBy('creadoEn','desc').limit(300).get().then(function(s){
     _auditorias=s.docs.map(function(d){return {id:d.id,...d.data()};}).filter(function(a){ return enMiAlcance(a.centro); });
     _auditorias.sort(function(a,b){ var fa=(a.creadoEn&&a.creadoEn.seconds)||0, fb=(b.creadoEn&&b.creadoEn.seconds)||0; return fb-fa; });
     _audCargado=true;
@@ -5243,9 +5304,17 @@ function printEtiqueta(docId){
   var e=buscar(_etiqDatos)||buscar(_equiposRes)||buscar(_clientesRes);
   if(e)printEtiquetaAF(e.activoFijo,e.modelo,e.centro);
 }
+function etiqFiltradas(){
+  // La MISMA lista que muestra la pantalla: con el buscador aplicado y con
+  // el tope de 300. Antes imprimir usaba _etiqDatos crudo, asi que mandaba
+  // a la impresora cosas que el usuario no estaba viendo.
+  return (_etiqDatos||[]).filter(function(c){
+    if(etiqFilt.q&&!(String(c.activoFijo||'').includes(etiqFilt.q)||(c.modelo||'').toLowerCase().includes(etiqFilt.q.toLowerCase())))return false;
+    return true;
+  }).slice(0,300);
+}
 function printTodasEtiquetas(){
-  // Todas las etiquetas cargadas (no solo las que caben en pantalla), 30 por hoja.
-  var d=_etiqDatos||[];
+  var d=etiqFiltradas();
   if(!d.length){ toast('No hay etiquetas para imprimir.'); return; }
   var hojas='';
   for(var i=0;i<d.length;i+=30){
@@ -5330,7 +5399,7 @@ function renderReportes(){
     +'<div class="tbl-hdr"><span class="tbl-hdr-title">Clientes con Equipos — Concentrado por Centro</span>'
     +'<button class="btn btn-sm btn-blue" onclick="exportExcelConcentrado()">⬇ Excel</button></div>'
     +'<div style="overflow-x:auto"><table style="font-size:11px"><thead><tr>'
-    +'<th>No.</th><th>Centro</th><th>Clientes</th>'
+    +'<th>No.</th><th>Centro</th><th title="Almacenes con equipo, no clientes distintos">Almacenes</th>'
     +LINEAS.map(function(l){return'<th style="text-align:right">'+l+'</th>';}).join('')
     +'<th style="text-align:right">Total</th></tr></thead><tbody>'
     +Object.values(tabByCe).sort(function(a,b){return(CENTROS[a.ce]||a.ce)<(CENTROS[b.ce]||b.ce)?-1:1;}).map(function(ceData,i){
@@ -5407,7 +5476,7 @@ function exportExcelConcentrado(){
   var TE=repTablaEquipos(), LINEAS=TE.LINEAS;
   if(!TE.lista.length){ toast('Sin datos de equipos. Ejecuta node cafiver-resumen.js en el servidor.'); return; }
   var wb=XLSX.utils.book_new();
-  var rows=[['','','','CLIENTES CON EQUIPOS'],['No.','Plaza','Clientes'].concat(LINEAS).concat(['Total general'])];
+  var rows=[['','','','ALMACENES CON EQUIPOS'],['No.','Plaza','Almacenes'].concat(LINEAS).concat(['Total general'])];
   TE.lista.forEach(function(r,i){
     rows.push([i+1,getCentroNombre(r.ce),r.rows.length].concat(LINEAS.map(function(l){return r.totals[l]||0;})).concat([r.totals.total||0]));
   });
@@ -6389,20 +6458,24 @@ auth.onAuthStateChanged(function(user){
       if(aviso) console.warn('[login]', aviso);
       enterApp();
     }
-    function _respaldo(){
-      return {name:email.split('@')[0], rol:'tecnico', color:'#1a73e8', centros:[], numeroEmpleado:''};
-    }
 
     var _tope=setTimeout(function(){
       if(_resuelto) return;
-      _entrar(_respaldo(), 'El perfil tardo demasiado; se entro con el respaldo.');
-    }, 8000);
+      _resuelto=true;
+      // Antes se entraba con el respaldo: rol 'tecnico' y centros [], que
+      // por el bug de alcance significaba ver el pais entero. Mejor no
+      // entrar que entrar viendo de mas.
+      _msg('No se pudo leer tu perfil (tardó demasiado). Revisa tu conexión y vuelve a intentar.');
+      auth.signOut();
+    }, 12000);
 
     db.collection('usuarios').doc(user.uid).get().then(function(d){
       clearTimeout(_tope);
       if(_resuelto) return;
       if(!d.exists){
-        _entrar(_respaldo(), 'Sin documento en usuarios/'+user.uid+'; se uso el respaldo.');
+        _resuelto=true;
+        _msg('Tu cuenta no está dada de alta en el sistema. Pide a un administrador que te registre en la pantalla Usuarios.');
+        auth.signOut();
         return;
       }
       var x=d.data();
@@ -6424,12 +6497,14 @@ auth.onAuthStateChanged(function(user){
       if(_resuelto) return;
       // Permisos insuficientes es el caso tipico cuando las reglas cambiaron.
       if(String(e.code||'')==='permission-denied'){
+        _resuelto=true;
         _msg('Sin permiso para leer tu perfil (usuarios/'+user.uid+'). Revisa las reglas de Firestore.');
-        _entrar(_respaldo(), 'permission-denied al leer el perfil; se uso el respaldo.');
+        auth.signOut();
         return;
       }
+      _resuelto=true;
       _msg('Error al leer tu perfil: '+(e.message||e.code||e));
-      _entrar(_respaldo(), 'Error al leer el perfil; se uso el respaldo.');
+      auth.signOut();
     });
   }
 });
