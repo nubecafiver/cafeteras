@@ -274,7 +274,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 // script muere ahi y lo que venga despues nunca se ejecuta. Declarada aqui,
 // la version se ve aunque la app falle al arrancar — que es justo cuando
 // mas falta hace saberla.
-var APP_VERSION = '2026-11-10.1';
+var APP_VERSION = '2026-11-10.2';
 
 // ══════════ CONFIG FIREBASE ══════════
 var firebaseConfig = {
@@ -307,6 +307,22 @@ function actualizarConexion(){
 }
 window.addEventListener('online', actualizarConexion);
 window.addEventListener('offline', actualizarConexion);
+
+// Al recuperar señal se intenta subir SOLO, sin esperar a que el tecnico
+// entre a Inicio y toque el boton. Tambien al volver la app al frente y
+// cada 2 minutos, porque 'online' no siempre dispara al cambiar de datos
+// a wifi o al salir de una zona muerta.
+function autoSubirPendientes(){
+  if(!navigator.onLine) return;
+  if(typeof CUR==='undefined' || !CUR) return;          // aun sin sesion
+  if(typeof _subiendoPend!=='undefined' && _subiendoPend) return;
+  if(typeof reintentarPendientes==='function') reintentarPendientes(false);
+}
+window.addEventListener('online', function(){ setTimeout(autoSubirPendientes, 1500); });
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='visible') autoSubirPendientes();
+});
+setInterval(autoSubirPendientes, 120000);
 
 // ══════════ ESTADO ══════════
 var CUR = null;         // {uid,email,nombre,rol,centro}
@@ -617,14 +633,14 @@ function cargarInicio(){
   }
   var qo = db.collection('ordenes');
   qo = misCentros().length ? acotarCentro(qo) : qo.where('tecnicoUid','==',CUR.uid);
-  qo.where('estado','==','pendiente').limit(50).get().then(function(s){
+  qo.where('estado','==','pendiente').orderBy('creadoEn','desc').limit(50).get().then(function(s){
     $('k-abiertas').textContent = s.size;
     var arr=s.docs.map(function(d){return {id:d.id,...d.data()};});
     renderOrdenesPendientes(arr);
   }).catch(function(e){ $('k-abiertas').textContent='—'; $('pendientes').innerHTML='<div style="color:var(--muted);font-size:13px">No se pudieron cargar pendientes.</div>'; });
   // Atendidos hoy (órdenes que YO cerré hoy) — consulta chica
   var hoy0=new Date(); hoy0.setHours(0,0,0,0);
-  db.collection('ordenes').where('tecnicoUid','==',CUR.uid).where('estado','==','terminado').limit(50).get().then(function(s){
+  db.collection('ordenes').where('tecnicoUid','==',CUR.uid).where('estado','==','terminado').orderBy('creadoEn','desc').limit(50).get().then(function(s){
     var n=0; s.docs.forEach(function(d){ var o=d.data(); var t=(o.cerradoEn&&o.cerradoEn.seconds)||(o.creadoEn&&o.creadoEn.seconds); if(t&&t*1000>=hoy0.getTime())n++; });
     var el=$('k-hoy'); if(el)el.textContent=n;
   }).catch(function(){ var el=$('k-hoy'); if(el)el.textContent='—'; });
@@ -1118,6 +1134,8 @@ function verEquipo(docId){
     if(!enMiAlcance(e.centro)){ bloqueoFueraDeAlcance(e.activoFijo||docId, e); return; }
     _equipoActivo = e;
     abrirFichaEquipo();
+  }).catch(function(err){
+    toast('No se pudo abrir el equipo: '+(err&&err.code==='unavailable'?'sin señal':err.message));
   });
 }
 function abrirFichaEquipo(){
@@ -1136,7 +1154,7 @@ function row(k,v){return '<div style="display:flex;justify-content:space-between
 // ══════════ ÓRDENES (lista) ══════════
 function cargarOrdenes(){
   $('ord-list').innerHTML='<div class="spin"></div>';
-  db.collection('ordenes').where('tecnicoUid','==',CUR.uid).limit(50).get().then(function(s){
+  db.collection('ordenes').where('tecnicoUid','==',CUR.uid).orderBy('creadoEn','desc').limit(50).get().then(function(s){
     var arr=s.docs.map(function(d){return {id:d.id,...d.data()};});
     arr.sort(function(a,b){return (b.creadoEn&&b.creadoEn.seconds||0)-(a.creadoEn&&a.creadoEn.seconds||0);});
     if(!arr.length){ $('ord-list').innerHTML='<div class="clay card-pad" style="text-align:center;color:var(--muted);font-size:13px">Aún no has levantado órdenes.</div>'; return; }
@@ -1169,6 +1187,8 @@ function verOrden(id){
       $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cerrar</button>';
     }
     openSheet();
+  }).catch(function(err){
+    toast('No se pudo abrir la orden: '+(err&&err.code==='unavailable'?'sin señal':err.message));
   });
 }
 
@@ -1191,15 +1211,42 @@ function cerrarOrden(){
   if(!fd){ toast('Falta la firma del cliente'); return; }
   var recibe=($('c-recibe').value||'').trim();
   $('sheet-ft').innerHTML='<button class="btn" disabled>Cerrando...</button>';
+
+  // Con la persistencia de Firestore activa, update() NO resuelve ni
+  // rechaza mientras no haya servidor: offline el .then y el .catch no
+  // corren nunca y el boton se quedaba en "Cerrando..." sin salida. La
+  // escritura si queda encolada y sube sola al recuperar señal, asi que a
+  // los 4 s se da por buena localmente y se sigue.
+  var _resuelto=false;
+  var _local=setTimeout(function(){
+    if(_resuelto) return;
+    _resuelto=true;
+    o.recibe=recibe; o.estado='terminado'; o.firmado=true;
+    toast('Orden cerrada. Se sincroniza al recuperar señal.');
+    mostrarCompartir(o);
+    cargarInicio(); cargarOrdenes();
+  }, 4000);
+
   db.collection('ordenes').doc(o.id).update({
     estado:'terminado', firmado:true, firmaClienteData:fd, recibe:recibe,
     cerradoEn:firebase.firestore.FieldValue.serverTimestamp()
   }).then(function(){
+    if(_resuelto) return;
+    _resuelto=true; clearTimeout(_local);
     o.recibe=recibe; o.estado='terminado'; o.firmado=true;
     toast('✅ Orden cerrada');
     mostrarCompartir(o);   // pantalla de compartir
     cargarInicio(); cargarOrdenes();
-  }).catch(function(e){ toast('Error al cerrar: '+e.message); abrirCierre(); });
+  }).catch(function(e){
+    if(_resuelto) return;
+    _resuelto=true; clearTimeout(_local);
+    // Antes aqui se llamaba abrirCierre(), que redibuja el canvas en
+    // blanco: se perdia la firma que el cliente ya habia trazado. Ahora
+    // solo se rehabilita el boton y la firma sigue en pantalla.
+    toast('No se pudo cerrar: '+e.message);
+    $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cancelar</button>'
+      +'<button class="btn btn-green" onclick="cerrarOrden()">Reintentar</button>';
+  });
 }
 // Pantalla final: compartir por el método que el técnico quiera (share nativo)
 function mostrarCompartir(o){
@@ -1236,7 +1283,7 @@ function cargarPM(){
   $('pm-list').innerHTML='<div class="spin"></div>';
   var qo=db.collection('ordenes');
   qo = misCentros().length ? acotarCentro(qo) : qo.where('tecnicoUid','==',CUR.uid);
-  qo.where('tipo','==','preventivo').limit(50).get().then(function(s){
+  qo.where('tipo','==','preventivo').orderBy('creadoEn','desc').limit(50).get().then(function(s){
     var arr=s.docs.map(function(d){return {id:d.id,...d.data()};}).filter(function(o){return o.estado!=='terminado';});
     if(!arr.length){ $('pm-list').innerHTML='<div class="clay card-pad" style="text-align:center;color:var(--muted);font-size:13px">Sin preventivos pendientes en tu oficina.</div>'; return; }
     $('pm-list').innerHTML=arr.map(function(o){
@@ -1267,6 +1314,98 @@ function esBrillante(cliNum, cliNom){
   var n=(cliNom||'').toUpperCase();
   return n.indexOf('KRISPY')>=0 || n.indexOf('KREME')>=0;
 }
+
+// ══════════════════════════════════════════════════════════════════════
+//  BORRADOR DEL FORMULARIO
+//
+//  Nada se guardaba hasta tocar "Guardar orden": si entraba una llamada,
+//  el tecnico tocaba Atras para cerrar el teclado, o Android mataba la
+//  pestaña por memoria con la camara abierta, se perdian 20 minutos de
+//  captura frente al cliente.
+//
+//  Ahora el formulario se guarda solo en localStorage cada vez que algo
+//  cambia, y al reabrirlo se ofrece recuperarlo. Las fotos NO entran al
+//  borrador: pesan demasiado para localStorage y se volverian a tomar.
+// ══════════════════════════════════════════════════════════════════════
+var LLAVE_BORRADOR = 'cafiver_borrador_orden';
+var _borrTimer = null;
+var _borrActivo = false;      // false mientras se dibuja, para no guardar vacios
+
+var CAMPOS_ORDEN = ['o-af','o-modelo','o-serie','o-cliente','o-fecha','o-hora',
+                    'o-tipo','o-formato','o-desc','o-mo','o-ref','o-viat'];
+
+function leerFormulario(){
+  var d = { campos:{}, checklist:{}, formato:_ordFormato, ts:Date.now() };
+  CAMPOS_ORDEN.forEach(function(id){ var el=$(id); if(el) d.campos[id]=el.value; });
+  // Checklist: se guarda por el atributo data-i de cada casilla, que es lo
+  // que identifica al componente; asi sobrevive a que cambie el orden.
+  var cont=$('o-checklist');
+  if(cont){
+    cont.querySelectorAll('input[type=checkbox],input[type=radio],input[type=text],input[type=number],textarea,select').forEach(function(el,i){
+      var k = el.dataset.i ? (el.className+'|'+el.dataset.i) : ('idx|'+i+'|'+el.type);
+      d.checklist[k] = (el.type==='checkbox'||el.type==='radio') ? el.checked : el.value;
+    });
+  }
+  return d;
+}
+function guardarBorrador(){
+  if(!_borrActivo) return;
+  if(_borrTimer) clearTimeout(_borrTimer);
+  _borrTimer = setTimeout(function(){
+    try{ localStorage.setItem(LLAVE_BORRADOR, JSON.stringify(leerFormulario())); }catch(e){}
+  }, 800);
+}
+function leerBorrador(){
+  try{
+    var raw = localStorage.getItem(LLAVE_BORRADOR);
+    if(!raw) return null;
+    var d = JSON.parse(raw);
+    // Mas de 12 h: ya no es la captura de hoy.
+    if(!d || !d.ts || (Date.now()-d.ts) > 12*3600*1000){ borrarBorrador(); return null; }
+    return d;
+  }catch(e){ return null; }
+}
+function borrarBorrador(){
+  if(_borrTimer){ clearTimeout(_borrTimer); _borrTimer=null; }
+  try{ localStorage.removeItem(LLAVE_BORRADOR); }catch(e){}
+}
+function aplicarBorrador(d){
+  if(!d) return;
+  CAMPOS_ORDEN.forEach(function(id){
+    if(d.campos && d.campos[id]!=null){ var el=$(id); if(el) el.value=d.campos[id]; }
+  });
+  if(d.formato){ _ordFormato=d.formato; var sf=$('o-formato'); if(sf) sf.value=d.formato; }
+  onFormatoChange(true);
+  var cont=$('o-checklist');
+  if(cont && d.checklist){
+    cont.querySelectorAll('input[type=checkbox],input[type=radio],input[type=text],input[type=number],textarea,select').forEach(function(el,i){
+      var k = el.dataset.i ? (el.className+'|'+el.dataset.i) : ('idx|'+i+'|'+el.type);
+      if(d.checklist[k]==null) return;
+      if(el.type==='checkbox'||el.type==='radio') el.checked = !!d.checklist[k];
+      else el.value = d.checklist[k];
+    });
+  }
+  calcTotal();
+}
+// Cualquier cambio dentro de la hoja dispara el guardado, sin tener que
+// cablear cada campo uno por uno.
+document.addEventListener('input', function(e){
+  if($('sheet') && $('sheet').classList.contains('on')) guardarBorrador();
+}, true);
+document.addEventListener('change', function(e){
+  if($('sheet') && $('sheet').classList.contains('on')) guardarBorrador();
+}, true);
+// Si el navegador se lleva la pagina, se guarda de inmediato (sin esperar
+// los 800 ms del debounce).
+window.addEventListener('pagehide', function(){
+  if(!_borrActivo) return;
+  try{ localStorage.setItem(LLAVE_BORRADOR, JSON.stringify(leerFormulario())); }catch(e){}
+});
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='hidden' && _borrActivo){
+    try{ localStorage.setItem(LLAVE_BORRADOR, JSON.stringify(leerFormulario())); }catch(e){}
+  }
+});
 
 function abrirFormOrden(){
   var e=_ordEquipo||{};
@@ -1300,7 +1439,7 @@ function abrirFormOrden(){
     +'<input type="file" id="o-foto-input" accept="image/*" capture="environment" style="display:none" onchange="agregarFotos(this.files)">'
     +'<button class="btn" style="width:100%;margin-bottom:10px" onclick="document.getElementById(\'o-foto-input\').click()"><i class="ti ti-camera" style="vertical-align:-2px"></i> &nbsp;Tomar / agregar foto</button>'
     +'<div id="o-fotos" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>';
-  $('sheet-ft').innerHTML='<button class="btn" onclick="closeSheet()">Cancelar</button><button class="btn btn-green" onclick="guardarOrden()">Guardar orden</button>';
+  $('sheet-ft').innerHTML='<button class="btn" onclick="cancelarOrden()">Cancelar</button><button class="btn btn-green" onclick="guardarOrden()">Guardar orden</button>';
   openSheet();
   $('o-formato').value=_ordFormato;
   _geoLat=null;_geoLng=null;
@@ -1316,6 +1455,49 @@ function abrirFormOrden(){
   capturarUbicacion();
   cargarUbicCliente($('o-cliente').value);
   onFormatoChange(true);
+
+  // Borrador: si quedo uno a medias (se cerro la app, entro una llamada),
+  // se le ofrece al tecnico en vez de perderlo en silencio.
+  _borrActivo = false;
+  var _b = leerBorrador();
+  if(_b && _b.campos && (_b.campos['o-af']||'')===($('o-af').value||'')){
+    var mins = Math.max(1, Math.round((Date.now()-_b.ts)/60000));
+    var aviso = document.createElement('div');
+    aviso.id = 'o-borrador';
+    aviso.style.cssText='background:#FBEEC8;border:1px solid #E4C65A;border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#5C4A0F';
+    aviso.innerHTML = '<b>Tienes una captura sin terminar</b> de hace '+mins+' min.<br>'
+      +'<div style="margin-top:8px;display:flex;gap:8px">'
+      +'<button class="btn btn-green" style="flex:1;padding:6px;font-size:12px" onclick="recuperarBorrador()">Recuperarla</button>'
+      +'<button class="btn" style="flex:1;padding:6px;font-size:12px" onclick="descartarBorrador()">Empezar de nuevo</button>'
+      +'</div><div style="margin-top:6px;color:#7A6417">Las fotos sí hay que volver a tomarlas.</div>';
+    $('sheet-body').insertBefore(aviso, $('sheet-body').firstChild);
+  }
+  _borrActivo = true;
+}
+// "Cancelar" tiraba 20 minutos de captura sin preguntar. Ahora avisa, y el
+// borrador se conserva por si el tecnico se arrepiente.
+function cancelarOrden(){
+  var hayAlgo = ($('o-desc') && $('o-desc').value.trim()) ||
+                (_fotos && _fotos.length) ||
+                ($('o-checklist') && $('o-checklist').querySelectorAll('input:checked').length);
+  if(hayAlgo && !confirm('¿Salir sin guardar?\n\nLo capturado queda como borrador y te lo vuelvo a ofrecer al abrir la siguiente orden de este equipo.')){
+    return;
+  }
+  _borrActivo = false;
+  closeSheet();
+}
+function recuperarBorrador(){
+  var d = leerBorrador();
+  if(!d){ toast('El borrador ya no está disponible.'); descartarBorrador(); return; }
+  _borrActivo = false;
+  aplicarBorrador(d);
+  _borrActivo = true;
+  var a=$('o-borrador'); if(a) a.remove();
+  toast('Captura recuperada. Falta volver a tomar las fotos.');
+}
+function descartarBorrador(){
+  borrarBorrador();
+  var a=$('o-borrador'); if(a) a.remove();
 }
 
 // Cada tecla que el tecnico escribia en Cliente llegaba hasta
@@ -1401,7 +1583,7 @@ function capturarUbicacion(){
     calcularDistanciaCliente();   // ¿esta donde el cliente?
     verificarMovimiento();        // ¿se movio el equipo?
   },function(err){
-    if(el)el.textContent='<i class="ti ti-map-pin-off"></i> Ubicación no disponible (se guardará sin ella)';
+    if(el)el.innerHTML='<i class="ti ti-map-pin-off"></i> Ubicación no disponible (se guardará sin ella)';
   },{enableHighAccuracy:true,timeout:12000,maximumAge:30000});
 }
 
@@ -1434,36 +1616,61 @@ var LLAVE_LLEGADA = 'cafiver_llegada';
 var _llegada = null;            // {af, t, origen}
 var _relojTimer = null;
 
-function leerLlegada(){
-  if(_llegada) return _llegada;
+
+// Se guarda un reloj POR MAQUINA. Antes era una sola llave, asi que en un
+// cliente con 3 cafeteras el tecnico escaneaba la A, trabajaba 50 min,
+// escaneaba la B para ver su ficha, y al volver a la A la orden salia "sin
+// tiempo medido": el escaneo de la B habia borrado la llegada de la A.
+function todasLlegadas(){
   try{
     var raw = localStorage.getItem(LLAVE_LLEGADA);
-    if(raw) _llegada = JSON.parse(raw);
-  }catch(e){ _llegada = null; }
-  return _llegada;
+    var d = raw ? JSON.parse(raw) : {};
+    // Formato viejo ({af,t,origen}): se convierte al mapa nuevo.
+    if(d && d.af && d.t){ var m={}; m[String(d.af)]=d; return m; }
+    return (d && typeof d==='object') ? d : {};
+  }catch(e){ return {}; }
 }
 function guardarLlegada(obj){
-  _llegada = obj;
   try{
-    if(obj) localStorage.setItem(LLAVE_LLEGADA, JSON.stringify(obj));
-    else localStorage.removeItem(LLAVE_LLEGADA);
+    if(!obj){ localStorage.removeItem(LLAVE_LLEGADA); _llegada=null; return; }
+    var m = todasLlegadas();
+    m[String(obj.af)] = obj;
+    // Se purgan las de mas de TOPE_SERVICIO_MIN para no llenar el almacen.
+    var corte = Date.now() - TOPE_SERVICIO_MIN*60000;
+    Object.keys(m).forEach(function(k){ if(!m[k] || m[k].t < corte) delete m[k]; });
+    localStorage.setItem(LLAVE_LLEGADA, JSON.stringify(m));
+    _llegada = obj;
   }catch(e){}
+}
+// Cierra el reloj de UNA maquina (al guardar su orden), no el de todas.
+function cerrarLlegada(af){
+  try{
+    var m = todasLlegadas();
+    delete m[String(af)];
+    localStorage.setItem(LLAVE_LLEGADA, JSON.stringify(m));
+  }catch(e){}
+  _llegada = null;
 }
 // Se llama al escanear un QR (o abrir la app desde ?af=...)
 function marcarLlegada(af){
   af = String(af||'');
   if(!af) return;
-  var prev = leerLlegada();
+  var prev = todasLlegadas()[af];
   // Re-escanear la misma maquina NO reinicia el reloj: la llegada buena es
   // la primera. Pasadas 4 h se asume que es otra visita y se reinicia.
-  if(prev && prev.af===af && (Date.now()-prev.t) <= TOPE_SERVICIO_MIN*60000) return;
+  if(prev && (Date.now()-prev.t) <= TOPE_SERVICIO_MIN*60000) return;
   guardarLlegada({ af:af, t:Date.now(), origen:'escaneo' });
 }
 // Devuelve el arranque valido para ESTE equipo, o null si no aplica
 function llegadaDe(af){
-  var l = leerLlegada();
-  if(!l || !af) return null;
-  return (String(l.af)===String(af)) ? l : null;
+  if(!af) return null;
+  var l = todasLlegadas()[String(af)];
+  if(!l || !l.t) return null;
+  // Una llegada de ayer no es el inicio del servicio de hoy: el tecnico
+  // escaneo, el cliente no lo atendio, y al dia siguiente abrio el equipo
+  // desde la lista. Sin esto la orden salia con duracionMin ~1400.
+  if((Date.now()-l.t) > TOPE_SERVICIO_MIN*60000) return null;
+  return l;
 }
 // Le dice al tecnico si su tiempo se esta midiendo y cuanto lleva.
 function pintarReloj(){
@@ -1541,6 +1748,10 @@ function datosCumplimiento(){
     inicioReal: _ordInicio ? new Date(_ordInicio).toISOString() : null,
     finReal: new Date(fin).toISOString()
   };
+  // Un celular 10 min adelantado que Android corrige al recuperar señal
+  // daba duracionMin negativo, y tiempoDudoso:false lo dejaba entrar al
+  // promedio. Un tiempo negativo no es un tiempo.
+  if(dur!=null && dur < 0){ dur = null; }
   if(dur!=null){
     o.duracionMin  = dur;                   // minutos entre escanear y guardar
     o.tiempoOrigen = 'escaneo';
@@ -1720,6 +1931,9 @@ function reintentarPendientes(manual){
       if(i>=items.length){
         _subiendoPend=false; renderPendientes();
         if(manual){ if(subidas)toast('✅ '+subidas+' orden(es) subida(s)'); if(fallidas)toast('Aún hay '+fallidas+' sin señal, reintenta luego'); }
+        // Tambien avisa cuando subio sola: el tecnico necesita saber que su
+        // trabajo ya esta a salvo, aunque no haya tocado nada.
+        else if(subidas) toast('✅ '+subidas+' orden(es) pendiente(s) subida(s)');
         if(subidas)cargarInicio();
         return;
       }
@@ -1818,7 +2032,9 @@ function guardarOrdenConfirmada(){
   var item={ localId:localId, ts:Date.now(), data:data, fotosB64:_fotos.map(function(f){return f.dataUrl;}) };
   pendGuardar(item).then(function(){
     marcarClienteVisitadoAuto(data.cliente);
-    guardarLlegada(null);               // el reloj se cierra con la orden
+    cerrarLlegada(data.activoFijo);     // solo el reloj de ESTA maquina
+    borrarBorrador();                   // la captura ya esta a salvo
+    _borrActivo = false;
     closeSheet();
     // Intentar subirla de una vez
     subirPendiente(item).then(function(){
@@ -1829,8 +2045,14 @@ function guardarOrdenConfirmada(){
       renderPendientes(); cargarInicio();
     });
   }).catch(function(e){
-    // Si ni siquiera se pudo guardar local, avisar claro (no perder el formulario)
-    toast('No se pudo guardar: '+(e&&e.message?e.message:'error')); abrirFormOrden();
+    // Si ni siquiera se pudo guardar en el telefono (IndexedDB bloqueado,
+    // almacenamiento lleno), antes se llamaba abrirFormOrden(), que
+    // reescribe sheet-body y hace _fotos=[]: el "rescate" era justo lo que
+    // destruia la captura. Ahora el formulario se queda intacto y el
+    // tecnico puede reintentar con todo lo que ya lleva.
+    toast('No se pudo guardar: '+(e&&e.message?e.message:'error')+'. Tu captura sigue aquí.');
+    $('sheet-ft').innerHTML='<button class="btn" onclick="cancelarOrden()">Cancelar</button>'
+      +'<button class="btn btn-green" onclick="guardarOrden()">Reintentar</button>';
   });
 }
 

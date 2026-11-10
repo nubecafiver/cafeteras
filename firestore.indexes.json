@@ -39,6 +39,76 @@
         { "fieldPath": "centro", "order": "ASCENDING" },
         { "fieldPath": "estado", "order": "ASCENDING" }
       ]
+    },
+
+    {
+      "collectionGroup": "ordenes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tecnicoUid", "order": "ASCENDING" },
+        { "fieldPath": "estado",     "order": "ASCENDING" },
+        { "fieldPath": "creadoEn",   "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "centro",   "order": "ASCENDING" },
+        { "fieldPath": "estado",   "order": "ASCENDING" },
+        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tecnicoUid", "order": "ASCENDING" },
+        { "fieldPath": "creadoEn",   "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "centro",   "order": "ASCENDING" },
+        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tecnicoUid", "order": "ASCENDING" },
+        { "fieldPath": "tipo",       "order": "ASCENDING" },
+        { "fieldPath": "creadoEn",   "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ordenes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "centro",   "order": "ASCENDING" },
+        { "fieldPath": "tipo",     "order": "ASCENDING" },
+        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "auditorias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "centro",   "order": "ASCENDING" },
+        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "rutas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tecnicoUid", "order": "ASCENDING" },
+        { "fieldPath": "fecha",      "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
