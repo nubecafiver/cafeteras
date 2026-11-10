@@ -1,0 +1,32 @@
+# Llaves y credenciales — NUNCA deben subirse.
+# El repo es publico: una llave de servicio aqui da acceso total a Firestore
+# y Storage, saltandose todas las reglas. Y queda en el historial de git
+# aunque se borre despues.
+serviceAccountKey.json
+serviceAccount.json
+key.json
+*adminsdk*.json
+*.pem
+.env
+.env.*
+
+# Datos de la carga nocturna (viven en W:\paquete, no en el repo)
+cafeteras.csv
+cafeteras1.csv
+cafeteras_ultimo_ok.csv
+bajas_*.csv
+sync.log
+copia_cafeteras.txt
+almacenes.txt
+centros.txt
+clientes.txt
+materiasgrupoart.txt
+
+# Node
+node_modules/
+package-lock.json
+
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store

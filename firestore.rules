@@ -57,17 +57,31 @@ service cloud.firestore {
     // Cada quien lee su propio perfil (la app lo necesita al entrar).
     // Solo un administrador puede crear, editar o desactivar usuarios:
     // esto cierra la escalada de privilegios.
-    // Un coordinador (jefe) solo crea o edita tecnicos y coordinadores: no
-    // puede nombrar Admin a nadie (ni a si mismo) ni tocar a la direccion.
+    // Un coordinador (jefe) administra TECNICOS, nada mas.
+    //
+    // Antes podia editar cualquier documento cuyo rol estuviera en
+    // ['tecnico','jefe'] — y el suyo propio tiene rol 'jefe'. Es decir que
+    // desde la consola del navegador podia hacer
+    //   usuarios/<su uid>.set({centros:[...los 30]}, {merge:true})
+    // y pasar a ver y editar todo el pais. Tambien podia desactivar a otro
+    // coordinador. Ahora:
+    //   - no puede tocar su propio documento (uid != request.auth.uid)
+    //   - solo alcanza documentos de rol 'tecnico', ni jefes ni direccion
+    //   - no puede mover centros: eso lo hace la direccion
+    // Crear un tecnico con sus centros si puede; reasignarlo de centro no.
     match /usuarios/{uid} {
       allow get:    if request.auth != null && (request.auth.uid == uid || esAdmin());
       allow list:   if esAdmin();
       allow create: if esDireccion()
-                    || (rol() == 'jefe' && request.resource.data.rol in ['tecnico', 'jefe']);
+                    || (rol() == 'jefe'
+                        && uid != request.auth.uid
+                        && request.resource.data.rol == 'tecnico');
       allow update: if esDireccion()
                     || (rol() == 'jefe'
-                        && resource.data.rol in ['tecnico', 'jefe']
-                        && request.resource.data.rol in ['tecnico', 'jefe']);
+                        && uid != request.auth.uid
+                        && resource.data.rol == 'tecnico'
+                        && request.resource.data.rol == 'tecnico'
+                        && request.resource.data.centros == resource.data.centros);
       allow delete: if esDireccion();
     }
 
