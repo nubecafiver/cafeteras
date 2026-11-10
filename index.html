@@ -556,6 +556,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
       </div>
       <div id="cur-av" style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:#EDF1ED;color:#3E5A40">—</div>
       <button class="btn btn-sm" onclick="doLogout()" title="Cerrar sesión"><i class="ti ti-logout"></i> Salir</button>
+      <span id="app-version" style="font-size:10px;color:var(--cf-text2);opacity:.7;margin-left:4px" title="Versión publicada"></span>
     </div>
   </div>
 
@@ -868,6 +869,18 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
 </div>
 
 <script>
+// ══════════════════════════════════════════
+// VERSION PUBLICADA
+// ══════════════════════════════════════════
+// SUBIRLA EN CADA PUBLICACION, igual que APP_VERSION en tecnico.html y
+// CACHE en sw.js. Sin esto no hay forma de saber que version esta viendo
+// cada quien cuando reporta algo.
+//
+// Va ANTES de Firebase a proposito: si una libreria de CDN no carga, el
+// script muere ahi y lo que venga despues nunca corre. Declarada aqui, la
+// version se ve aunque el tablero falle al arrancar.
+var APP_VERSION = '2026-11-10.1';
+
 // ══════════════════════════════════════════
 // FIREBASE — cafeteras-90e78
 // ══════════════════════════════════════════
@@ -1502,6 +1515,7 @@ function enterApp(){
   var av=document.getElementById('cur-av');
   if(av){av.textContent=ini(curUser.name);av.style.background=curUser.color+'22';av.style.color=curUser.color;}
   var nm=document.getElementById('cur-nm');if(nm)nm.textContent=curUser.name;
+  var _v=document.getElementById('app-version');if(_v)_v.textContent='v'+APP_VERSION;
   var btnL=document.getElementById('login-btn');
   if(btnL){btnL.textContent='Iniciar sesión';btnL.disabled=false;btnL.style.opacity='1';}
   cargarTecnicos();

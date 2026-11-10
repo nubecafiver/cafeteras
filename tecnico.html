@@ -214,6 +214,12 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
     </div>
     <button class="btn" style="width:100%;color:var(--error)" onclick="doLogout()">Cerrar sesión</button>
     <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:20px">CAFIVER · Técnico en campo</div>
+    <div style="text-align:center;font-size:11px;color:var(--muted);margin-top:4px">
+      Versión <b id="pf-version">—</b> · <span id="pf-sw">—</span>
+    </div>
+    <div style="text-align:center;margin-top:10px">
+      <button class="btn" style="font-size:12px;padding:6px 14px" onclick="buscarActualizacion()">Buscar actualización</button>
+    </div>
   </div>
 
   <!-- BOTTOM NAV -->
@@ -259,6 +265,17 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 <div id="conn-banner" style="position:fixed;left:0;right:0;top:0;z-index:600;background:#B4453A;color:#fff;font-size:12px;font-weight:700;text-align:center;padding:7px;display:none">Sin conexión — puedes seguir capturando, se guardará al reconectar</div>
 
 <script>
+// ══════════ VERSION ══════════
+// Se muestra en Perfil. SUBIRLA EN CADA PUBLICACION, junto con CACHE en
+// sw.js. Sin esto no hay forma de saber en que version quedo cada tecnico
+// en campo cuando reporta algo.
+//
+// Va ANTES de Firebase a proposito: si una libreria de CDN no carga, el
+// script muere ahi y lo que venga despues nunca se ejecuta. Declarada aqui,
+// la version se ve aunque la app falle al arrancar — que es justo cuando
+// mas falta hace saberla.
+var APP_VERSION = '2026-11-10.1';
+
 // ══════════ CONFIG FIREBASE ══════════
 var firebaseConfig = {
   apiKey: "AIzaSyDTo9_ExbhOSAuzDDS81lZXoxUlKqGel_Q",
@@ -539,6 +556,11 @@ function arrancarApp(){
   $('pf-email').textContent = CUR.email||'—';
   $('pf-rol').textContent = CUR.rol||'—';
   $('pf-centro').textContent = textoAlcance();
+  if($('pf-version')) $('pf-version').textContent = APP_VERSION;
+  if($('pf-sw')){
+    $('pf-sw').textContent = ('serviceWorker' in navigator && navigator.serviceWorker.controller)
+      ? 'sin conexión disponible' : 'requiere señal';
+  }
   // Cargar catálogo de centros (1 lectura por doc, pocos centros)
   db.collection('centros').limit(60).get().then(function(s){ s.docs.forEach(function(d){_catCentros[d.id]=d.data();}); $('tb-title').textContent = MIS_CENTROS.length===1?centroNombre(MIS_CENTROS[0]):'Mi oficina'; }).catch(function(){});
   cargarInicio();
@@ -1916,6 +1938,27 @@ function resumenOrdenTexto(o){
 
 </script>
 <script>
+// Boton "Buscar actualizacion" del Perfil. Se define siempre, aunque el
+// navegador no soporte service worker: el boton existe en el HTML y un
+// onclick a una funcion inexistente truena sin decir nada.
+function buscarActualizacion(){
+  if(!('serviceWorker' in navigator)){
+    toast('Este navegador no actualiza solo. Cierra y vuelve a abrir la app.');
+    return;
+  }
+  toast('Buscando version nueva...');
+  navigator.serviceWorker.getRegistration().then(function(reg){
+    if(!reg){ toast('Recarga la pagina para instalar la app.'); return; }
+    return reg.update().then(function(){
+      setTimeout(function(){
+        if(!reg.waiting && !reg.installing){
+          toast('Ya tienes la version mas reciente ('+APP_VERSION+').');
+        }
+      }, 2500);
+    });
+  }).catch(function(){ toast('No se pudo comprobar. Revisa tu señal.'); });
+}
+
 // Instalable y abre sin señal (ver sw.js).
 //
 // Antes bastaba con registrar el service worker: una publicacion NO llegaba
