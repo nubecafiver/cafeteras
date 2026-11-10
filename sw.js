@@ -5,7 +5,10 @@
 //
 // Al cambiar tecnico.html no hace falta tocar este archivo: la página se pide
 // primero a la red y solo se usa la copia guardada si no hay señal.
-var CACHE = 'cafiver-tecnico-v1';
+// SUBIR ESTE NUMERO EN CADA PUBLICACION. Con 'v1' fijo, activate() no
+// borraba nada y una respuesta mala se quedaba cacheada para siempre: por
+// eso hubo que usar modo incognito.
+var CACHE = 'cafiver-tecnico-v2';
 
 var PRECARGA = [
   'tecnico.html',
@@ -64,9 +67,25 @@ self.addEventListener('fetch', function (e) {
   if (!propio && !cdn) return;   // todo lo demás (Firestore, Storage, consola) va directo a la red
   e.respondWith(caches.match(req).then(function (hit) {
     if (hit) return hit;
-    return fetch(req).then(function (r) {
-      if (r.ok || r.type === 'opaque') { var copia = r.clone(); caches.open(CACHE).then(function (c) { c.put(req, copia); }); }
+    // Los <link rel=stylesheet> de los CDN salen en modo no-cors, asi que
+    // la respuesta vuelve 'opaque': status 0, sin cabeceras, imposible de
+    // revisar. Antes se cacheaba igual, y la pagina de login de un portal
+    // cautivo (que responde 200 con su propio HTML) quedaba guardada como
+    // si fuera la libreria — para siempre, porque el cache nunca cambiaba
+    // de version. De ahi que solo funcionara en modo incognito.
+    //
+    // Se vuelve a pedir en modo cors: los tres CDN lo soportan, y asi la
+    // respuesta SI se puede revisar antes de guardarla. Si el modo cors
+    // falla, se usa la peticion original pero no se cachea.
+    var pet = cdn ? new Request(req.url, { mode: 'cors', credentials: 'omit' }) : req;
+    return fetch(pet).then(function (r) {
+      if (r.ok && r.type !== 'opaque') {
+        var copia = r.clone();
+        caches.open(CACHE).then(function (c) { c.put(req, copia); });
+      }
       return r;
+    }).catch(function () {
+      return fetch(req);        // sin cors: se sirve, pero no se guarda
     });
   }));
 });

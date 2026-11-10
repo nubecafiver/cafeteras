@@ -5496,6 +5496,7 @@ function openFormOrden(){
   // nueva sobrescribia la orden que se estaba editando.
   window._editandoOrdenId=null; window._editandoFolio=null;
   document.getElementById('orden-modal-title').textContent='Nueva Orden de Servicio';
+  _ordLinea='';
   document.getElementById('o-af').value='';document.getElementById('o-serie').value='';
   document.getElementById('o-modelo').value='';document.getElementById('o-centro').value='';
   document.getElementById('o-cliente').value='';document.getElementById('o-email').value='';
@@ -5560,7 +5561,9 @@ function autocompletarAF(){
   }
 }
 
+var _ordLinea='';
 function cargarChecklistLinea(linea){
+  _ordLinea = linea || '';
   var cont=document.getElementById('ck-linea-container');
   var msg=document.getElementById('ck-linea-msg');
   var tbody=document.getElementById('ck-linea-tbody');
@@ -5820,6 +5823,7 @@ function editOrden(ordId){
   openFormOrden();
   // Llenar campos
   document.getElementById('orden-modal-title').textContent='Editar Orden — '+ord.folio;
+  _ordLinea=ord.linea||'';
   document.getElementById('o-af').value=ord.activoFijo||'';
   document.getElementById('o-serie').value=ord.serie||'';
   document.getElementById('o-modelo').value=ord.modelo||'';
@@ -5864,7 +5868,7 @@ function saveOrden(irFirmar){
   var ck=['Revisión visual','Limpieza filtros','Descalcificación','Prueba temp.','Revisión eléctrica','Prueba funcional','Calibración','Entrega conforme'].map(function(l,i){return{item:l,ok:document.getElementById('ck'+(i+1)).checked};});
   var ckLinea=getChecklistLinea();
   var ckLineaObs=document.getElementById('ck-linea-obs')?document.getElementById('ck-linea-obs').value:'';
-  var data={folio:folio(),tipo:tipo,activoFijo:parseInt(af)||af,serie:document.getElementById('o-serie').value,modelo:document.getElementById('o-modelo').value,centro:document.getElementById('o-centro').value,cliente:document.getElementById('o-cliente').value,emailCliente:document.getElementById('o-email').value,tecnicoNombre:tec,tecnicoUid:curUser?curUser.uid:'',fechaServicio:document.getElementById('o-fecha').value,horaInicio:document.getElementById('o-hora').value,descripcion:document.getElementById('o-desc').value,refaccionesDesc:document.getElementById('o-refacciones').value,observaciones:document.getElementById('o-obs').value,checklist:ck,costoManoObra:parseFloat(document.getElementById('o-mo').value)||0,costoRefacciones:parseFloat(document.getElementById('o-ref').value)||0,costoViaticos:parseFloat(document.getElementById('o-viat').value)||0,costoTotal:ct,lat:geoLat,lng:geoLng,prioridad:document.getElementById('o-prioridad').value,estado:'pendiente',firmado:false,checklistLinea:ckLinea,checklistLineaObs:ckLineaObs,formato:formatoOrdenActual,brillante:(formatoOrdenActual==='brillante'?recolectarBrillante():null),creadoEn:firebase.firestore.FieldValue.serverTimestamp()};
+  var data={folio:folio(),tipo:tipo,activoFijo:parseInt(af)||af,serie:document.getElementById('o-serie').value,modelo:document.getElementById('o-modelo').value,linea:_ordLinea||'',centro:document.getElementById('o-centro').value,cliente:document.getElementById('o-cliente').value,emailCliente:document.getElementById('o-email').value,tecnicoNombre:tec,tecnicoUid:curUser?curUser.uid:'',fechaServicio:document.getElementById('o-fecha').value,horaInicio:document.getElementById('o-hora').value,descripcion:document.getElementById('o-desc').value,refaccionesDesc:document.getElementById('o-refacciones').value,observaciones:document.getElementById('o-obs').value,checklist:ck,costoManoObra:parseFloat(document.getElementById('o-mo').value)||0,costoRefacciones:parseFloat(document.getElementById('o-ref').value)||0,costoViaticos:parseFloat(document.getElementById('o-viat').value)||0,costoTotal:ct,lat:geoLat,lng:geoLng,prioridad:document.getElementById('o-prioridad').value,estado:'pendiente',firmado:false,checklistLinea:ckLinea,checklistLineaObs:ckLineaObs,formato:formatoOrdenActual,brillante:(formatoOrdenActual==='brillante'?recolectarBrillante():null),creadoEn:firebase.firestore.FieldValue.serverTimestamp()};
   // Si es edición, actualizar; si es nuevo, crear
   var promise;
   if(window._editandoOrdenId){

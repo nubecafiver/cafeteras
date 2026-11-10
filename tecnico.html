@@ -1296,16 +1296,32 @@ function abrirFormOrden(){
   onFormatoChange(true);
 }
 
+// Cada tecla que el tecnico escribia en Cliente llegaba hasta
+// onFormatoChange, que hace cont.innerHTML = render...(): el checklist
+// completo se reconstruia desde cero y se perdian las casillas ya marcadas
+// y las lecturas del formato Brillante, sin ningun aviso. Ahora:
+//   - el formato solo se redibuja si de verdad CAMBIO
+//   - la busqueda de ubicacion espera a que deje de teclear
+var _cliTimer = null;
 function onClienteInput(){
   var nom=$('o-cliente').value;
-  cargarUbicCliente(nom);
-  if(esBrillante('',nom)){ $('o-formato').value='brillante'; }
-  onFormatoChange(true);
+  // Una lectura de Firestore por caracter tecleado era desperdicio; se
+  // espera medio segundo de silencio.
+  if(_cliTimer) clearTimeout(_cliTimer);
+  _cliTimer = setTimeout(function(){ cargarUbicCliente($('o-cliente').value); }, 500);
+  if(esBrillante('',nom) && $('o-formato').value!=='brillante'){
+    $('o-formato').value='brillante';
+    onFormatoChange(true);            // solo cuando realmente cambia
+  }
 }
 function onFormatoChange(auto){
-  _ordFormato=$('o-formato').value;
-  var hint=$('o-fmt-hint');
+  var nuevo=$('o-formato').value;
   var cont=$('o-checklist');
+  // Si el formato no cambio y el checklist ya esta dibujado, no se toca:
+  // redibujarlo borraria lo que el tecnico lleva capturado.
+  if(nuevo===_ordFormato && cont && cont.innerHTML.trim()!==''){ return; }
+  _ordFormato=nuevo;
+  var hint=$('o-fmt-hint');
   if(_ordFormato==='brillante'){
     if(hint)hint.textContent = 'Formato Brillante (Krispy Kreme).';
     cont.innerHTML = renderBrillanteForm();
@@ -1710,6 +1726,34 @@ function guardarOrden(){
   var af=$('o-af').value.trim();
   if(!af){toast('Falta el activo fijo');return;}
   if(!_fotos.length){ toast('Toma al menos una foto del equipo'); return; }
+  // El candado de centro se saltaba por aqui: al escanear un equipo ajeno
+  // la pantalla de bloqueo MUESTRA su activo fijo, y con "Nueva orden" el
+  // tecnico lo tecleaba a mano. Como _ordEquipo es null en ese camino, la
+  // orden se guardaba con centro = el suyo, sobre un activo de otro centro.
+  if(!_ordEquipo && !esAlcanceNacional()){
+    verificarAlcanceAF(af);
+    return;
+  }
+  guardarOrdenConfirmada();
+}
+// Comprueba contra Firestore a quien pertenece el activo tecleado antes de
+// dejar guardar. Si no existe se deja pasar (puede ser un equipo nuevo que
+// aun no llega en la carga de la noche), pero se anota en la orden.
+function verificarAlcanceAF(af){
+  var n=parseInt(String(af).replace(/^0+/,''),10);
+  db.collection('equipos').where('activoFijo','==',isNaN(n)?af:n).limit(1).get().then(function(s){
+    if(s.empty){ _ordSinPadron=true; guardarOrdenConfirmada(); return; }
+    var e=s.docs[0].data();
+    if(enMiAlcance(e.centro)){ _ordEquipo=e; _ordSinPadron=false; guardarOrdenConfirmada(); return; }
+    bloqueoFueraDeAlcance(af, e);
+  }).catch(function(){
+    // Sin señal no se puede comprobar: se guarda y se marca para revision.
+    _ordSinPadron=true; guardarOrdenConfirmada();
+  });
+}
+var _ordSinPadron=false;
+function guardarOrdenConfirmada(){
+  var af=$('o-af').value.trim();
   var ck=[], ckLinea=[];
   if(_ordFormato==='estandar'){
     document.querySelectorAll('#o-checklist .ckl-p').forEach(function(cb){
@@ -1731,6 +1775,7 @@ function guardarOrden(){
     folio:folio(), tipo:$('o-tipo').value, activoFijo:(parseInt(af)||af),
     serie:$('o-serie').value, modelo:$('o-modelo').value,
     centro:(_ordEquipo&&_ordEquipo.centro)||MI_CENTRO,
+    sinPadron:!!_ordSinPadron,
     cliente:$('o-cliente').value, clienteNum:(_ordEquipo&&_ordEquipo.cliente)||'',
     tecnicoNombre:CUR.nombre||CUR.email, tecnicoUid:CUR.uid,
     fechaServicio:$('o-fecha').value, horaInicio:$('o-hora').value,
@@ -1872,8 +1917,41 @@ function resumenOrdenTexto(o){
 </script>
 <script>
 // Instalable y abre sin señal (ver sw.js).
+//
+// Antes bastaba con registrar el service worker: una publicacion NO llegaba
+// a un celular que trae la PWA abierta en segundo plano desde hace dias,
+// porque skipWaiting solo actua en el proximo arranque. Con 49 tecnicos no
+// hay forma de saber quien quedo en que version. Ahora la app busca version
+// nueva al abrir y cada media hora, y se recarga sola cuando entra — salvo
+// si el tecnico esta capturando, para no tirarle el formulario.
 if('serviceWorker' in navigator){
-  window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js').catch(function(e){ console.warn('sw:',e); }); });
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      function buscar(){ try{ reg.update(); }catch(e){} }
+      buscar();
+      setInterval(buscar, 30*60*1000);
+      document.addEventListener('visibilitychange',function(){
+        if(document.visibilityState==='visible') buscar();
+      });
+    }).catch(function(e){ console.warn('sw:',e); });
+
+    var _recargando=false;
+    navigator.serviceWorker.addEventListener('controllerchange',function(){
+      if(_recargando) return;
+      _recargando=true;
+      // Si la hoja esta abierta, el tecnico esta capturando: no se le tira
+      // la pantalla, se le avisa y recarga cuando el cierre.
+      var hoja=$('sheet');
+      if(hoja && hoja.classList.contains('on')){
+        toast('Hay una version nueva. Se aplicara al cerrar esta pantalla.');
+        var esperar=setInterval(function(){
+          if(!hoja.classList.contains('on')){ clearInterval(esperar); location.reload(); }
+        }, 2000);
+        return;
+      }
+      location.reload();
+    });
+  });
 }
 </script>
 </body>

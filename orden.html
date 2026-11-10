@@ -109,7 +109,7 @@ function render(o){
      +'<div class="row"><span style="color:var(--text2)">Viáticos</span><span>'+fmt$(o.costoViaticos)+'</span></div>'
      +'<div class="row tot"><span>Total</span><span style="color:var(--green)">'+fmt$(o.costoTotal)+'</span></div>'
    +'</div>'
-   +(o.firmaClienteData?('<div class="sec"><h3>Firma del cliente</h3><img class="firma" src="'+o.firmaClienteData+'">'+(o.firmanteNombre?('<div style="font-size:12px;color:var(--text2);margin-top:6px">Recibió: <b>'+esc(o.firmanteNombre)+'</b></div>'):'')+'</div>'):'')
+   +(o.firmaClienteData?('<div class="sec"><h3>Firma del cliente</h3><img class="firma" src="'+o.firmaClienteData+'">'+((o.recibe||o.firmanteNombre)?('<div style="font-size:12px;color:var(--text2);margin-top:6px">Recibió: <b>'+esc(o.recibe||o.firmanteNombre)+'</b></div>'):'')+'</div>'):'')
    +'<div class="ft">CAFIVER · Gestión de Equipos · Gracias por su preferencia</div>'
    +'</div>';
   document.getElementById('app').innerHTML=html;
