@@ -274,7 +274,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 // script muere ahi y lo que venga despues nunca se ejecuta. Declarada aqui,
 // la version se ve aunque la app falle al arrancar — que es justo cuando
 // mas falta hace saberla.
-var APP_VERSION = '2026-11-10.6';
+var APP_VERSION = '2026-11-10.7';
 
 // ══════════ CONFIG FIREBASE ══════════
 var firebaseConfig = {
@@ -793,7 +793,11 @@ function marcarClienteVisitadoAuto(clienteNombre){
 
 // ══════════════════════════ AUDITORÍA DE ACTIVOS (auditor en campo) ══════════════════════════
 var _audItems=[], _audCliente='', _audClienteNum='', _audLat=null, _audLng=null;
-function esAuditor(){ var r=(CUR.rol||'').toLowerCase(); return r.indexOf('jefe')>=0||r.indexOf('director')>=0||r.indexOf('auditor')>=0||r.indexOf('admin')>=0; }
+// Antes con indexOf: un rol llamado 'subdirector' o cualquiera que
+// contuviera 'admin' entraba sin querer. Lista exacta.
+var ROLES_AUDITOR = ['jefe','director','auditor','admin','gerente'];
+var _audForzar = false;   // true solo si el auditor acepta guardar sin fotos
+function esAuditor(){ return ROLES_AUDITOR.indexOf(String(CUR&&CUR.rol||'').toLowerCase())>=0; }
 function mostrarAccesoAuditoria(){
   var box=$('aud-acceso'); if(!box)return;
   if(!esAuditor()){ box.style.display='none'; return; }
@@ -889,14 +893,31 @@ function audGuardar(){
   if(faltan.length){ toast('Falta foto en '+faltan.length+' equipo(s) confirmado(s)'); return; }
   $('aud-footer').innerHTML='<button class="btn" disabled style="width:100%">Subiendo evidencia...</button>';
   var audId='AUD-'+Date.now();
-  var pend=revisados.filter(function(x){return x.foto;}).length; var subidas=0, errSub=false;
+  var pend=revisados.filter(function(x){return x.foto;}).length; var subidas=0;
+  _audForzar = false;   // cada intento vuelve a exigir las fotos
   var BUCKET='cafeteras-90e78.firebasestorage.app';
   function finalizar(){
+    // Si alguna foto no subio, NO se guarda en silencio: la auditoria sin
+    // evidencia no sirve, y el auditor tiene que enterarse antes de irse.
+    var sinFoto=revisados.filter(function(x){ return x.foto && !x.fotoUrl; }).length;
+    if(sinFoto && !_audForzar){
+      $('aud-footer').innerHTML=
+        '<div style="font-size:12px;color:var(--error);margin-bottom:8px;line-height:1.4">'
+        +'No subieron '+sinFoto+' foto(s) de '+pend+'. La auditoría quedaría sin evidencia.<br>'
+        +'Acércate a donde haya señal y reintenta.</div>'
+        +'<button class="btn btn-green" style="width:100%" onclick="audGuardar()">Reintentar</button>'
+        +'<button class="btn" style="width:100%;margin-top:6px;font-size:12px" onclick="audGuardarSinFotos()">Guardar sin esas fotos</button>';
+      return;
+    }
     var items=revisados.map(function(x){ return {activoFijo:x.activoFijo,modelo:x.modelo,serie:x.serie,resultado:x.resultado,estado:x.estado||'',nota:x.nota||'',fotoUrl:x.fotoUrl||''}; });
     var ok=items.filter(function(x){return x.resultado==='existe';}).length;
     var doc={ clienteNombre:_audCliente, clienteNum:_audClienteNum, centro:MI_CENTRO||'', auditorUid:CUR.uid, auditorNombre:CUR.nombre||CUR.email, lat:_audLat, lng:_audLng, carpeta:audId, items:items, totalEquipos:items.length, confirmados:ok, cumplimiento:(items.length?Math.round(ok/items.length*100):0), creadoEn:firebase.firestore.FieldValue.serverTimestamp() };
+    doc.fotosFaltantes = revisados.filter(function(x){ return x.foto && !x.fotoUrl; }).length;
     db.collection('auditorias').add(doc).then(function(){ toast('✅ Auditoría guardada'); $('audWrap').style.display='none'; }).catch(function(e){ toast('Error: '+e.message); $('aud-footer').innerHTML='<button class="btn btn-green" style="width:100%" onclick="audGuardar()">Reintentar</button>'; });
   }
+  // Salida explicita: el auditor decide guardar aunque falten fotos, y queda
+  // marcado en el documento para que el coordinador lo vea.
+  window.audGuardarSinFotos = function(){ _audForzar = true; finalizar(); };
   if(!pend){ finalizar(); return; }
   revisados.forEach(function(x,idx){
     if(!x.foto)return;
@@ -904,7 +925,7 @@ function audGuardar(){
     storage.ref(path).putString(x.foto,'data_url').then(function(){
       x.fotoUrl='https://firebasestorage.googleapis.com/v0/b/'+BUCKET+'/o/'+encodeURIComponent(path)+'?alt=media';
       if(++subidas>=pend)finalizar();
-    }).catch(function(){ errSub=true; if(++subidas>=pend)finalizar(); });
+    }).catch(function(){ if(++subidas>=pend)finalizar(); });
   });
 }
 
