@@ -879,7 +879,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
 // Va ANTES de Firebase a proposito: si una libreria de CDN no carga, el
 // script muere ahi y lo que venga despues nunca corre. Declarada aqui, la
 // version se ve aunque el tablero falle al arrancar.
-var APP_VERSION = '2026-11-10.4';
+var APP_VERSION = '2026-11-10.5';
 
 // ══════════════════════════════════════════
 // FIREBASE — cafeteras-90e78
@@ -5748,7 +5748,10 @@ function guardarCambioEstado(docId, af, modelo, estadoAnterior){
     usuario:curUser?curUser.name:'',
     usuarioEmail:curUser?curUser.email:'',
     ts:firebase.firestore.FieldValue.serverTimestamp(),
-    fecha:fechaLocal()
+    fecha:fechaLocal(),
+    // Sin centro no hay por donde acotar el movimiento, y el ultimo con
+    // estadoNuevo manda para todos los que ven el tablero.
+    centro:(findEquipo(docId)||{}).centro||''
   };
   // Estado que traia la importacion al momento del cambio (ver conEstadoManual).
   var eq=findEquipo(docId);

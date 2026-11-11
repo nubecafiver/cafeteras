@@ -60,6 +60,11 @@ service cloud.firestore {
     function misCentros() {
       return autorizado() && perfil().centros is list ? perfil().centros : [];
     }
+    // OJO: SIEMPRE llamar con resource.data.get('centro',''), nunca con
+    // resource.data.centro. Los argumentos se evaluan antes de entrar a la
+    // funcion, asi que un documento sin ese campo (los movimientos y las
+    // ordenes viejas no lo tienen) hace fallar la regla entera — incluso
+    // para un admin, porque el cortocircuito de aqui dentro nunca corre.
     function centroPermitido(c) {
       return alcanceNacional() || c in misCentros();
     }
@@ -86,13 +91,13 @@ service cloud.firestore {
       allow create: if esDireccion()
                     || (rol() == 'jefe'
                         && uid != request.auth.uid
-                        && request.resource.data.rol == 'tecnico');
+                        && request.resource.data.get('rol','') == 'tecnico');
       allow update: if esDireccion()
                     || (rol() == 'jefe'
                         && uid != request.auth.uid
-                        && resource.data.rol == 'tecnico'
-                        && request.resource.data.rol == 'tecnico'
-                        && request.resource.data.centros == resource.data.centros);
+                        && resource.data.get('rol','') == 'tecnico'
+                        && request.resource.data.get('rol','') == 'tecnico'
+                        && request.resource.data.get('centro','')s == resource.data.get('centro','')s);
       allow delete: if esDireccion();
     }
 
@@ -103,25 +108,25 @@ service cloud.firestore {
     // Listar la coleccion completa si requiere ser de la casa.
     match /ordenes/{id} {
       allow get:    if true;
-      allow list:   if autorizado() && centroPermitido(resource.data.centro);
+      allow list:   if autorizado() && centroPermitido(resource.data.get('centro',''));
       allow create: if autorizado()
-                    && centroPermitido(request.resource.data.centro)
-                    && (esAdmin() || request.resource.data.tecnicoUid == request.auth.uid);
+                    && centroPermitido(request.resource.data.get('centro',''))
+                    && (esAdmin() || request.resource.data.get('tecnicoUid','') == request.auth.uid);
       allow update: if autorizado()
-                    && centroPermitido(resource.data.centro)
-                    && centroPermitido(request.resource.data.centro);
-      allow delete: if puedeEnCentro(resource.data.centro);
+                    && centroPermitido(resource.data.get('centro',''))
+                    && centroPermitido(request.resource.data.get('centro',''));
+      allow delete: if puedeEnCentro(resource.data.get('centro',''));
     }
 
     // ── TRABAJO DIARIO ────────────────────────────────────────────────
     match /auditorias/{id} {
-      allow get:    if autorizado() && centroPermitido(resource.data.centro);
-      allow list:   if autorizado() && centroPermitido(resource.data.centro);
-      allow create: if autorizado() && centroPermitido(request.resource.data.centro);
+      allow get:    if autorizado() && centroPermitido(resource.data.get('centro',''));
+      allow list:   if autorizado() && centroPermitido(resource.data.get('centro',''));
+      allow create: if autorizado() && centroPermitido(request.resource.data.get('centro',''));
       allow update: if autorizado()
-                    && centroPermitido(resource.data.centro)
-                    && centroPermitido(request.resource.data.centro);
-      allow delete: if puedeEnCentro(resource.data.centro);
+                    && centroPermitido(resource.data.get('centro',''))
+                    && centroPermitido(request.resource.data.get('centro',''));
+      allow delete: if puedeEnCentro(resource.data.get('centro',''));
     }
 
     // El id es predecible: uid_YYYY-MM-DD. Antes read y update eran
@@ -130,13 +135,13 @@ service cloud.firestore {
     // a un compañero de otro centro escribiendo su id.
     match /rutas/{id} {
       allow read:   if autorizado()
-                    && (resource.data.tecnicoUid == request.auth.uid
-                        || centroPermitido(resource.data.centro));
-      allow create: if puedeEnCentro(request.resource.data.centro);
+                    && (resource.data.get('tecnicoUid','') == request.auth.uid
+                        || centroPermitido(resource.data.get('centro','')));
+      allow create: if puedeEnCentro(request.resource.data.get('centro',''));
       allow update: if autorizado()
-                    && (resource.data.tecnicoUid == request.auth.uid
-                        || centroPermitido(resource.data.centro));
-      allow delete: if puedeEnCentro(resource.data.centro);
+                    && (resource.data.get('tecnicoUid','') == request.auth.uid
+                        || centroPermitido(resource.data.get('centro','')));
+      allow delete: if puedeEnCentro(resource.data.get('centro',''));
     }
 
     // El ultimo movimiento con estadoNuevo manda para TODOS los que ven el
@@ -146,10 +151,10 @@ service cloud.firestore {
     // update y delete son de admin. Ahora el movimiento tiene que ser de su
     // alcance y el correo tiene que ser el suyo.
     match /movimientos/{id} {
-      allow read:   if autorizado() && centroPermitido(resource.data.centro);
+      allow read:   if autorizado() && centroPermitido(resource.data.get('centro',''));
       allow create: if autorizado()
-                    && centroPermitido(request.resource.data.centro)
-                    && request.resource.data.usuarioEmail == request.auth.token.email;
+                    && centroPermitido(request.resource.data.get('centro',''))
+                    && request.resource.data.get('usuarioEmail','') == request.auth.token.email;
       allow update, delete: if esDireccion();
     }
 
@@ -169,7 +174,7 @@ service cloud.firestore {
     // cierra es LISTAR, que es lo que permite la extraccion masiva.
     match /equipos/{id} {
       allow get:   if autorizado();
-      allow list:  if autorizado() && centroPermitido(resource.data.centro);
+      allow list:  if autorizado() && centroPermitido(resource.data.get('centro',''));
       allow write: if false;
     }
     match /config/{id}        { allow read: if autorizado(); allow write: if false; }
@@ -177,7 +182,7 @@ service cloud.firestore {
     match /centros/{id}       { allow read: if autorizado(); allow write: if false; }
     match /almacenes/{id} {
       allow get:   if autorizado();
-      allow list:  if autorizado() && centroPermitido(resource.data.centro);
+      allow list:  if autorizado() && centroPermitido(resource.data.get('centro',''));
       allow write: if false;
     }
     match /clientes/{id}      { allow read: if autorizado(); allow write: if false; }
@@ -204,8 +209,8 @@ service cloud.firestore {
     // tecnico podia bajarse el padron nacional completo. El documento tiene
     // centro, asi que se acota igual que todo lo demas.
     match /directorio/{id} {
-      allow get:   if autorizado() && centroPermitido(resource.data.centro);
-      allow list:  if autorizado() && centroPermitido(resource.data.centro);
+      allow get:   if autorizado() && centroPermitido(resource.data.get('centro',''));
+      allow list:  if autorizado() && centroPermitido(resource.data.get('centro',''));
       allow write: if esDireccion();
     }
 
