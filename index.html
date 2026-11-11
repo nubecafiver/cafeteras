@@ -544,6 +544,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
     <button class="tnav" id="tnav-programacion" onclick="switchView('programacion')"><span><i class="ti ti-calendar-event"></i></span><span class="tnav-txt"> Programación</span></button>
     <button class="tnav" id="tnav-movimientos" onclick="switchView('movimientos')"><span><i class="ti ti-arrows-exchange"></i></span><span class="tnav-txt"> Movimientos</span></button>
     <button class="tnav" id="tnav-analisis" onclick="switchView('analisis')"><span><i class="ti ti-chart-histogram"></i></span><span class="tnav-txt"> Análisis</span></button>
+    <button class="tnav" id="tnav-preventivos" onclick="switchView('preventivos')"><span><i class="ti ti-calendar-repeat"></i></span><span class="tnav-txt"> Preventivos</span></button>
     <button class="tnav" id="tnav-cumplimiento" onclick="switchView('cumplimiento')"><span><i class="ti ti-gauge"></i></span><span class="tnav-txt"> Cumplimiento</span></button>
     <button class="tnav" id="tnav-reportes" onclick="switchView('reportes')"><span><i class="ti ti-report"></i></span><span class="tnav-txt"> Reportes</span></button>
     <button class="tnav" id="tnav-auditoria" onclick="switchView('auditoria')"><span><i class="ti ti-clipboard-check"></i></span><span class="tnav-txt"> Auditoría</span></button>
@@ -879,7 +880,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
 // Va ANTES de Firebase a proposito: si una libreria de CDN no carga, el
 // script muere ahi y lo que venga despues nunca corre. Declarada aqui, la
 // version se ve aunque el tablero falle al arrancar.
-var APP_VERSION = '2026-11-10.7';
+var APP_VERSION = '2026-11-10.8';
 
 // ══════════════════════════════════════════
 // FIREBASE — cafeteras-90e78
@@ -1485,8 +1486,8 @@ function enterApp(){
     var _rol=String(curUser.rol||'').toLowerCase();
     var VISTAS_TECNICO=['equipos','ordenes','rutas'];
     var TODAS=['dashboard','equipos','clientes','directorio','ordenes','rutas',
-               'programacion','movimientos','analisis','cumplimiento','reportes',
-               'auditoria','etiquetas','usuarios'];
+               'programacion','preventivos','movimientos','analisis','cumplimiento',
+               'reportes','auditoria','etiquetas','usuarios'];
     var permitidas = (_rol==='tecnico') ? VISTAS_TECNICO.slice() : TODAS.slice();
     if(!esAdminUsuarios()) permitidas = permitidas.filter(function(v){ return v!=='usuarios'; });
     TODAS.forEach(function(v){
@@ -2696,7 +2697,6 @@ function switchView(v){
   if(v==='usuarios')renderUsuarios();
   if(v==='cumplimiento')renderCumplimiento();
   if(v==='preventivos')renderPreventivos();
-  if(v==='qr')renderQR();
   if(v==='reportes')renderReportes();
   if(v==='resumen')renderResumen();
   if(v==='movimientos')renderMovimientos();
@@ -5050,47 +5050,10 @@ function renderPreventivos(){
 }
 
 
-function renderQR(){
-  var w=document.getElementById('view-qr');if(!w)return;
-  var q=document.getElementById('qr-q')?document.getElementById('qr-q').value.toLowerCase():'';
-  var ce=document.getElementById('qr-ce')?document.getElementById('qr-ce').value:'';
-  var lin=document.getElementById('qr-lin')?document.getElementById('qr-lin').value:'';
-  var data=clientes.filter(function(c){
-    if(ce&&c.centro!==ce)return false;
-    if(lin&&c.linea!==lin)return false;
-    if(q&&!(String(c.activoFijo||'').includes(q)||(c.modelo||'').toLowerCase().includes(q)))return false;
-    return true;
-  }).slice(0,100);
-  w.innerHTML=
-    '<div class="qr-toolbar">'
-    +'<input class="fi-sm" type="text" id="qr-q" placeholder="🔍 Buscar activo, modelo..." style="width:200px" oninput="renderQR()" value="'+(q||'')+'">'
-    +'<select class="fi-sm" id="qr-ce" onchange="renderQR()">'
-    +optsCentros(ce)
-    +'</select>'
-    +'<select class="fi-sm" id="qr-lin" onchange="renderQR()">'
-    +'<option value="">Todas las líneas</option>'
-    +['Habitacion','Superautomatica','Filtrado','Semiautomatica','Molino','Accesorios','Cafe soluble'].map(function(l){return'<option value="'+l+'"'+(lin===l?' selected':'')+'>'+l+'</option>';}).join('')
-    +'</select>'
-    +'<span style="font-size:12px;color:#9aa0a6">'+data.length+' equipo(s)</span>'
-    +'<button class="btn btn-sm" onclick="switchView(\'etiquetas\')">🏷 Imprimir etiquetas</button>'
-    +'<button class="btn btn-sm" onclick="window.print()">🖨 Imprimir QRs</button>'
-    +'</div>'
-    +'<div class="qr-grid">'
-    +data.map(function(c){
-      var qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=140x140&data='+encodeURIComponent(BASE_QR_URL+c.activoFijo)+'&color=1a73e8&bgcolor=ffffff&margin=4';
-      return'<div class="qr-card" onclick="openPanel(\''+c.id+'\',\'cl\')">'
-        +'<img src="'+qrUrl+'" width="140" height="140" style="border-radius:8px" loading="lazy">'
-        +'<div class="qr-af">AF: '+c.activoFijo+'</div>'
-        +'<div class="qr-lbl">'+c.modelo+'</div>'
-        +'<div class="qr-sub">'+bCe(c.centro)+' '+lbl(c.linea)+'</div>'
-        +'<div style="display:flex;gap:4px;width:100%;margin-top:4px">'
-        +'<button class="btn btn-sm" style="flex:1;justify-content:center" onclick="event.stopPropagation();openPanel(\''+c.id+'\',\'cl\')">👁 Ver</button>'
-        +'<button class="btn btn-sm" style="flex:1;justify-content:center" onclick="event.stopPropagation();abrirOrdenDesde('+c.activoFijo+',\''+esc(c.modelo)+'\',\''+c.centro+'\',\'\')">📋</button>'
-        +'</div></div>';
-    }).join('')
-    +'</div>';
-}
-
+// renderQR se borro: switchView('qr') redirige a 'etiquetas' desde hace
+// tiempo, asi que esta funcion no corria nunca. Ademas leia la variable
+// `clientes`, un arreglo que nada llena, asi que la pantalla habria salido
+// vacia de todos modos. Etiquetas genera los mismos QR.
 // ══ ETIQUETAS ══
 var ETIQ_POR_HOJA=30;
 var etiqFilt={ce:'',lin:'',q:''};

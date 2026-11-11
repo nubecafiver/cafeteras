@@ -8,7 +8,7 @@
 // SUBIR ESTE NUMERO EN CADA PUBLICACION. Con 'v1' fijo, activate() no
 // borraba nada y una respuesta mala se quedaba cacheada para siempre: por
 // eso hubo que usar modo incognito.
-var CACHE = 'cafiver-tecnico-v7';
+var CACHE = 'cafiver-tecnico-v8';
 
 var PRECARGA = [
   'tecnico.html',

@@ -103,6 +103,7 @@ function render(o){
    +'<div class="sec" id="fotos-sec"><h3>Fotos del equipo</h3><div id="fotos"><div style="color:var(--text2);font-size:12px">Cargando fotos...</div></div></div>'
    +'<div class="sec"><h3>Servicio realizado</h3>'+ck+'</div>'
    +(o.descripcion?('<div class="sec"><h3>Notas</h3><div style="font-size:13px;color:var(--text2)">'+esc(o.descripcion)+'</div></div>'):'')
+   +(o.refaccionesDesc?('<div class="sec"><h3>Refacciones utilizadas</h3><div style="font-size:13px;color:var(--text2);white-space:pre-line">'+esc(o.refaccionesDesc)+'</div></div>'):'')
    +'<div class="sec"><h3>Costos</h3>'
      +'<div class="row"><span style="color:var(--text2)">Mano de obra</span><span>'+fmt$(o.costoManoObra)+'</span></div>'
      +'<div class="row"><span style="color:var(--text2)">Refacciones</span><span>'+fmt$(o.costoRefacciones)+'</span></div>'

@@ -274,7 +274,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 // script muere ahi y lo que venga despues nunca se ejecuta. Declarada aqui,
 // la version se ve aunque la app falle al arrancar — que es justo cuando
 // mas falta hace saberla.
-var APP_VERSION = '2026-11-10.7';
+var APP_VERSION = '2026-11-10.8';
 
 // ══════════ CONFIG FIREBASE ══════════
 var firebaseConfig = {
@@ -1394,7 +1394,7 @@ var _borrTimer = null;
 var _borrActivo = false;      // false mientras se dibuja, para no guardar vacios
 
 var CAMPOS_ORDEN = ['o-af','o-modelo','o-serie','o-cliente','o-fecha','o-hora',
-                    'o-tipo','o-formato','o-desc','o-mo','o-ref','o-viat'];
+                    'o-tipo','o-formato','o-desc','o-refacciones','o-mo','o-ref','o-viat'];
 
 function leerFormulario(){
   var d = { campos:{}, checklist:{}, formato:_ordFormato, ts:Date.now() };
@@ -1488,6 +1488,9 @@ function abrirFormOrden(){
       +'<option value="estandar">Estándar (por línea)</option><option value="brillante">Checklist Brillante — Krispy Kreme</option></select>'
       +'<div id="o-fmt-hint" style="font-size:11px;color:var(--amber);margin-top:4px"></div></div>'
     +'<div class="frow"><label>Descripción del trabajo</label><textarea class="fld" id="o-desc" rows="2" placeholder="Qué se hizo..."></textarea></div>'
+    +'<div class="frow"><label>Refacciones utilizadas</label>'
+      +'<textarea class="fld" id="o-refacciones" rows="2" placeholder="Qué piezas se cambiaron: 1 filtro de agua, 2 empaques de grupo..."></textarea>'
+      +'<div style="font-size:11px;color:var(--muted);margin-top:3px">Sale en el comprobante del cliente.</div></div>'
     +'<div id="o-checklist"></div>'
     +'<div class="serif" style="font-size:15px;color:var(--green);margin:14px 0 8px">Costos</div>'
     +'<div class="g2"><div class="frow"><label>Mano de obra</label><input class="fld" id="o-mo" type="number" inputmode="decimal" value="0" oninput="calcTotal()"></div>'
@@ -2083,6 +2086,7 @@ function guardarOrdenConfirmada(){
     tecnicoNombre:CUR.nombre||CUR.email, tecnicoUid:CUR.uid,
     fechaServicio:$('o-fecha').value, horaInicio:$('o-hora').value,
     descripcion:$('o-desc').value,
+    refaccionesDesc:($('o-refacciones')?$('o-refacciones').value:''),
     formato:_ordFormato, checklistLinea:ckLinea, brillante:brillante,
     costoManoObra:mo, costoRefacciones:ref, costoViaticos:viat, costoTotal:mo+ref+viat,
     lat:_geoLat, lng:_geoLng, movidoMetros:_geoMovido||0,
