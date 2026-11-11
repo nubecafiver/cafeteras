@@ -543,10 +543,10 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
     <button class="tnav" id="tnav-rutas" onclick="switchView('rutas')"><span><i class="ti ti-route"></i></span><span class="tnav-txt"> Rutas</span></button>
     <button class="tnav" id="tnav-programacion" onclick="switchView('programacion')"><span><i class="ti ti-calendar-event"></i></span><span class="tnav-txt"> Programación</span></button>
     <button class="tnav" id="tnav-movimientos" onclick="switchView('movimientos')"><span><i class="ti ti-arrows-exchange"></i></span><span class="tnav-txt"> Movimientos</span></button>
-    <button class="tnav" id="tnav-analisis" onclick="switchView('analisis')"><span><i class="ti ti-chart-histogram"></i></span><span class="tnav-txt"> Análisis</span></button>
+    <button class="tnav" id="tnav-analisis" style="display:none" onclick="switchView('analisis')"><span><i class="ti ti-chart-histogram"></i></span><span class="tnav-txt"> Análisis</span></button>
     <button class="tnav" id="tnav-preventivos" onclick="switchView('preventivos')"><span><i class="ti ti-calendar-repeat"></i></span><span class="tnav-txt"> Preventivos</span></button>
     <button class="tnav" id="tnav-cumplimiento" onclick="switchView('cumplimiento')"><span><i class="ti ti-gauge"></i></span><span class="tnav-txt"> Cumplimiento</span></button>
-    <button class="tnav" id="tnav-reportes" onclick="switchView('reportes')"><span><i class="ti ti-report"></i></span><span class="tnav-txt"> Reportes</span></button>
+    <button class="tnav" id="tnav-reportes" style="display:none" onclick="switchView('reportes')"><span><i class="ti ti-report"></i></span><span class="tnav-txt"> Reportes</span></button>
     <button class="tnav" id="tnav-auditoria" onclick="switchView('auditoria')"><span><i class="ti ti-clipboard-check"></i></span><span class="tnav-txt"> Auditoría</span></button>
     <button class="tnav" id="tnav-etiquetas" onclick="switchView('etiquetas')"><span><i class="ti ti-tags"></i></span><span class="tnav-txt"> Etiquetas</span></button>
     <button class="tnav" id="tnav-usuarios" onclick="switchView('usuarios')"><span><i class="ti ti-users"></i></span><span class="tnav-txt"> Usuarios</span></button>
@@ -880,7 +880,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
 // Va ANTES de Firebase a proposito: si una libreria de CDN no carga, el
 // script muere ahi y lo que venga despues nunca corre. Declarada aqui, la
 // version se ve aunque el tablero falle al arrancar.
-var APP_VERSION = '2026-11-10.8';
+var APP_VERSION = '2026-11-10.9';
 
 // ══════════════════════════════════════════
 // FIREBASE — cafeteras-90e78
@@ -1486,8 +1486,8 @@ function enterApp(){
     var _rol=String(curUser.rol||'').toLowerCase();
     var VISTAS_TECNICO=['equipos','ordenes','rutas'];
     var TODAS=['dashboard','equipos','clientes','directorio','ordenes','rutas',
-               'programacion','preventivos','movimientos','analisis','cumplimiento',
-               'reportes','auditoria','etiquetas','usuarios'];
+               'programacion','preventivos','movimientos','cumplimiento',
+               'auditoria','etiquetas','usuarios'];
     var permitidas = (_rol==='tecnico') ? VISTAS_TECNICO.slice() : TODAS.slice();
     if(!esAdminUsuarios()) permitidas = permitidas.filter(function(v){ return v!=='usuarios'; });
     TODAS.forEach(function(v){
@@ -4752,6 +4752,21 @@ function renderOrdenes(){
 }
 
 // ══════════════════════════ ANÁLISIS DE ÓRDENES ══════════════════════════
+// ══════════════════════════════════════════════════════════════════════
+//  RETIRADA DEL MENU — 2026-11-10
+//  Analisis y Reportes mostraban la misma informacion (las ordenes del
+//  periodo) en dos formatos distintos: aqui graficas, alla tablas y Excel.
+//  Con 13 botones el coordinador tenia que acordarse de en cual estaba
+//  cada dato. Se retiraron las dos; Cumplimiento se quedo porque mide
+//  otra cosa (desempeño del tecnico).
+//
+//  El codigo NO se borro: exportExcelMovimientos() vive en este bloque y
+//  la pantalla Movimientos si la usa. Para devolverlas, quitar el
+//  style="display:none" de tnav-analisis / tnav-reportes y volver a
+//  meterlas en la lista TODAS.
+//  Referencia de que hacia cada una: doc "Analisis y Reportes" del
+//  proyecto Cafeteras.
+// ══════════════════════════════════════════════════════════════════════
 var anFiltros={desde:'',hasta:''};
 function renderAnalisis(){
   var w=document.getElementById('view-analisis'); if(!w)return;
