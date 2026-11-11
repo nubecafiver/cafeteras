@@ -20,14 +20,20 @@ service cloud.firestore {
     }
 
     // Usuario de la casa: con sesion, con perfil y no desactivado.
+    //
+    // Siempre .get(campo, default), nunca perfil().campo: en estas reglas
+    // acceder a un campo que el documento no tiene hace fallar la condicion
+    // entera, no devuelve vacio. Un perfil sin 'activo' o sin 'rol' —
+    // creado a mano, o por una version vieja de la pantalla Usuarios —
+    // dejaria a esa persona sin poder leer nada, sin explicacion.
     function autorizado() {
       return request.auth != null
         && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
-        && perfil().activo != false;
+        && perfil().get('activo', true) != false;
     }
 
     function rol() {
-      return autorizado() ? perfil().rol : '';
+      return autorizado() ? perfil().get('rol','') : '';
     }
 
     // OJO: esAdmin() incluia 'jefe' y no mira centros, y era la unica
@@ -58,7 +64,8 @@ service cloud.firestore {
       return rol() == 'admin' || rol() == 'director' || rol() == 'gerente';
     }
     function misCentros() {
-      return autorizado() && perfil().centros is list ? perfil().centros : [];
+      return autorizado() && perfil().get('centros',[]) is list
+        ? perfil().get('centros',[]) : [];
     }
     // OJO: SIEMPRE llamar con resource.data.get('centro',''), nunca con
     // resource.data.centro. Los argumentos se evaluan antes de entrar a la
@@ -97,7 +104,7 @@ service cloud.firestore {
                         && uid != request.auth.uid
                         && resource.data.get('rol','') == 'tecnico'
                         && request.resource.data.get('rol','') == 'tecnico'
-                        && request.resource.data.get('centro','')s == resource.data.get('centro','')s);
+                        && request.resource.data.get('centros',[]) == resource.data.get('centros',[]));
       allow delete: if esDireccion();
     }
 
