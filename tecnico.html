@@ -274,7 +274,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 // script muere ahi y lo que venga despues nunca se ejecuta. Declarada aqui,
 // la version se ve aunque la app falle al arrancar — que es justo cuando
 // mas falta hace saberla.
-var APP_VERSION = '2026-11-10.3';
+var APP_VERSION = '2026-11-10.4';
 
 // ══════════ CONFIG FIREBASE ══════════
 var firebaseConfig = {
@@ -823,7 +823,7 @@ function audBuscarCliente(){
   if(q.length<2){ box.innerHTML='<div style="color:var(--muted);font-size:12px;padding:6px">Escribe al menos 2 letras.</div>'; return; }
   box.innerHTML='<div class="spin"></div>';
   var col=db.collection('equipos'), variantes=[q,q.toUpperCase(),q.charAt(0).toUpperCase()+q.slice(1).toLowerCase()], vis={}, proms=[];
-  variantes.forEach(function(v){ if(vis[v])return; vis[v]=true; var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);}); proms.push(col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(120).get()); });
+  variantes.forEach(function(v){ if(vis[v])return; vis[v]=true; var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);}); proms.push(acotarCentro(col).where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(120).get()); });
   Promise.all(proms).then(function(snaps){
     var cli={};
     snaps.forEach(function(s){ s.docs.forEach(function(d){ var e=d.data(); if(!enMiAlcance(e.centro))return; if(e.clienteNombre){ var k=e.clienteNombre; if(!cli[k])cli[k]={nombre:e.clienteNombre,num:e.cliente||'',n:0}; cli[k].n++; } }); });
@@ -843,7 +843,7 @@ function audCargarEquipos(nombre, num){
   // capturar GPS silencioso
   if(navigator.geolocation)navigator.geolocation.getCurrentPosition(function(p){ _audLat=p.coords.latitude; _audLng=p.coords.longitude; },function(){},{enableHighAccuracy:true,timeout:8000});
   var col=db.collection('equipos');
-  var variantes=[nombre], q0=col.where('clienteNombre','==',nombre).limit(300);
+  var variantes=[nombre], q0=acotarCentro(col).where('clienteNombre','==',nombre).limit(300);
   q0.get().then(function(s){
     _audItems=s.docs.filter(function(d){ var e=d.data(); return enMiAlcance(e.centro); }).map(function(d){ var e=d.data();
       return {activoFijo:e.activoFijo||d.id, modelo:e.modelo||'', serie:e.serie||'', linea:e.linea||'', centro:e.centro||'', resultado:'', estado:'', nota:'', foto:null };

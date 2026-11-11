@@ -4,110 +4,268 @@
       "collectionGroup": "equipos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "linea",  "order": "ASCENDING" },
-        { "fieldPath": "centro", "order": "ASCENDING" }
+        {
+          "fieldPath": "linea",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "equipos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "modelo", "order": "ASCENDING" },
-        { "fieldPath": "centro", "order": "ASCENDING" }
+        {
+          "fieldPath": "modelo",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "equipos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "almacen", "order": "ASCENDING" },
-        { "fieldPath": "centro",  "order": "ASCENDING" }
+        {
+          "fieldPath": "almacen",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "ordenes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "tecnicoUid", "order": "ASCENDING" },
-        { "fieldPath": "estado",     "order": "ASCENDING" }
+        {
+          "fieldPath": "tecnicoUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "estado",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "ordenes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "centro", "order": "ASCENDING" },
-        { "fieldPath": "estado", "order": "ASCENDING" }
-      ]
-    },
-
-    {
-      "collectionGroup": "ordenes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "tecnicoUid", "order": "ASCENDING" },
-        { "fieldPath": "estado",     "order": "ASCENDING" },
-        { "fieldPath": "creadoEn",   "order": "DESCENDING" }
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "estado",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "ordenes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "centro",   "order": "ASCENDING" },
-        { "fieldPath": "estado",   "order": "ASCENDING" },
-        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+        {
+          "fieldPath": "tecnicoUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "estado",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "creadoEn",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "ordenes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "tecnicoUid", "order": "ASCENDING" },
-        { "fieldPath": "creadoEn",   "order": "DESCENDING" }
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "estado",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "creadoEn",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "ordenes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "centro",   "order": "ASCENDING" },
-        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+        {
+          "fieldPath": "tecnicoUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "creadoEn",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "ordenes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "tecnicoUid", "order": "ASCENDING" },
-        { "fieldPath": "tipo",       "order": "ASCENDING" },
-        { "fieldPath": "creadoEn",   "order": "DESCENDING" }
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "creadoEn",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "ordenes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "centro",   "order": "ASCENDING" },
-        { "fieldPath": "tipo",     "order": "ASCENDING" },
-        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+        {
+          "fieldPath": "tecnicoUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tipo",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "creadoEn",
+          "order": "DESCENDING"
+        }
       ]
     },
-
+    {
+      "collectionGroup": "ordenes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tipo",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "creadoEn",
+          "order": "DESCENDING"
+        }
+      ]
+    },
     {
       "collectionGroup": "auditorias",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "centro",   "order": "ASCENDING" },
-        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "creadoEn",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "rutas",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "tecnicoUid", "order": "ASCENDING" },
-        { "fieldPath": "fecha",      "order": "DESCENDING" }
+        {
+          "fieldPath": "tecnicoUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fecha",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "clienteNombre",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "cliente",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "serie",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "equipos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "modelo",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "almacenes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "centro",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nombre",
+          "order": "ASCENDING"
+        }
       ]
     }
   ],

@@ -879,7 +879,7 @@ body,.tnav,.btn,.fi-sm,input,select,textarea{font-family:'Hanken Grotesk',sans-s
 // Va ANTES de Firebase a proposito: si una libreria de CDN no carga, el
 // script muere ahi y lo que venga despues nunca corre. Declarada aqui, la
 // version se ve aunque el tablero falle al arrancar.
-var APP_VERSION = '2026-11-10.3';
+var APP_VERSION = '2026-11-10.4';
 
 // ══════════════════════════════════════════
 // FIREBASE — cafeteras-90e78
@@ -3946,15 +3946,17 @@ function buscarEquiposFirestore(){
   // Para evitarlo: consultamos por UN solo campo y el centro se filtra en el cliente.
   if(q){
     var af=parseInt(q);
-    if(!isNaN(af)){ queries.push(col.where('activoFijo','==',af).limit(50).get()); _eqTopes.push(50); }
+    // El id del documento ES el activo fijo: un get() directo, que la regla
+    // permite aunque sea de otro centro (es lo que necesita el escaneo).
+    if(!isNaN(af)){ queries.push(col.doc(String(af)).get().then(function(d){ return {docs:(d.exists?[d]:[]), size:0}; })); _eqTopes.push(Infinity); }
     else {
-      queries.push(col.where('serie','==',q).limit(50).get()); _eqTopes.push(50);
+      queries.push(acotarCentro(col).where('serie','==',q).limit(50).get()); _eqTopes.push(50);
       // Modelo: busca los que EMPIEZAN con el texto (tal cual y en mayusculas).
       // Antes el buscador decia "Modelo" pero solo buscaba por serie exacta.
       [q, q.toUpperCase()].filter(function(v,i,a){ return a.indexOf(v)===i; }).forEach(function(v){
         var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
         // Sin acotarCentro: rango + 'in' pediria indice compuesto. El centro se filtra abajo.
-        queries.push(col.where('modelo','>=',v).where('modelo','<',vHi).limit(100).get()); _eqTopes.push(100);
+        queries.push(acotarCentro(col).where('modelo','>=',v).where('modelo','<',vHi).limit(100).get()); _eqTopes.push(100);
       });
     }
   }else if(eqFiltros.almacen){
@@ -4105,13 +4107,13 @@ function buscarClientes(){
   } else {
     if(!q&&!ce){ tree.innerHTML='<div style="padding:36px;text-align:center;color:#6b7c63">Busca por número o nombre de cliente.</div>'; return; }
     if(q&&!isNaN(q)){
-      promises.push(clConsulta('cliente|'+q, function(){ return col.where('cliente','==',q).limit(1500).get(); }));
+      promises.push(clConsulta('cliente|'+q, function(){ return acotarCentro(col).where('cliente','==',q).limit(1500).get(); }));
       promises.push(clConsulta('af|'+q, function(){ return col.where('activoFijo','==',parseFloat(q)).limit(50).get(); }));
     } else if(q){
       var variantes=[q,q.toUpperCase(),q.charAt(0).toUpperCase()+q.slice(1).toLowerCase()], visto={};
       variantes.forEach(function(v){ if(visto[v])return; visto[v]=true;
         var vHi=v.replace(/.$/,function(ch){return String.fromCharCode(ch.charCodeAt(0)+1);});
-        promises.push(clConsulta('nom|'+v, function(){ return col.where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(600).get(); }));
+        promises.push(clConsulta('nom|'+v, function(){ return acotarCentro(col).where('clienteNombre','>=',v).where('clienteNombre','<',vHi).limit(600).get(); }));
       });
       if(ce)promises.push(clConsulta('centro|'+ce, function(){ return col.where('centro','==',ce).limit(4000).get(); }));
     } else if(ce){
@@ -6368,10 +6370,13 @@ function procesarEscaneo(af){
   var eq=clientes.find(function(c){return String(c.activoFijo)===String(af);})||equipos.find(function(c){return String(c.activoFijo)===String(af);});
   if(!eq){
     // Buscar en Firestore
-    db.collection('equipos').where('activoFijo','==',parseInt(af)||af).limit(1).get().then(trasEstados).then(function(s){
-      if(!s.empty){var d=conEstadoManual({id:s.docs[0].id,...s.docs[0].data()});mostrarPopupScan(d);}
+    // Por id de documento (el id ES el activo fijo): un get() que la regla
+    // permite aunque el equipo sea de otro centro, que es justo lo que hace
+    // falta para poder decir de quien es.
+    db.collection('equipos').doc(String(parseInt(af)||af)).get().then(function(d){
+      if(d.exists){var e=conEstadoManual({id:d.id,...d.data()});mostrarPopupScan(e);}
       else toast('❌ Equipo con AF '+af+' no encontrado');
-    });
+    }).catch(function(err){ toast('No se pudo buscar: '+err.message); });
     return;
   }
   mostrarPopupScan(eq);

@@ -30,8 +30,19 @@ service cloud.firestore {
       return autorizado() ? perfil().rol : '';
     }
 
+    // OJO: esAdmin() incluia 'jefe' y no mira centros, y era la unica
+    // condicion para 'delete' en ocho colecciones: un coordinador de EUCA
+    // podia borrar ordenes de cualquier centro del pais. Ahora un jefe
+    // administra DENTRO de su alcance (ver puedeEnCentro), y borrar queda
+    // en direccion.
     function esAdmin() {
       return rol() == 'admin' || rol() == 'jefe' || rol() == 'director' || rol() == 'gerente';
+    }
+
+    // Administra, pero solo donde le toca. Es lo que sustituye a esAdmin()
+    // en todo lo que lleva centro.
+    function puedeEnCentro(c) {
+      return esAdmin() && centroPermitido(c);
     }
 
     // Direccion nacional: puede asignar cualquier rol.
@@ -93,41 +104,82 @@ service cloud.firestore {
     match /ordenes/{id} {
       allow get:    if true;
       allow list:   if autorizado() && centroPermitido(resource.data.centro);
-      allow create: if autorizado() && centroPermitido(request.resource.data.centro);
-      allow update: if autorizado() && centroPermitido(resource.data.centro);
-      allow delete: if esAdmin();
+      allow create: if autorizado()
+                    && centroPermitido(request.resource.data.centro)
+                    && (esAdmin() || request.resource.data.tecnicoUid == request.auth.uid);
+      allow update: if autorizado()
+                    && centroPermitido(resource.data.centro)
+                    && centroPermitido(request.resource.data.centro);
+      allow delete: if puedeEnCentro(resource.data.centro);
     }
 
     // ── TRABAJO DIARIO ────────────────────────────────────────────────
     match /auditorias/{id} {
-      allow get:    if autorizado();
+      allow get:    if autorizado() && centroPermitido(resource.data.centro);
       allow list:   if autorizado() && centroPermitido(resource.data.centro);
       allow create: if autorizado() && centroPermitido(request.resource.data.centro);
-      allow update: if autorizado() && centroPermitido(resource.data.centro);
-      allow delete: if esAdmin();
+      allow update: if autorizado()
+                    && centroPermitido(resource.data.centro)
+                    && centroPermitido(request.resource.data.centro);
+      allow delete: if puedeEnCentro(resource.data.centro);
     }
 
+    // El id es predecible: uid_YYYY-MM-DD. Antes read y update eran
+    // autorizado() a secas, asi que cualquier tecnico podia leer las rutas
+    // de los 49 tecnicos del pais — con clientes y notas — y dejar sin ruta
+    // a un compañero de otro centro escribiendo su id.
     match /rutas/{id} {
-      allow read:   if autorizado();
-      allow create: if esAdmin();        // las rutas las arma el coordinador
-      allow update: if autorizado();     // el tecnico marca visitado
-      allow delete: if esAdmin();
+      allow read:   if autorizado()
+                    && (resource.data.tecnicoUid == request.auth.uid
+                        || centroPermitido(resource.data.centro));
+      allow create: if puedeEnCentro(request.resource.data.centro);
+      allow update: if autorizado()
+                    && (resource.data.tecnicoUid == request.auth.uid
+                        || centroPermitido(resource.data.centro));
+      allow delete: if puedeEnCentro(resource.data.centro);
     }
 
+    // El ultimo movimiento con estadoNuevo manda para TODOS los que ven el
+    // tablero. Antes create era autorizado() a secas: un tecnico podia
+    // recorrer la lista de activos y marcar el parque nacional como BAJA,
+    // firmando con el nombre de otra persona, y no podia revertirlo porque
+    // update y delete son de admin. Ahora el movimiento tiene que ser de su
+    // alcance y el correo tiene que ser el suyo.
     match /movimientos/{id} {
-      allow read:   if autorizado();
-      allow create: if autorizado();
-      allow update, delete: if esAdmin();
+      allow read:   if autorizado() && centroPermitido(resource.data.centro);
+      allow create: if autorizado()
+                    && centroPermitido(request.resource.data.centro)
+                    && request.resource.data.usuarioEmail == request.auth.token.email;
+      allow update, delete: if esDireccion();
     }
 
     // ── DATOS DEL SERVIDOR — SOLO LECTURA ─────────────────────────────
     // Los escribe importar.js / cafiver-resumen.js con el SDK Admin.
     // Ninguna pantalla del navegador los modifica.
-    match /equipos/{id}       { allow read: if autorizado(); allow write: if false; }
+    // EQUIPOS es la coleccion gorda: 37,900 documentos con cliente, serie,
+    // modelo y centro. Con 'read: if autorizado()' cualquier tecnico podia
+    // abrir DevTools en su propio celular y recorrer el alfabeto con la
+    // misma consulta que ya hace la app — sin filtro de centro — y bajarse
+    // el padron nacional completo. Los filtros de pantalla solo ocultan:
+    // los datos ya llegaron al navegador.
+    //
+    // get vs list: el ID del documento ES el activo fijo, asi que leer UNO
+    // por su id sigue abierto — es lo que necesita el escaneo del QR para
+    // poder decirle al tecnico "este equipo es de otro centro". Lo que se
+    // cierra es LISTAR, que es lo que permite la extraccion masiva.
+    match /equipos/{id} {
+      allow get:   if autorizado();
+      allow list:  if autorizado() && centroPermitido(resource.data.centro);
+      allow write: if false;
+    }
     match /config/{id}        { allow read: if autorizado(); allow write: if false; }
     match /resumenLinea/{id}  { allow read: if autorizado(); allow write: if false; }
     match /centros/{id}       { allow read: if autorizado(); allow write: if false; }
-    match /almacenes/{id}     { allow read: if autorizado(); allow write: if false; }
+    match /almacenes/{id} {
+      allow get:   if autorizado();
+      allow list:  if autorizado() && centroPermitido(resource.data.centro);
+      allow write: if false;
+    }
     match /clientes/{id}      { allow read: if autorizado(); allow write: if false; }
     match /materiales/{id}    { allow read: if autorizado(); allow write: if false; }
     match /specs_equipos/{id} { allow read: if autorizado(); allow write: if false; }
@@ -135,7 +187,7 @@ service cloud.firestore {
     // Lo consulta la ficha del equipo en el escritorio.
     match /clientesEquipo/{id} {
       allow read:  if autorizado();
-      allow write: if esAdmin();
+      allow write: if esDireccion();   // asignacion cliente-equipo: nacional
     }
 
     // Ubicacion de referencia de cada cliente, capturada en la primera
@@ -144,13 +196,17 @@ service cloud.firestore {
     match /ubicaciones/{id} {
       allow read:   if autorizado();
       allow create: if autorizado();
-      allow update, delete: if esAdmin();
+      allow update, delete: if esDireccion();
     }
 
     // ── DIRECTORIO ────────────────────────────────────────────────────
+    // Trae nombre, direccion, correo, telefono y RFC. Antes cualquier
+    // tecnico podia bajarse el padron nacional completo. El documento tiene
+    // centro, asi que se acota igual que todo lo demas.
     match /directorio/{id} {
-      allow read:  if autorizado();
-      allow write: if esAdmin();
+      allow get:   if autorizado() && centroPermitido(resource.data.centro);
+      allow list:  if autorizado() && centroPermitido(resource.data.centro);
+      allow write: if esDireccion();
     }
 
     // ── TODO LO DEMAS ─────────────────────────────────────────────────
