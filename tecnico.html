@@ -274,7 +274,7 @@ input,select,textarea,button{font-family:inherit;font-size:16px}
 // script muere ahi y lo que venga despues nunca se ejecuta. Declarada aqui,
 // la version se ve aunque la app falle al arrancar — que es justo cuando
 // mas falta hace saberla.
-var APP_VERSION = '2026-11-10.5';
+var APP_VERSION = '2026-11-10.6';
 
 // ══════════ CONFIG FIREBASE ══════════
 var firebaseConfig = {
@@ -937,10 +937,13 @@ function abrirPorActivo(af){
   var proms=[];
   // 1) por id de documento (el id ES el activo fijo, sin ceros)
   proms.push(col.doc(afSinCeros).get().then(function(d){ return d.exists?[{id:d.id,...d.data()}]:[]; }).catch(function(){return [];}));
-  // 2) por campo activoFijo como número
-  if(!isNaN(afNum)) proms.push(col.where('activoFijo','==',afNum).limit(5).get().then(function(s){return s.docs.map(function(d){return {id:d.id,...d.data()};});}).catch(function(){return [];}));
-  // 3) por serie (por si el QR trae la serie)
-  proms.push(col.where('serie','==',af).limit(5).get().then(function(s){return s.docs.map(function(d){return {id:d.id,...d.data()};});}).catch(function(){return [];}));
+  // 2) por serie, por si el QR trae la serie en vez del activo fijo.
+  //    Acotada al centro: una consulta de lista sin acotar la rechaza la
+  //    regla entera, sin mirar los datos. La busqueda por activo fijo no
+  //    la necesita porque va por id de documento (ruta 1), que es un get().
+  proms.push(acotarCentro(col).where('serie','==',af).limit(5).get()
+    .then(function(s){return s.docs.map(function(d){return {id:d.id,...d.data()};});})
+    .catch(function(){return [];}));
   Promise.all(proms).then(function(listas){
     var vistos={}, todos=[];
     listas.forEach(function(l){ l.forEach(function(e){ if(!vistos[e.id]){ vistos[e.id]=1; todos.push(e); } }); });
@@ -1105,26 +1108,64 @@ function buscarEquipos(){
   var q=($('eq-q').value||'').trim();
   if(q.length<2){ toast('Escribe al menos 2 caracteres'); return; }
   $('eq-list').innerHTML='<div class="spin"></div>'; $('eq-mas').innerHTML='';
+  // Firestore no filtra las consultas: las acepta o las rechaza enteras. Si
+  // la regla depende del centro del documento y la consulta no lo acota, la
+  // rechaza sin mirar los datos — daba "Missing or insufficient permissions"
+  // incluso buscando un equipo del propio centro.
+  //
+  // Por activo fijo se busca por ID de documento (el id ES el activo fijo):
+  // eso es un get(), que la regla permite aunque el equipo sea de otro
+  // centro. Asi el tecnico ve DE QUIEN es, en vez de un error.
+  // Por serie si hay que acotar, porque es una consulta de lista.
   var col=db.collection('equipos'), proms=[];
   var af=parseInt(q);
-  if(!isNaN(af)) proms.push(col.where('activoFijo','==',af).limit(20).get());
-  proms.push(col.where('serie','==',q).limit(20).get());
-  Promise.all(proms).then(function(snaps){
-    var seen={},arr=[];
-    snaps.forEach(function(s){s.docs.forEach(function(d){ if(seen[d.id])return; seen[d.id]=true;
-      var e={id:d.id,...d.data()};
-      if(!enMiAlcance(e.centro)) return;   // solo mi alcance
-      arr.push(e);
+  var afId=String(q).replace(/^0+/,'')||String(q);
+  if(!isNaN(af)){
+    proms.push(col.doc(afId).get()
+      .then(function(d){ return d.exists?[{id:d.id,...d.data()}]:[]; })
+      .catch(function(){ return []; }));
+  }
+  proms.push(acotarCentro(col).where('serie','==',q).limit(20).get()
+    .then(function(s){ return s.docs.map(function(d){ return {id:d.id,...d.data()}; }); })
+    .catch(function(){ return []; }));
+
+  Promise.all(proms).then(function(listas){
+    var seen={}, dentro=[], fuera=[];
+    listas.forEach(function(l){ l.forEach(function(e){
+      if(seen[e.id])return; seen[e.id]=true;
+      if(enMiAlcance(e.centro)) dentro.push(e); else fuera.push(e);
     });});
-    if(!arr.length){
-      $('eq-list').innerHTML='<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">No se encontró "'+esc(q)+'" en tu centro.</div>';
+
+    // Existe, pero no es suyo: se dice de que centro es, no "sin permiso".
+    if(!dentro.length && fuera.length){
+      var e=fuera[0];
+      $('eq-list').innerHTML=
+        '<div class="clay card-pad" style="border-left:4px solid var(--amber);margin:4px 0">'
+        +'<div style="font-size:14px;font-weight:700;color:#8A6D12;margin-bottom:6px">'
+        +'<i class="ti ti-map-pin-off" style="vertical-align:-2px"></i> Ese equipo no es de tu centro</div>'
+        +'<div style="font-size:13px;color:var(--text2);line-height:1.5">'
+        +'El activo <b>'+esc(e.activoFijo||afId)+'</b>'+(e.modelo?(' ('+esc(e.modelo)+')'):'')
+        +' está en <b>'+esc(centroNombre(e.centro))+'</b>.<br>'
+        +'Tu alcance es <b>'+esc(textoAlcance())+'</b>.</div>'
+        +'<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5">'
+        +'Si ya se movió a tu centro, avisa a tu coordinador para que lo corrija en SAP. '
+        +'El cambio llega en la carga de la noche.</div></div>';
+      $('eq-mas').innerHTML='<button class="btn" style="width:100%" onclick="$(\'eq-q\').value=\'\';cargarEquiposCentro(true)">Volver a mi lista</button>';
+      return;
+    }
+
+    if(!dentro.length){
+      $('eq-list').innerHTML='<div style="text-align:center;color:var(--muted);padding:24px;font-size:13px">No se encontró "'+esc(q)+'".<br>Revisa el número, o puede ser un equipo que aún no llega en la carga de la noche.</div>';
       $('eq-mas').innerHTML='<button class="btn" style="width:100%" onclick="$(\'eq-q\').value=\'\';cargarEquiposCentro(true)">Volver a mi lista</button>';
       return;
     }
     // Meter los encontrados a la lista cargada y mostrarlos
-    arr.forEach(function(e){ if(!_eqDocs.some(function(x){return x.id===e.id;})) _eqDocs.push(e); });
+    dentro.forEach(function(e){ if(!_eqDocs.some(function(x){return x.id===e.id;})) _eqDocs.push(e); });
     renderListaEquipos();
-  }).catch(function(e){ $('eq-list').innerHTML='<div style="color:var(--error);padding:16px;font-size:13px">'+esc(e.message)+'</div>'; });
+  }).catch(function(e){
+    $('eq-list').innerHTML='<div style="color:var(--error);padding:16px;font-size:13px">'
+      +'No se pudo buscar. '+(e&&e.code==='unavailable'?'Revisa tu señal.':esc(e.message))+'</div>';
+  });
 }
 function verEquipo(docId){
   db.collection('equipos').doc(docId).get().then(function(d){
@@ -1976,10 +2017,15 @@ function guardarOrden(){
 // dejar guardar. Si no existe se deja pasar (puede ser un equipo nuevo que
 // aun no llega en la carga de la noche), pero se anota en la orden.
 function verificarAlcanceAF(af){
-  var n=parseInt(String(af).replace(/^0+/,''),10);
-  db.collection('equipos').where('activoFijo','==',isNaN(n)?af:n).limit(1).get().then(function(s){
-    if(s.empty){ _ordSinPadron=true; guardarOrdenConfirmada(); return; }
-    var e=s.docs[0].data();
+  // Por ID de documento, no por consulta de lista: el id ES el activo fijo.
+  // Con where('activoFijo','==') la regla rechazaba la consulta entera para
+  // un tecnico acotado, caia al catch, y el catch DEJA PASAR la orden —
+  // justo lo que esta comprobacion venia a impedir. Un get() por id si lo
+  // permite la regla, aunque el equipo sea de otro centro.
+  var afId = String(af).replace(/^0+/,'') || String(af);
+  db.collection('equipos').doc(afId).get().then(function(d){
+    if(!d.exists){ _ordSinPadron=true; guardarOrdenConfirmada(); return; }
+    var e=d.data();
     if(enMiAlcance(e.centro)){ _ordEquipo=e; _ordSinPadron=false; guardarOrdenConfirmada(); return; }
     bloqueoFueraDeAlcance(af, e);
   }).catch(function(){
